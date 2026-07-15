@@ -19,9 +19,9 @@ from django.urls import path,include
 
 urlpatterns = [
     path('SYSTRACK/admin/', admin.site.urls),
-    path('',include('index.urls')),
+    path('SYSTRACK/',include('index.urls')),
     path('SYSTRACK/dashboard/',include('dashboard.urls')),
     path('SYSTRACK/inventario/', include('dashboard.urls')),
-    path('', include('requerimientos.urls')),
+    path('SYSTRACK/', include('requerimientos.urls')),
     
 ]
