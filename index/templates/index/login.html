@@ -1,0 +1,135 @@
+{% load static %}
+<!DOCTYPE html>
+<html lang="es">
+<head>
+  <meta charset="UTF-8"/>
+  <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+  <title>AM&M Montacargas S.A.S – Login</title>
+  <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Poppins:wght@400;500;600;700;800;900&family=Inter:wght@400;500;600;700&display=swap"/>
+  <link rel="stylesheet" href="{% static 'css/login.css' %}">
+  
+
+
+</head>
+<body>
+
+<div class="scene">
+
+  <div class="login-card">
+
+    <div class="panel-left">
+
+      <div class="deco-rect"></div>
+      <div class="deco-diamond"></div>
+
+      <div class="dots">
+        <span></span><span></span><span></span><span></span>
+        <span></span><span></span><span></span><span></span>
+        <span></span><span></span><span></span><span></span>
+      </div>
+
+      <div class="mascot-wrap">
+        <img
+          id="mascot-img"
+          src="{% static 'img/inventario.png' %}"
+          alt="Mascota AM&M"
+          class="mascot-img"
+          onerror="this.style.display='none'"
+        />
+      </div>
+
+      <div class="welcome-block">
+        <div class="welcome-icon" id="welcome-icon">
+          <svg viewBox="0 0 48 48" fill="none" xmlns="http://www.w3.org/2000/svg">
+            <path d="M24 4L44 14v20L24 44 4 34V14L24 4z" stroke="currentColor" stroke-width="3" stroke-linejoin="round"/>
+            <path d="M4 14l20 10M44 14L24 24M24 24v20" stroke="currentColor" stroke-width="2.5" stroke-linecap="round"/>
+          </svg>
+        </div>
+        <div>
+          <p class="welcome-eyebrow" id="welcome-eyebrow">BIENVENIDOS AL</p>
+          <h2 class="welcome-title" id="welcome-title">PORTAL DE<br>INVENTARIOS</h2>
+        </div>
+      </div>
+
+      <p class="tagline">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+          <path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"/>
+        </svg>
+        <span id="tagline-text">Gestiona y controla tu inventario de forma segura y eficiente</span>
+      </p>
+
+    </div>
+
+    <div class="panel-right">
+
+      <div class="form-icon" id="form-icon">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+          <path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2"/>
+          <circle cx="12" cy="7" r="4"/>
+        </svg>
+      </div>
+
+      <h2 class="form-title">Iniciar sesión</h2>
+      <p class="form-subtitle">Por favor ingrese sus credenciales</p>
+
+      {% if messages %}
+        {% for msg in messages %}
+          <div class="form-error">{{ msg }}</div>
+        {% endfor %}
+      {% endif %}
+
+      <form id="login-form" method="POST" action="/">
+        {% csrf_token %}
+
+        <label class="field-label" for="documento">Número de documento</label>
+        <div class="field">
+          <svg class="field-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+            <path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2"/>
+            <circle cx="12" cy="7" r="4"/>
+          </svg>
+          <input id="documento" type="text" name="documento" placeholder="Ingrese su número de documento" autocomplete="username" inputmode="numeric" pattern="[0-9]*"/>
+        </div>
+
+        <label class="field-label" for="contrasena">Contraseña</label>
+        <div class="field">
+          <svg class="field-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+            <rect x="3" y="11" width="18" height="11" rx="2" ry="2"/>
+            <path d="M7 11V7a5 5 0 0 1 10 0v4"/>
+          </svg>
+          <input id="contrasena" type="password" name="contrasena" placeholder="Ingrese su contraseña" autocomplete="current-password"/>
+          <button type="button" class="toggle-pass" onclick="togglePass()" aria-label="Ver contraseña">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+              <path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"/>
+              <circle cx="12" cy="12" r="3"/>
+            </svg>
+          </button>
+        </div>
+
+        <button type="submit" class="btn-submit">INGRESAR</button>
+      </form>
+
+    </div>
+  </div>
+</div>
+
+<script>
+  function togglePass() {
+    const input = document.getElementById('contrasena');
+    input.type = input.type === 'password' ? 'text' : 'password';
+  }
+
+  document.addEventListener('DOMContentLoaded', function() {
+    setTimeout(() => {
+      document.querySelector('.mascot-img').classList.add('animating');
+      document.querySelector('.welcome-block').classList.add('animating');
+      document.querySelector('.welcome-icon').classList.add('animating');
+      document.querySelector('.tagline').classList.add('animating');
+      document.querySelector('.form-icon').classList.add('animating');
+      document.querySelector('.form-title').classList.add('animating');
+      document.querySelector('.form-subtitle').classList.add('animating');
+    }, 100);
+  });
+</script>
+
+</body>
+</html>

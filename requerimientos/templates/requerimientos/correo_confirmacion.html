@@ -1,0 +1,83 @@
+<!DOCTYPE html>
+<html>
+<head>
+  <meta charset="UTF-8">
+</head>
+<body style="margin:0; padding:0; background:#f3f4f6; font-family:Arial, Helvetica, sans-serif;">
+  <table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="background:#f3f4f6; padding:24px 0;">
+    <tr>
+      <td align="center">
+        <table role="presentation" width="560" cellpadding="0" cellspacing="0"
+               style="background:#ffffff; border-radius:12px; overflow:hidden; box-shadow:0 1px 4px rgba(0,0,0,.08);">
+
+          <!-- Encabezado -->
+          <tr>
+            <td style="background:#1e3a8a; padding:20px 32px;">
+              <span style="color:#ffffff; font-size:18px; font-weight:bold;">Systraker · Requerimiento creado</span>
+            </td>
+          </tr>
+
+          <!-- Cuerpo -->
+          <tr>
+            <td style="padding:28px 32px 8px 32px;">
+              <p style="color:#1f2937; font-size:15px; line-height:1.5; margin:0 0 16px 0;">
+                Hola <strong>{{ req.NombreUsuario }}</strong>, tu requerimiento fue registrado exitosamente
+                {% if pendiente %}y quedó <strong>pendiente de aprobación</strong> por tu jefe de área.
+                Te avisaremos por correo en cuanto sea revisado.{% else %}y ya está siendo gestionado.{% endif %}
+              </p>
+            </td>
+          </tr>
+
+          <!-- Código destacado -->
+          <tr>
+            <td align="center" style="padding:8px 32px 24px 32px;">
+              <div style="background:#eef2ff; border:1px dashed #4338ca; border-radius:8px; padding:16px 24px; display:inline-block;">
+                <span style="font-size:12px; color:#4338ca; letter-spacing:1px;">TU CÓDIGO DE SEGUIMIENTO</span><br>
+                <span style="font-size:22px; font-weight:bold; color:#1e1b4b;">{{ req.codigo }}</span>
+              </div>
+            </td>
+          </tr>
+
+          <tr>
+            <td style="padding:0 32px 8px 32px;">
+              <p style="color:#4b5563; font-size:14px; line-height:1.5; margin:0;">
+                Guarda este código. Con él puedes consultar en cualquier momento en qué va tu requerimiento,
+                quién lo tiene asignado y el detalle de cada etapa.
+              </p>
+            </td>
+          </tr>
+
+          <!-- Botón -->
+          <tr>
+            <td align="center" style="padding:24px 32px 8px 32px;">
+              <table role="presentation" cellpadding="0" cellspacing="0">
+                <tr>
+                  <td style="border-radius:8px; background:#1e3a8a;">
+                    <a href="{{ link_seguimiento }}"
+                       style="display:inline-block; padding:13px 32px; font-size:14px; font-weight:bold;
+                              color:#ffffff; text-decoration:none;">
+                      Ver seguimiento
+                    </a>
+                  </td>
+                </tr>
+              </table>
+            </td>
+          </tr>
+
+          <!-- Pie -->
+          <tr>
+            <td style="padding:24px 32px 24px 32px;">
+              <p style="font-size:12px; color:#9ca3af; margin:0; line-height:1.4;">
+                Si el botón no funciona, ingresa a Systraker, entra a la sección "Seguimiento" y digita
+                tu código: <strong>{{ req.codigo }}</strong><br><br>
+                <span style="color:#6b7280;">{{ link_seguimiento }}</span>
+              </p>
+            </td>
+          </tr>
+
+        </table>
+      </td>
+    </tr>
+  </table>
+</body>
+</html>
