@@ -78,7 +78,7 @@
         {% endfor %}
       {% endif %}
 
-      <form id="login-form" method="POST" action="/">
+      <form id="login-form" method="POST" action="{% url 'login' %}">
         {% csrf_token %}
 
         <label class="field-label" for="documento">Número de documento</label>
