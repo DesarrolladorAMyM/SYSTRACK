@@ -1534,7 +1534,7 @@
 
   async function cargarCatalogos(){
     try {
-      const r    = await fetch('SYSTRACK/requerimiento/api/catalogos/');
+      const r    = await fetch('/SYSTRACK/requerimiento/api/catalogos/');
       const resp = await r.json();
       if(!resp.ok) return;
 
