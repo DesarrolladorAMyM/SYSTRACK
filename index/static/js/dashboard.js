@@ -75,9 +75,9 @@ async function apiFetch(url, method = 'GET', body = null) {
     const res = await fetch(url, opts);
 
     // Sesión expirada → Django redirige (302) y devuelve la página de login
-    if (res.redirected || res.url.includes('/login') || res.url === window.location.origin + '/') {
+    if (res.redirected || res.url.includes('/login') || res.url === window.location.origin + '/SYSTRACK/') {
       showNotif('Sesión expirada', 'Tu sesión ha expirado. Redirigiendo al login…', 'error', 4000);
-      setTimeout(() => { window.location.href = '/'; }, 2000);
+      setTimeout(() => { window.location.href = '/SYSTRACK/'; }, 2000);
       return { ok: false, error: 'Sesión expirada' };
     }
 
@@ -131,7 +131,7 @@ function showNotification(type, title, msg) {
 function cerrarSesion() {
   showNotif('Sesión cerrada', 'Has cerrado sesión correctamente', 'success');
   setTimeout(() => {
-    window.location.href = '/logout/';
+    window.location.href = '/SYSTRACK/logout/';
   }, 1500);  // espera 1.5s para que se vea la notificación y luego redirige
 }
 
@@ -683,7 +683,7 @@ async function saveDevice() {
   // ── VALIDACIÓN SERIAL DUPLICADO ──
   const serial = document.getElementById('f-serial').value.trim();
   if (!editingId && serial) {
-    const check = await apiFetch(`/inventario/api/dispositivos/verificar-serial/?serial=${encodeURIComponent(serial)}`);
+    const check = await apiFetch(`${BASE}/inventario/api/dispositivos/verificar-serial/?serial=${encodeURIComponent(serial)}`);
     if (check.ok && check.data.existe) {
       showNotif(
         'Serial duplicado',
@@ -844,7 +844,7 @@ function exportarInventario(tipo) {
     if (q)       params.set('q', q);
     if (tipo_f)  params.set('tipo', tipo_f);
     if (estado)  params.set('estado', estado);
-    window.location.href = ` /inventario/api/dispositivos/exportar/?${params}`;
+    window.location.href = `${BASE}/inventario/api/dispositivos/exportar/?${params}`;
     showNotif('Exportando', 'El archivo Excel se está descargando...', 'success');
     return;
   }
@@ -1693,7 +1693,7 @@ async function addDeviceToAsignacion() {
 
   // Verificar en la BD si ya está asignado a otro colaborador
   const serialTexto = serialInput.value.split('—')[0].trim();
-  const chk = await apiFetch(`/inventario/api/dispositivos/verificar-serial/?serial=${encodeURIComponent(serialTexto)}`);
+  const chk = await apiFetch(`${BASE}/inventario/api/dispositivos/verificar-serial/?serial=${encodeURIComponent(serialTexto)}`);
   if (chk.ok && chk.data?.asignado_a) {
     // Si el asignado es el propio colaborador actual, no bloquear
     const propioColab = colabData.find(x => x.id === colabEditId);
@@ -2661,7 +2661,7 @@ async function usrPoblarSelects() {
 
   // ← AGREGAR ESTO
   try {
-    const res = await apiFetch('/api/tipos-usuario/');
+    const res = await apiFetch('${BASE}/api/tipos-usuario/');
     if (res.ok && res.results.length) {
       const sel = document.getElementById('usr-tipo');
       sel.innerHTML = '<option value="">-- Selecciona --</option>' +
