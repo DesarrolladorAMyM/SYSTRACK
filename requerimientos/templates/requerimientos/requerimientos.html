@@ -1252,7 +1252,7 @@
     btnSubmit.textContent = 'Validando...';
     idModalError.classList.remove('show');
 
-    fetch('/requerimiento/api/validar-cedula/', {
+    fetch('/SYSTRACK/requerimiento/api/validar-cedula/', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ cedula: val })
@@ -1465,7 +1465,7 @@
     st.addEventListener('click', () => {
       pintarEstrellas(+st.dataset.v);
       const codigoActual = document.getElementById('tripCodigo').textContent;
-      fetch('/requerimiento/api/calificar/', {
+      fetch('/SYSTRACK/requerimiento/api/calificar/', {
         method: 'POST',
         headers: {'Content-Type': 'application/json'},
         body: JSON.stringify({ codigo: codigoActual, calificacion: +st.dataset.v })
