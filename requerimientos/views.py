@@ -17,6 +17,9 @@ DB = 'requerimientos'
 
 logger = logging.getLogger('requerimientos')
 
+
+PREFIJO_APP = '/SYSTRACK'
+
 ID_TIPO_REQ_SISTEMAS = 4  # Requerimiento Sistemas — único tipo que usa este formulario
 
 # Categoría bajo la cual viven las subcategorías que exigen aprobación.
@@ -343,8 +346,8 @@ def _enviar_correo_aprobacion(request, req, area):
         return
 
     base_url = request.build_absolute_uri('/').rstrip('/')
-    link_aprobar  = f"{base_url}/requerimiento/api/aprobar/{req.TokenAprobacion}/"
-    link_rechazar = f"{base_url}/requerimiento/api/rechazar/{req.TokenAprobacion}/"
+    link_aprobar  = f"{base_url}{PREFIJO_APP}/requerimiento/api/aprobar/{req.TokenAprobacion}/"
+    link_rechazar = f"{base_url}{PREFIJO_APP}/requerimiento/api/rechazar/{req.TokenAprobacion}/"
 
     asunto = f"Aprobación requerida — Requerimiento {req.codigo()}"
     cuerpo_html = render_to_string('requerimientos/correo_aprobacion.html', {
@@ -379,7 +382,7 @@ def _enviar_correo_confirmacion(request, req, pendiente=False):
         )
         return
     base_url = request.build_absolute_uri('/').rstrip('/')
-    link_seguimiento = f"{base_url}/requerimiento/?seg={req.codigo()}"
+    link_seguimiento = f"{base_url}{PREFIJO_APP}/requerimiento/?seg={req.codigo()}"
 
     asunto = f"Confirmación de tu requerimiento — {req.codigo()}"
     cuerpo_html = render_to_string('requerimientos/correo_confirmacion.html', {
