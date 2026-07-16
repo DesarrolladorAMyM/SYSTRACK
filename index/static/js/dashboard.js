@@ -2,35 +2,36 @@
 // dashboard.js — SYSTRAKER
 // ============================================================
 
-const API = {
-  catalogos:         '/inventario/api/catalogos/',
-  municipios:        (dpto_id) => `/inventario/api/municipios/${dpto_id}/`,
-  dispositivos:      '/inventario/api/dispositivos/',
-  dispositivo:       (pk) => `/inventario/api/dispositivos/${pk}/`,
-  crearDev:          '/inventario/api/dispositivos/crear/',
-  editarDev:         (pk) => `/inventario/api/dispositivos/${pk}/editar/`,
-  eliminarDev:       (pk) => `/inventario/api/dispositivos/${pk}/eliminar/`,
-  historial:         '/inventario/api/historial/',
-  crearHist:         '/inventario/api/historial/crear/',
-  CentroOperaciones: '/inventario/api/centro-operaciones/',
-  inactivos:         '/inventario/api/inactivos/',
-  editarInactivo:    (pk) => `/inventario/api/inactivos/${pk}/editar/`,
-  colaboradores:     '/inventario/api/colaboradores/',
-  asignar:           (id) => `/inventario/api/colaboradores/${id}/asignar/`,
-  eliminarAsignacion: (colabId, devId) => `/inventario/api/colaboradores/${colabId}/asignar/${devId}/eliminar/`,
-  acta:              (id) => `/inventario/api/colaboradores/${id}/acta/`,
-  actaDetalle:  (id) => `/inventario/api/actas/${id}/`,
-  cargaMasiva:       '/inventario/api/dispositivos/carga-masiva/',
-  dashStats:         '/inventario/api/dashboard/stats/',
-   misReqTic:         '/inventario/api/mis-req-tic/',
-  todosReqTic:       '/inventario/api/todos-req-tic/',
-  historialReqTic:   '/inventario/api/historial-req-tic/',
-  colabTi:           '/inventario/api/colaboradores-ti/',
-  categoriasReq:     '/inventario/api/categorias-req/',
-subcategoriasReq:  (categoriaId) => `/inventario/api/subcategorias-req/?categoria_id=${categoriaId}`,
-  reqTicAccion:      (id) => `/inventario/api/req-tic/${id}/accion/`,
-};
+const BASE = '/SYSTRACK';
 
+const API = {
+  catalogos:         `${BASE}/inventario/api/catalogos/`,
+  municipios:        (dpto_id) => `${BASE}/inventario/api/municipios/${dpto_id}/`,
+  dispositivos:      `${BASE}/inventario/api/dispositivos/`,
+  dispositivo:       (pk) => `${BASE}/inventario/api/dispositivos/${pk}/`,
+  crearDev:          `${BASE}/inventario/api/dispositivos/crear/`,
+  editarDev:         (pk) => `${BASE}/inventario/api/dispositivos/${pk}/editar/`,
+  eliminarDev:       (pk) => `${BASE}/inventario/api/dispositivos/${pk}/eliminar/`,
+  historial:         `${BASE}/inventario/api/historial/`,
+  crearHist:         `${BASE}/inventario/api/historial/crear/`,
+  CentroOperaciones: `${BASE}/inventario/api/centro-operaciones/`,
+  inactivos:         `${BASE}/inventario/api/inactivos/`,
+  editarInactivo:    (pk) => `${BASE}/inventario/api/inactivos/${pk}/editar/`,
+  colaboradores:     `${BASE}/inventario/api/colaboradores/`,
+  asignar:           (id) => `${BASE}/inventario/api/colaboradores/${id}/asignar/`,
+  eliminarAsignacion: (colabId, devId) => `${BASE}/inventario/api/colaboradores/${colabId}/asignar/${devId}/eliminar/`,
+  acta:              (id) => `${BASE}/inventario/api/colaboradores/${id}/acta/`,
+  actaDetalle:       (id) => `${BASE}/inventario/api/actas/${id}/`,
+  cargaMasiva:       `${BASE}/inventario/api/dispositivos/carga-masiva/`,
+  dashStats:         `${BASE}/inventario/api/dashboard/stats/`,
+  misReqTic:         `${BASE}/inventario/api/mis-req-tic/`,
+  todosReqTic:       `${BASE}/inventario/api/todos-req-tic/`,
+  historialReqTic:   `${BASE}/inventario/api/historial-req-tic/`,
+  colabTi:           `${BASE}/inventario/api/colaboradores-ti/`,
+  categoriasReq:     `${BASE}/inventario/api/categorias-req/`,
+  subcategoriasReq:  (categoriaId) => `${BASE}/inventario/api/subcategorias-req/?categoria_id=${categoriaId}`,
+  reqTicAccion:      (id) => `${BASE}/inventario/api/req-tic/${id}/accion/`,
+};
 let CAT = {};
 
 let invData   = [], invPage = 1, invPageSize = 10, invSort = 'serial', invSortAsc = true;
@@ -2522,13 +2523,13 @@ function getCsrfToken() {
 // GESTIÓN DE USUARIOS
 // ============================================================
 const API_USR = {
-  lista:    '/requerimiento/api/usuarios/',
-  crear:    '/requerimiento/api/usuarios/crear/',
-  editar:   (pk) => `/requerimiento/api/usuarios/${pk}/editar/`,
-  eliminar: (pk) => `/requerimiento/api/usuarios/${pk}/eliminar/`,
-  cos:      '/dashboard/api/req/centros-operacion/',
-  cargos:   '/dashboard/api/req/cargos/',
-  tipos:    '/api/tipos-usuario/',
+  lista:    `${BASE}/requerimiento/api/usuarios/`,
+  crear:    `${BASE}/requerimiento/api/usuarios/crear/`,
+  editar:   (pk) => `${BASE}/requerimiento/api/usuarios/${pk}/editar/`,
+  eliminar: (pk) => `${BASE}/requerimiento/api/usuarios/${pk}/eliminar/`,
+  cos:      `${BASE}/dashboard/api/req/centros-operacion/`,
+  cargos:   `${BASE}/dashboard/api/req/cargos/`,
+  tipos:    `${BASE}/api/tipos-usuario/`,
 };
 
 let usrPage = 1, usrEditId = null;
