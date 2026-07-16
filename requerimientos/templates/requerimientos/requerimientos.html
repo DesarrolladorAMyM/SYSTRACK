@@ -1068,7 +1068,7 @@
 
   async function cargarMisRequerimientos(cedula){
     try {
-      const r    = await fetch('/requerimiento/api/mis-requerimientos/?cedula=' + encodeURIComponent(cedula));
+      const r    = await fetch('/SYSTRACK/requerimiento/api/mis-requerimientos/?cedula=' + encodeURIComponent(cedula));
       const resp = await r.json();
       if(resp.ok){
         DATA = resp.data;
@@ -1553,7 +1553,7 @@
           const sdrSub = document.getElementById('sdr_subcategoria');
           sdrSub._sdr.deshabilitar('Cargando...');
           try {
-            const rs  = await fetch('/requerimiento/api/subcategorias/?categoria='+idCat);
+            const rs  = await fetch('/SYSTRACK/requerimiento/api/subcategorias/?categoria='+idCat);
             const rsj = await rs.json();
             if(rsj.ok && rsj.subcategorias.length){
               const opsSub = rsj.subcategorias.map(s=>({value:String(s.IdSubCategoria), label:s.Descripcion, prio:s.Prioridad||'Media'}));
@@ -1625,7 +1625,7 @@
       };
 
       try {
-        const r    = await fetch('/requerimiento/api/crear/', {
+        const r    = await fetch('/SYSTRACK/requerimiento/api/crear/', {
           method: 'POST',
           headers: {'Content-Type': 'application/json'},
           body: JSON.stringify(formData)
