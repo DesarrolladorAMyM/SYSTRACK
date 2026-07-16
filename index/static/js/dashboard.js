@@ -2661,7 +2661,7 @@ async function usrPoblarSelects() {
 
   // ← AGREGAR ESTO
   try {
-    const res = await apiFetch('${BASE}/api/tipos-usuario/');
+    const res = await apiFetch(`${BASE}/api/tipos-usuario/`);  
     if (res.ok && res.results.length) {
       const sel = document.getElementById('usr-tipo');
       sel.innerHTML = '<option value="">-- Selecciona --</option>' +
