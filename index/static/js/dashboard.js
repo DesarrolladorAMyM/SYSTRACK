@@ -2,7 +2,7 @@
 // dashboard.js — SYSTRAKER
 // ============================================================
 
-const BASE = '';
+const BASE = '/SYSTRACK';
 
 const API = {
   catalogos:         `${BASE}/inventario/api/catalogos/`,
