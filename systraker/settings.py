@@ -159,7 +159,7 @@ USE_TZ = True
 STATIC_URL = '\SYSTRACK\index\static'
 STATIC_ROOT = r'E:\inetpub\wwwroot\PRUEBAS\SYSTRACK\index\static'
 
-STATIC_URL = 'static/'
+
 
 # Sesión dura 8 horas (jornada laboral)
 SESSION_COOKIE_AGE = 28800
