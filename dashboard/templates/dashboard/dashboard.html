@@ -967,9 +967,11 @@
         <th onclick="sortReq('codigo')">
           <div class="sort-wrap">Código <i class="fas fa-sort sort-ico"></i></div>
         </th>
+        <!--
         <th onclick="sortReq('descripcion')">
           <div class="sort-wrap">Descripción <i class="fas fa-sort sort-ico"></i></div>
         </th>
+        -->
         <th onclick="sortReq('solicitante')">
           <div class="sort-wrap">Solicitante <i class="fas fa-sort sort-ico"></i></div>
         </th>
@@ -1010,27 +1012,33 @@
         <th onclick="sortReqC('codigo')">
           <div class="sort-wrap">Código <i class="fas fa-sort sort-ico"></i></div>
         </th>
-        <th onclick="sortReqC('descripcion')">
+      <!--
+        <th onclick="sortAsig('descripcion')">
           <div class="sort-wrap">Descripción <i class="fas fa-sort sort-ico"></i></div>
         </th>
+      -->
         <th onclick="sortReqC('solicitante')">
           <div class="sort-wrap">Solicitante <i class="fas fa-sort sort-ico"></i></div>
         </th>
         <th onclick="sortReqC('responsable')">
           <div class="sort-wrap">Responsable <i class="fas fa-sort sort-ico"></i></div>
         </th>
+      <!--
         <th onclick="sortReqC('plan_accion')">
           <div class="sort-wrap">Plan de acción <i class="fas fa-sort sort-ico"></i></div>
         </th>
+      
         <th onclick="sortReqC('solucion')">
           <div class="sort-wrap">Solución <i class="fas fa-sort sort-ico"></i></div>
         </th>
+      -->
         <th onclick="sortReqC('fecha_solucion')">
           <div class="sort-wrap">Fecha solución <i class="fas fa-sort sort-ico"></i></div>
         </th>
         <th onclick="sortReqC('estado')">
           <div class="sort-wrap">Estado <i class="fas fa-sort sort-ico"></i></div>
         </th>
+        <th>Acciones</th>
       </tr></thead>
       <tbody id="req-cerrados-tbody">
         <tr><td colspan="9" style="text-align:center;padding:40px;color:var(--text-light)">
@@ -1081,9 +1089,11 @@
         <th onclick="sortAsig('codigo')">
           <div class="sort-wrap">Código <i class="fas fa-sort sort-ico"></i></div>
         </th>
+      <!--
         <th onclick="sortAsig('descripcion')">
           <div class="sort-wrap">Descripción <i class="fas fa-sort sort-ico"></i></div>
         </th>
+      -->  
         <th onclick="sortAsig('fecha')">
           <div class="sort-wrap">Fecha <i class="fas fa-sort sort-ico"></i></div>
         </th>
@@ -1423,9 +1433,7 @@
         <th onclick="sortHReq('remitente')">
           <div class="sort-wrap">Colaborador remitente <i class="fas fa-sort sort-ico"></i></div>
         </th>
-        <th onclick="sortHReq('descripcion')">
-          <div class="sort-wrap">Descripción <i class="fas fa-sort sort-ico"></i></div>
-        </th>
+        
         <th onclick="sortHReq('prioridad')">
           <div class="sort-wrap">Prioridad <i class="fas fa-sort sort-ico"></i></div>
         </th>
@@ -1438,6 +1446,7 @@
         <th onclick="sortHReq('plan_accion')">
           <div class="sort-wrap">Plan de acción <i class="fas fa-sort sort-ico"></i></div>
         </th>
+        <th>Acciones</th> 
       </tr></thead>
       <tbody id="hreq-tbody">
         <tr><td colspan="8" style="text-align:center;padding:40px;color:var(--text-light)">
@@ -1446,6 +1455,12 @@
         </td></tr>
       </tbody>
     </table>
+
+  <!--ESTO PERTENECE A LA DESCRIPCION 
+  <th onclick="sortHReq('descripcion')">
+          <div class="sort-wrap">Descripción <i class="fas fa-sort sort-ico"></i></div>
+  </th>
+  -->
 
     <!-- Fila expandible de detalle -->
     <div id="hreq-detalle-wrap" style="display:none;border-top:2px solid var(--border);padding:20px 24px;background:rgba(27,70,152,0.02)">
@@ -1779,6 +1794,41 @@
     <div class="modal-form-footer">
       <button class="btn-cancel" onclick="closeModal('modalUsuario')"><i class="fas fa-arrow-left"></i> Cerrar</button>
       <button class="btn-save" onclick="saveUsuario()"><i class="fas fa-save"></i> Guardar</button>
+    </div>
+  </div>
+</div>
+
+<!-- ═══════════════════════════ MODAL DETALLE REQUERIMIENTO ═══════════════════════════ -->
+<div class="modal-overlay" id="modalReqDetail">
+  <div class="modal-detail-box">
+    <div class="detail-header">
+      <button class="detail-header-close" onclick="closeModal('modalReqDetail')"><i class="fas fa-times"></i></button>
+      <div class="detail-header-inner">
+        <div class="detail-serial" id="rd-codigo">CÓDIGO</div>
+        <div class="detail-device-name" id="rd-fecha">Fecha</div>
+        <div id="rd-badge"></div>
+      </div>
+    </div>
+    <div class="detail-body">
+      <div class="detail-section">
+        <div class="detail-section-title">Solicitante</div>
+        <div class="detail-grid" id="rd-solicitante"></div>
+      </div>
+      <div class="detail-section">
+        <div class="detail-section-title">Descripción </div>
+        <div class="detail-obs" id="rd-descripcion"></div>
+      </div>
+      <div class="detail-section" id="rd-plan-section" style="display:none">
+        <div class="detail-section-title">Plan de acción</div>
+        <div class="detail-obs" id="rd-plan"></div>
+      </div>
+      <div class="detail-section" id="rd-solucion-section" style="display:none">
+        <div class="detail-section-title">Solución</div>
+        <div class="detail-obs" id="rd-solucion"></div>
+      </div>
+    </div>
+    <div class="detail-footer">
+      <button class="btn-cancel" onclick="closeModal('modalReqDetail')">Cerrar</button>
     </div>
   </div>
 </div>

@@ -2582,8 +2582,8 @@ async function usrLoadPage(p = 1) {
         </td>
         <td>
           <div style="display:flex;gap:6px;">
-            <button class="action-btn edit-btn"   title="Editar"   onclick="openUsuarioEdit(${u.id})"><i class="fas fa-edit"></i></button>
-            <button class="action-btn delete-btn" title="Eliminar" onclick="deleteUsuario(${u.id},'${u.nombre}')"><i class="fas fa-trash"></i></button>
+            <button class="tbl-btn edit" title="Editar" onclick="openUsuarioEdit(${u.id})"><i class="fas fa-edit"></i></button>
+            <button class="tbl-btn del"  title="Eliminar" onclick="deleteUsuario(${u.id},'${u.nombre}')"><i class="fas fa-trash-alt"></i></button>
           </div>
         </td>
       </tr>`).join('');
@@ -2738,15 +2738,17 @@ async function saveUsuario() {
 }
 
 function deleteUsuario(id, nombre) {
-  openConfirm(
-    `¿Eliminar el usuario "${nombre}"? Esta acción no se puede deshacer.`,
-    async () => {
-      const res = await apiFetch(API_USR.eliminar(id), 'POST', {});
-      if (!res.ok) { showNotif('Error', res.error || 'No se pudo eliminar', 'error'); return; }
-      showNotif('Eliminado', `Usuario "${nombre}" eliminado`, 'success');
-      usrLoadPage(usrPage);
-    }
-  );
+  document.getElementById('confirmSub').textContent = `Usuario "${nombre}"`;
+  document.getElementById('confirmBody').innerHTML   =
+    `Eliminarás permanentemente el acceso del usuario <strong>${nombre}</strong>.`;
+  document.getElementById('btnConfirmDel').onclick = async () => {
+    const res = await apiFetch(API_USR.eliminar(id), 'POST', {});
+    if (!res.ok) { showNotif('Error', res.error || 'No se pudo eliminar', 'error'); return; }
+    showNotif('Eliminado', `Usuario "${nombre}" eliminado`, 'success');
+    closeModal('modalConfirm');
+    usrLoadPage(usrPage);
+  };
+  document.getElementById('modalConfirm').classList.add('active');
 }
 
 // Cargar la pantalla cuando se navega a ella
@@ -2829,7 +2831,7 @@ function renderReqActivos() {
       <tr>
         <td><span class="serial-mono">${r.fecha_creacion || '—'}</span></td>
         <td><span class="serial-mono" style="color:var(--primary)">${r.codigo || '—'}</span></td>
-        <td style="max-width:260px;white-space:normal;line-height:1.4">${r.descripcion || '—'}</td>
+        
         <td>${r.solicitante || '—'}</td>
         <td>${_reqPrioridadBadge(r.prioridad)}</td>
         <td>${r.fecha_vencimiento || '—'}</td>
@@ -2854,6 +2856,11 @@ function renderReqActivos() {
   );
 }
 
+/* ──
+<td class="td-clamp">
+</td><span class="clamp-text" title="${(r.descripcion || '').replace(/"/g, '&quot;')}">${r.descripcion || '—'}</span>
+</td> ESTO  PERNENECE A LA TABLA DE  DESCRIPCION
+ ── */
 /* ── Plan de acción (Mis Requerimientos) ── */
 let planReqId = null;
 
@@ -2981,18 +2988,26 @@ function renderReqCerrados() {
     </td></tr>`;
   } else {
     tbody.innerHTML = page.map(r => `
-      <tr>
-        <td><span class="serial-mono">${r.fecha_creacion || '—'}</span></td>
-        <td><span class="serial-mono" style="color:var(--primary)">${r.codigo || '—'}</span></td>
-        <td style="max-width:200px;white-space:normal;line-height:1.4">${r.descripcion || '—'}</td>
-        <td>${r.solicitante  || '—'}</td>
-        <td>${r.responsable  || '—'}</td>
-        <td style="max-width:160px;white-space:normal;line-height:1.4">${r.plan_accion || '—'}</td>
-        <td style="max-width:160px;white-space:normal;line-height:1.4">${r.solucion    || '—'}</td>
-        <td>${r.fecha_solucion || '—'}</td>
-        <td>${_reqEstadoBadge(r.estado)}</td>
-      </tr>`).join('');
+  <tr>
+    <td><span class="serial-mono">${r.fecha_creacion || '—'}</span></td>
+    <td><span class="serial-mono" style="color:var(--primary)">${r.codigo || '—'}</span></td>
+    <td>${r.solicitante  || '—'}</td>
+    <td>${r.responsable  || '—'}</td>
+    
+   
+    <td>${r.fecha_solucion || '—'}</td>
+    <td>${_reqEstadoBadge(r.estado)}</td>
+    <td>
+      <div class="tbl-actions">
+        <button class="tbl-btn info" title="Ver detalle" onclick="verReq(${r.id})"><i class="fas fa-eye"></i></button>
+      </div>
+    </td>
+  </tr>`).join('');
   }
+
+  /*<td style="max-width:160px;white-space:normal;line-height:1.4">${r.plan_accion || '—'}</td>
+   <td style="max-width:160px;white-space:normal;line-height:1.4">${r.solucion    || '—'}</td>
+    */
 
   const totalPages = Math.ceil(total / pageSize);
   document.getElementById('req-cer-controls').innerHTML = _buildPagControls(
@@ -3038,7 +3053,49 @@ function sortReqC(key) {
 function openReqModal() {
   showNotification('info', 'Próximamente', 'Formulario de nuevo requerimiento en desarrollo');
 }
-function verReq(id)      { showNotification('info', 'Ver requerimiento', `ID: ${id} — en desarrollo`); }
+function verReq(id) {
+  const r = reqActivos.find(x => x.id === id)
+         || reqCerrados.find(x => x.id === id)
+         || asigData.find(x => x.id === id)
+         || hreqData.find(x => x.id === id);
+
+  if (!r) { showNotif('Error', 'No se encontró el requerimiento', 'warning'); return; }
+
+  document.getElementById('rd-codigo').textContent = r.codigo || r.consecutivo || '—';
+  document.getElementById('rd-fecha').textContent   = r.fecha_creacion || r.fecha || r.fecha_requerimiento || '—';
+  document.getElementById('rd-badge').innerHTML     = _reqEstadoBadge(r.estado);
+
+  document.getElementById('rd-solicitante').innerHTML = [
+    { l: 'Solicitante', v: r.solicitante || r.remitente },
+    { l: 'Prioridad',   v: r.prioridad },
+    { l: 'Asignado a',  v: r.asignado || r.responsable || 'Sin asignar' },
+    { l: 'Vencimiento', v: r.fecha_vencimiento },
+  ].map(f => `
+    <div class="detail-field">
+      <div class="detail-field-label">${f.l}</div>
+      <div class="detail-field-value">${f.v || '—'}</div>
+    </div>`).join('');
+
+  document.getElementById('rd-descripcion').textContent = r.descripcion || 'Sin descripción';
+
+  const planSec = document.getElementById('rd-plan-section');
+  if (r.plan_accion) {
+    planSec.style.display = 'block';
+    document.getElementById('rd-plan').textContent = r.plan_accion;
+  } else {
+    planSec.style.display = 'none';
+  }
+
+  const solSec = document.getElementById('rd-solucion-section');
+  if (r.solucion) {
+    solSec.style.display = 'block';
+    document.getElementById('rd-solucion').textContent = r.solucion;
+  } else {
+    solSec.style.display = 'none';
+  }
+
+  document.getElementById('modalReqDetail').classList.add('active');
+}
 function editReq(id)     { showNotification('info', 'Editar requerimiento', `ID: ${id} — en desarrollo`); }
 function cancelarReq(id) { showNotification('warning', 'Cancelar requerimiento', `ID: ${id} — en desarrollo`); }
 
@@ -3273,7 +3330,7 @@ function renderAsignar() {
     tbody.innerHTML = slice.map(r => `
       <tr>
         <td><span class="serial-mono" style="color:var(--primary)">${r.codigo || '—'}</span></td>
-        <td style="max-width:240px;white-space:normal;line-height:1.4">${r.descripcion || '—'}</td>
+        
         <td><span class="serial-mono">${r.fecha || '—'}</span></td>
         <td>${r.solicitante || '—'}</td>
         <td>${_reqPrioridadBadge(r.prioridad)}</td>
@@ -3299,6 +3356,10 @@ function renderAsignar() {
         </td>
       </tr>`).join('');
   }
+
+  /* ESTO PERTENECE  A LA TABLA DE DESCRIPCION 
+  <td style="max-width:240px;white-space:normal;line-height:1.4">${r.descripcion || '—'}</td>
+  */
 
   const totalPages = Math.ceil(total / pageSize);
   document.getElementById('asig-pag-controls').innerHTML = _buildPagControls(
@@ -3444,49 +3505,43 @@ function renderHReq() {
     </td></tr>`;
   } else {
     tbody.innerHTML = slice.map(r => `
-      <tr class="hreq-row ${hreqSelId === r.id ? 'hreq-row-active' : ''}"
-          onclick="hreqSeleccionar(${r.id})"
-          style="cursor:pointer">
-        <td>
-          <span class="serial-mono" style="color:var(--primary)">
-            ${r.consecutivo || '—'}
-          </span>
-        </td>
-        <td>
-          <span class="serial-mono">${r.fecha_requerimiento || '—'}</span>
-        </td>
-        <td>${r.remitente || '—'}</td>
-        <td style="max-width:220px;white-space:normal;line-height:1.4">
-          ${r.descripcion || '—'}
-        </td>
-        <td>${_reqPrioridadBadge(r.prioridad)}</td>
-        <td>
-          ${r.asignado
-            ? `<span class="asig-asignado">
-                <i class="fas fa-user-check"></i>${r.asignado}
-               </span>`
-            : `<span class="asig-sin-asignar">
-                <i class="fas fa-user-clock"></i>Sin asignar
-               </span>`
-          }
-        </td>
-        <td>
-          ${r.clasificacion
-            ? `<span class="hreq-sin-info" style="background:#dce9ff;color:#1B4698">
-                ${r.clasificacion}
-               </span>`
-            : `<span class="hreq-sin-info">Sin información</span>`
-          }
-        </td>
-        <td>
-          ${r.plan_accion
-            ? `<span class="hreq-sin-info" style="background:#dce9ff;color:#1B4698">
-                ${r.plan_accion}
-               </span>`
-            : `<span class="hreq-sin-info">Sin información</span>`
-          }
-        </td>
-      </tr>`).join('');
+  <tr class="hreq-row ${hreqSelId === r.id ? 'hreq-row-active' : ''}"
+      onclick="hreqSeleccionar(${r.id})"
+      style="cursor:pointer">
+    <td>
+      <span class="serial-mono" style="color:var(--primary)">
+        ${r.consecutivo || '—'}
+      </span>
+    </td>
+    <td>
+      <span class="serial-mono">${r.fecha_requerimiento || '—'}</span>
+    </td>
+    <td>${r.remitente || '—'}</td>
+    <td>${_reqPrioridadBadge(r.prioridad)}</td>
+    <td>
+      ${r.asignado
+        ? `<span class="asig-asignado"><i class="fas fa-user-check"></i>${r.asignado}</span>`
+        : `<span class="asig-sin-asignar"><i class="fas fa-user-clock"></i>Sin asignar</span>`
+      }
+    </td>
+    <td>
+      ${r.clasificacion
+        ? `<span class="hreq-sin-info" style="background:#dce9ff;color:#1B4698">${r.clasificacion}</span>`
+        : `<span class="hreq-sin-info">Sin información</span>`
+      }
+    </td>
+    <td>
+      ${r.plan_accion
+        ? `<span class="hreq-sin-info" style="background:#dce9ff;color:#1B4698">${r.plan_accion}</span>`
+        : `<span class="hreq-sin-info">Sin información</span>`
+      }
+    </td>
+    <td onclick="event.stopPropagation()">
+      <div class="tbl-actions">
+        <button class="tbl-btn info" title="Ver detalle" onclick="verReq(${r.id})"><i class="fas fa-eye"></i></button>
+      </div>
+    </td>
+  </tr>`).join('');
 
     // Si había una selección activa, re-mostrar su detalle
     if (hreqSelId) {

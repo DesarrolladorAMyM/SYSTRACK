@@ -918,3 +918,21 @@ a.nav-btn.active {
   text-align:center;
   padding:20px;
 }
+
+/* ── Celdas de descripción con clamp — mismo alto en toda la tabla ── */
+.data-table td.td-clamp {
+  max-width: 280px;
+}
+.data-table td.td-clamp .clamp-text {
+  display: -webkit-box;
+  -webkit-line-clamp: 2;         /* cuántas líneas mostrar antes de cortar */
+  line-clamp: 2;                 /* propiedad estándar — quita el warning */
+  -webkit-box-orient: vertical;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  line-height: 1.45;
+  white-space: normal;
+  cursor: help;
+}
+
+.data-table td { vertical-align: middle; }
