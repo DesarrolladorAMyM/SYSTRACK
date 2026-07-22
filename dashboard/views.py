@@ -2157,24 +2157,25 @@ def api_carga_masiva(request):
             f'Columnas detectadas: {", ".join(encabezado)}'
         )
 
-    # ── 6. Cargar cachés (evita N+1 queries) ──────────────────────
-    marcas_cache      = {m.g202_marca.upper(): m       for m in Marca.objects.all()}
-    propiet_cache     = {p.g203_propietario.upper(): p for p in Propietario.objects.all()}
-    co_cache          = {c.g207_co.upper(): c          for c in CentroOperaciones.objects.all()}
-    dpto_cache        = {d.g204_departamento.upper(): d for d in Departamento.objects.all()}
+   # ── 6. Cargar cachés (evita N+1 queries) ──────────────────────
+    marcas_cache      = {m.g202_marca.upper(): m       for m in Marca.objects.all() if m.g202_marca}
+    propiet_cache     = {p.g203_propietario.upper(): p for p in Propietario.objects.all() if p.g203_propietario}
+    co_cache          = {c.g207_co.upper(): c          for c in CentroOperaciones.objects.all() if c.g207_co}
+    dpto_cache        = {d.g204_departamento.upper(): d for d in Departamento.objects.all() if d.g204_departamento}
     muni_cache        = {
         (m.g205_municipio.upper(), m.g205_departamento_id): m
         for m in Municipio.objects.select_related('g205_departamento').all()
+        if m.g205_municipio
     }
-    proce_cache       = {p.g209_procesador.upper(): p  for p in Procesador.objects.all()}
-    so_cache          = {s.g210_so.upper(): s          for s in SistemaOperativo.objects.all()}
-    antivirus_cache   = {a.g208_antivirus.upper(): a   for a in Antivirus.objects.all()}
-    licencia_cache    = {l.g211_office.upper(): l      for l in LicenciaOffice.objects.all()}
-    ram_cache         = {r.g230_ram.upper(): r         for r in RAM.objects.all()}
-    disco_cache       = {d.g231_tipo_disco.upper(): d  for d in TipoDisco.objects.all()}
-    alm_cache         = {a.g219_almacenamiento.upper(): a for a in Almacenamiento.objects.all()}
-    operador_cache    = {o.g221_operador.upper(): o    for o in Operador.objects.all()}
-    timpres_cache     = {t.g229_tipo_impresora.upper(): t for t in TipoImpresora.objects.all()}
+    proce_cache       = {p.g209_procesador.upper(): p  for p in Procesador.objects.all() if p.g209_procesador}
+    so_cache          = {s.g210_so.upper(): s          for s in SistemaOperativo.objects.all() if s.g210_so}
+    antivirus_cache   = {a.g208_antivirus.upper(): a   for a in Antivirus.objects.all() if a.g208_antivirus}
+    licencia_cache    = {l.g211_office.upper(): l      for l in LicenciaOffice.objects.all() if l.g211_office}
+    ram_cache         = {r.g230_ram.upper(): r         for r in RAM.objects.all() if r.g230_ram}
+    disco_cache       = {d.g231_tipo_disco.upper(): d  for d in TipoDisco.objects.all() if d.g231_tipo_disco}
+    alm_cache         = {a.g219_almacenamiento.upper(): a for a in Almacenamiento.objects.all() if a.g219_almacenamiento}
+    operador_cache    = {o.g221_operador.upper(): o    for o in Operador.objects.all() if o.g221_operador}
+    timpres_cache     = {t.g229_tipo_impresora.upper(): t for t in TipoImpresora.objects.all() if t.g229_tipo_impresora}
 
     estado_default = Estado.objects.filter(
         g201_descripcion__iexact='HABILITADO'

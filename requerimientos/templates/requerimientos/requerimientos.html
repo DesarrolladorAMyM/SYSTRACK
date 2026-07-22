@@ -273,6 +273,26 @@
   .req-search-wrap input{padding:9px 14px 9px 36px;border:2px solid var(--border);border-radius:var(--radius-md);font-size:13px;font-family:'DM Sans',sans-serif;background:white;color:var(--text-primary);transition:all .25s;width:220px;}
   .req-search-wrap input:focus{outline:none;border-color:var(--primary);box-shadow:0 0 0 3px rgba(27,70,152,0.10);}
 
+  /*TABLA DE REQUERIMIENTOS*/
+  .req-table-wrap{overflow-x:auto;border:2px solid var(--border);border-radius:var(--radius-lg);}
+.req-table{width:100%;border-collapse:collapse;font-size:13.5px;}
+.req-table thead th{
+  background:rgba(27,70,152,0.06);color:var(--text-primary);font-size:11px;font-weight:700;
+  text-transform:uppercase;letter-spacing:.5px;padding:12px 14px;text-align:left;
+  border-bottom:2px solid var(--border);white-space:nowrap;
+}
+.req-table tbody td{padding:12px 14px;border-bottom:1.5px solid var(--border);color:var(--text-primary);vertical-align:top;}
+.req-table tbody td.muted{color:var(--text-light);}
+.req-table tbody tr:last-child td{border-bottom:none;}
+.req-table tbody tr:hover{background:rgba(27,70,152,0.03);}
+.req-action-btn{
+  width:34px;height:34px;border-radius:var(--radius-sm);border:2px solid var(--border);
+  background:white;color:var(--primary);cursor:pointer;display:flex;align-items:center;justify-content:center;
+  transition:all .2s;
+}
+.req-action-btn:hover{background:var(--primary);color:white;border-color:var(--primary);}
+
+
   /* ===== TARJETAS DE REQUERIMIENTOS ===== */
   .req-cards-wrap{display:flex;flex-direction:column;gap:14px;}
 
@@ -396,7 +416,7 @@
     box-shadow:var(--shadow-xl);text-align:center;position:relative;
   }
   .id-modal-close{
-    position:absolute;top:14px;right:14px;width:32px;height:32px;border-radius:50%;
+    position:absolute;top:20px;right:20px;width:32px;height:32px;border-radius:50%;
     background:rgba(27,70,152,0.06);border:none;color:var(--text-secondary);font-size:14px;
     display:flex;align-items:center;justify-content:center;cursor:pointer;transition:all .2s;
   }
@@ -463,29 +483,55 @@
   }
   .trip-modal-overlay.hidden{display:none;}
   .trip-modal-box{
-    background:white;border-radius:var(--radius-xl);padding:30px;max-width:520px;width:100%;
-    max-height:88vh;overflow-y:auto;box-shadow:var(--shadow-xl);position:relative;
-    display:flex;flex-direction:column;gap:22px;
+    background:linear-gradient(180deg,#ffffff 0%,#fbfcff 100%);
+    border-radius:24px;padding:0;max-width:540px;width:100%;
+    max-height:88vh;overflow-y:auto;
+    box-shadow:0 30px 70px rgba(19,47,107,0.35),0 0 0 1px rgba(27,70,152,0.06);
+    position:relative;display:flex;flex-direction:column;
     animation:trip-modal-pop .45s cubic-bezier(.2,.9,.25,1.2);
   }
+  .trip-modal-box > *:last-child{margin-bottom:26px;}
   @keyframes trip-modal-pop{
     0%{opacity:0;transform:scale(.88) translateY(18px);}
     100%{opacity:1;transform:scale(1) translateY(0);}
   }
-  .trip-modal-header{display:flex;align-items:center;justify-content:space-between;gap:12px;flex-wrap:wrap;padding-right:30px;}
-  .trip-modal-desc{font-size:14px;color:var(--text-primary);line-height:1.5;}
+  .trip-modal-header{
+    display:flex;align-items:center;justify-content:space-between;gap:12px;flex-wrap:wrap;
+    padding:24px 30px 0;padding-right:54px;
+  }
 
-  .trip-track{position:relative;padding:34px 6px 6px;}
+  .trip-summary-card{
+    display:flex;align-items:flex-start;gap:12px;
+    margin:16px 30px 0;padding:16px 18px;
+    background:linear-gradient(135deg,rgba(27,70,152,0.05) 0%,rgba(27,70,152,0.015) 100%);
+    border:1.5px solid var(--border);border-radius:var(--radius-lg);
+  }
+  .trip-summary-icon{
+    width:34px;height:34px;border-radius:10px;flex-shrink:0;
+    background:rgba(27,70,152,0.10);color:var(--primary);
+    display:flex;align-items:center;justify-content:center;font-size:14px;
+  }
+  .trip-summary-body{min-width:0;}
+  .trip-summary-label{
+    font-size:10.5px;font-weight:700;letter-spacing:.6px;color:var(--text-light);
+    text-transform:uppercase;margin-bottom:3px;
+  }
+  .trip-modal-desc{
+    font-size:14px;color:var(--text-primary);line-height:1.55;font-weight:500;
+  }
+
+  .trip-track{position:relative;padding:36px 30px 6px;}
   .trip-line-bg{
     position:absolute;top:58px;left:30px;right:30px;height:4px;
-    background:var(--border);border-radius:4px;
+    background:var(--border);border-radius:4px;z-index:1;
   }
   .trip-line-fill{
     position:absolute;top:58px;left:30px;height:4px;
     background:linear-gradient(90deg,var(--primary) 0%,var(--primary-light) 100%);
-    border-radius:4px;width:0%;transition:width 1.1s cubic-bezier(.4,0,.2,1);
+    border-radius:4px;width:0%;transition:width 1.1s cubic-bezier(.4,0,.2,1);z-index:1;
+    box-shadow:0 0 8px rgba(27,70,152,0.35);
   }
-  .trip-steps{display:flex;justify-content:space-between;position:relative;z-index:1;}
+  .trip-steps{display:flex;justify-content:space-between;position:relative;z-index:2;}
   .trip-step{
     display:flex;flex-direction:column;align-items:center;gap:9px;flex:1;min-width:0;
     opacity:0;transform:translateY(10px) scale(.85);
@@ -496,16 +542,26 @@
   .trip-step-icon{
     width:54px;height:54px;border-radius:50%;background:white;border:3px solid var(--border);
     display:flex;align-items:center;justify-content:center;font-size:19px;color:var(--text-light);
-    transition:all .4s cubic-bezier(.4,0,.2,1);position:relative;
+    transition:all .4s cubic-bezier(.4,0,.2,1);position:relative;z-index:3;
+    box-shadow:0 2px 6px rgba(27,70,152,0.08);
   }
   .trip-step:hover .trip-step-icon{transform:scale(1.08);}
   .trip-step.selected .trip-step-icon{box-shadow:0 0 0 4px rgba(27,70,152,0.18);}
-  .trip-step.done .trip-step-icon{border-color:var(--primary);color:var(--primary);background:rgba(27,70,152,0.07);}
+  .trip-step.done .trip-step-icon{
+    border-color:var(--primary);color:var(--primary);
+    background:#eaf0fb;
+  }
+  .trip-step.done .trip-step-icon::after{
+    content:'\f00c';font-family:'Font Awesome 6 Free';font-weight:900;font-size:9px;
+    position:absolute;bottom:-2px;right:-2px;width:18px;height:18px;border-radius:50%;
+    background:var(--success);color:white;border:2px solid white;
+    display:flex;align-items:center;justify-content:center;z-index:4;
+  }
   .trip-step.done .trip-step-icon i{animation:trip-check-pop .4s cubic-bezier(.34,1.56,.64,1);}
   @keyframes trip-check-pop{0%{transform:scale(0);}70%{transform:scale(1.3);}100%{transform:scale(1);}}
   .trip-step.current .trip-step-icon{
     border-color:var(--primary);color:white;background:linear-gradient(135deg,var(--primary) 0%,var(--primary-light) 100%);
-    box-shadow:0 0 0 6px rgba(27,70,152,0.16);animation:trip-pulse 1.5s infinite;
+    box-shadow:0 0 0 6px rgba(27,70,152,0.16),0 4px 12px rgba(27,70,152,0.30);animation:trip-pulse 1.5s infinite;
   }
   @keyframes trip-pulse{
     0%{box-shadow:0 0 0 0 rgba(27,70,152,0.35);}
@@ -516,37 +572,101 @@
   .trip-step.done .trip-step-label,.trip-step.current .trip-step-label{color:var(--primary);}
   .trip-step-time{font-size:10.5px;color:var(--text-light);text-align:center;}
 
-  .trip-step-detail{
-    display:flex;align-items:flex-start;gap:14px;background:rgba(27,70,152,0.045);
-    border:1.5px solid rgba(27,70,152,0.12);border-radius:var(--radius-lg);padding:16px 18px;
-    max-height:0;opacity:0;overflow:hidden;
-    transition:max-height .35s cubic-bezier(.4,0,.2,1),opacity .3s ease,padding .35s ease,margin .35s ease;
+  /* ===== DETALLE DEL PASO (altura por CSS grid: se ajusta al contenido real, sin recortes) ===== */
+  /* DESPUÉS */
+.trip-step-detail{
+    opacity:0;
+    border-radius:var(--radius-lg);
+    transition:opacity .25s ease,
+               margin .38s cubic-bezier(.4,0,.2,1);
+    margin:0 30px;
   }
-  .trip-step-detail.show{max-height:220px;opacity:1;}
+  .trip-step-detail.show{
+    opacity:1;
+    margin:14px 30px 0;
+  }
+  .trip-step-detail-clip{
+    overflow:hidden;
+    height:0;
+    background:white;
+    border:1.5px solid var(--border);
+    border-left:4px solid var(--primary);
+    border-radius:var(--radius-lg);
+    transition:height .38s cubic-bezier(.4,0,.2,1),
+               box-shadow .3s ease;
+  }
+  .trip-step-detail.show .trip-step-detail-clip{
+    box-shadow:var(--shadow-sm);
+  }
+  .trip-step-detail > .trip-step-detail-clip > .trip-step-detail-inner{
+    display:flex;align-items:flex-start;gap:14px;
+    padding:16px 18px;
+    transition:opacity .16s ease;
+  }
+  .trip-step-detail-inner.fading{
+    opacity:0;
+  }
   .trip-step-detail-icon{
-    width:34px;height:34px;border-radius:50%;background:rgba(27,70,152,0.12);color:var(--primary);
+    width:36px;height:36px;border-radius:50%;
+    background:linear-gradient(135deg,var(--primary) 0%,var(--primary-light) 100%);
+    color:white;
     display:flex;align-items:center;justify-content:center;font-size:14px;flex-shrink:0;
+    box-shadow:0 4px 10px rgba(27,70,152,0.30);
   }
-  .trip-step-detail-title{font-size:13.5px;font-weight:700;color:var(--text-primary);margin-bottom:4px;}
-  .trip-step-detail-text{font-size:13px;color:var(--text-secondary);line-height:1.5;}
+  .trip-step-detail-title{font-size:14px;font-weight:700;color:var(--text-primary);margin-bottom:4px;}
+  .trip-step-detail-text{font-size:13px;color:var(--text-secondary);line-height:1.55;}
 
-  .seg-rider-card{
-    display:flex;align-items:center;gap:16px;background:white;border:2px solid var(--border);
-    border-radius:var(--radius-lg);padding:18px 20px;
+  .seg-rating-row{
+    display:flex;align-items:center;gap:14px;flex-wrap:wrap;justify-content:space-between;
+    margin:16px 30px 26px;
+    padding:16px 18px;
+    background:white;border:1.5px solid var(--border);border-radius:var(--radius-lg);
+    box-shadow:var(--shadow-sm);
   }
-  .seg-rider-icon{
-    width:50px;height:50px;border-radius:50%;background:rgba(27,70,152,0.08);color:var(--primary);
-    display:flex;align-items:center;justify-content:center;font-size:20px;flex-shrink:0;
-  }
-  .seg-rider-info{flex:1;min-width:0;}
-  .seg-rider-info .name{font-size:14px;font-weight:700;color:var(--text-primary);}
-  .seg-rider-info .role{font-size:12.5px;color:var(--text-secondary);}
-
-  .seg-rating-row{display:flex;align-items:center;gap:10px;flex-wrap:wrap;justify-content:space-between;}
+  .seg-rating-title{font-size:13.5px;font-weight:700;color:var(--text-primary);}
+  .seg-rating-sub{font-size:12px;color:var(--text-secondary);margin-top:2px;}
   .seg-rating-stars{display:flex;gap:4px;font-size:20px;color:var(--gray-light);}
   .seg-rating-stars i.active{color:var(--warning);}
   .seg-rating-stars i{cursor:pointer;transition:transform .15s;}
   .seg-rating-stars i:hover{transform:scale(1.15);}
+
+  .star-wrap{position:relative;display:inline-flex;}
+.star-wrap::before{
+  content:attr(data-label);
+  position:absolute;
+  bottom:calc(100% + 8px);
+  left:50%;
+  transform:translateX(-50%) translateY(4px);
+  background:var(--text-primary);
+  color:white;
+  font-size:11px;
+  font-weight:600;
+  padding:5px 10px;
+  border-radius:6px;
+  white-space:nowrap;
+  opacity:0;
+  pointer-events:none;
+  transition:opacity .15s ease, transform .15s ease;
+  z-index:5;
+}
+.star-wrap::after{
+  content:'';
+  position:absolute;
+  bottom:calc(100% + 3px);
+  left:50%;
+  transform:translateX(-50%);
+  border:5px solid transparent;
+  border-top-color:var(--text-primary);
+  opacity:0;
+  pointer-events:none;
+  transition:opacity .15s ease;
+}
+.star-wrap:hover::before{opacity:1;transform:translateX(-50%) translateY(0);}
+.star-wrap:hover::after{opacity:1;}
+.seg-rating-stars.readonly .star-wrap::before,
+.seg-rating-stars.readonly .star-wrap::after{display:none;}
+
+  
 
   @media(max-width:1100px){
     .feature-grid{grid-template-columns:repeat(2,1fr);}
@@ -573,9 +693,17 @@
     .req-card-top{flex-direction:column;align-items:flex-start;}
     .trip-step-label{font-size:10px;}
     .trip-step-icon{width:40px;height:40px;font-size:15px;}
-    .trip-line-bg,.trip-line-fill{left:20px;right:20px;top:44px;}
+    .trip-line-bg{
+      top:58px;left:20px;right:20px;height:4px;
+    }
+    .trip-line-fill{
+      top:58px;left:20px;height:4px;
+    }
     .trip-step-time{display:none;}
-    .trip-modal-box{padding:22px;}
+    .trip-modal-box{padding:0;}
+    .trip-modal-header,.trip-modal-desc,.trip-track,.seg-rider-card,.seg-rating-row{padding-left:20px;padding-right:20px;}
+    .trip-step-detail,.seg-rider-card{margin-left:20px;margin-right:20px;}
+    .seg-rating-row{margin-left:20px;margin-right:20px;}
     .trip-modal-header{flex-direction:column;align-items:flex-start;gap:8px;}
     .seg-rating-row{flex-direction:column;align-items:flex-start;}
     .seg-search-hero{padding:36px 16px;}
@@ -669,7 +797,13 @@
       <span class="codigo-mono" id="tripCodigo"></span>
       <span class="est-badge" id="tripEstadoBadge"></span>
     </div>
-    <p class="trip-modal-desc" id="tripDesc"></p>
+    <div class="trip-summary-card">
+      <div class="trip-summary-icon"><i class="fa-solid fa-file-lines"></i></div>
+      <div class="trip-summary-body">
+        <div class="trip-summary-label">Descripción del requerimiento</div>
+        <p class="trip-modal-desc" id="tripDesc"></p>
+      </div>
+    </div>
 
     <div class="trip-track" id="tripTrack">
       <div class="trip-line-bg"></div>
@@ -678,34 +812,46 @@
     </div>
 
     <div class="trip-step-detail" id="tripStepDetail">
-      <div class="trip-step-detail-icon" id="tripStepDetailIcon"><i class="fa-solid fa-circle-info"></i></div>
-      <div class="trip-step-detail-body">
-        <div class="trip-step-detail-title" id="tripStepDetailTitle"></div>
-        <div class="trip-step-detail-text" id="tripStepDetailText"></div>
+      <div class="trip-step-detail-clip">
+        <div class="trip-step-detail-inner">
+          <div class="trip-step-detail-icon" id="tripStepDetailIcon"><i class="fa-solid fa-circle-info"></i></div>
+          <div class="trip-step-detail-body">
+            <div class="trip-step-detail-title" id="tripStepDetailTitle"></div>
+            <div class="trip-step-detail-text" id="tripStepDetailText"></div>
+          </div>
+        </div>
       </div>
     </div>
 
-    <div class="seg-rider-card" id="segRiderCard" style="display:none;">
-      <div class="seg-rider-icon"><i class="fa-solid fa-user-gear"></i></div>
-      <div class="seg-rider-info">
-        <div class="name" id="segRiderName"></div>
-        <div class="role">Persona asignada al requerimiento</div>
-      </div>
-    </div>
+          
+      <div class="seg-rating-row" id="segRatingRow" style="display:none;flex-direction:column;align-items:stretch;">
+        <div style="display:flex;align-items:center;justify-content:space-between;gap:14px;flex-wrap:wrap;">
+          <div>
+            <div class="seg-rating-title">¿Cómo te fue con la solución?</div>
+            <div class="seg-rating-sub" id="segRatingSub">Tu calificación nos ayuda a mejorar</div>
+          </div>
+          <div class="seg-rating-stars" id="segRatingStars">
+            <span class="star-wrap" data-label="Malo o Insuficiente"><i class="fa-regular fa-star" data-v="1"></i></span>
+            <span class="star-wrap" data-label="Deficiente"><i class="fa-regular fa-star" data-v="2"></i></span>
+            <span class="star-wrap" data-label="Regular"><i class="fa-regular fa-star" data-v="3"></i></span>
+            <span class="star-wrap" data-label="Bueno"><i class="fa-regular fa-star" data-v="4"></i></span>
+            <span class="star-wrap" data-label="¡Excelente!"><i class="fa-regular fa-star" data-v="5"></i></span>
+          </div>
+        </div>
 
-    <div class="seg-rating-row" id="segRatingRow" style="display:none;">
-      <div>
-        <div style="font-size:13.5px;font-weight:700;color:var(--text-primary);">¿Cómo te fue con la solución?</div>
-        <div style="font-size:12px;color:var(--text-secondary);">Tu calificación nos ayuda a mejorar</div>
+        <div id="segRatingCommentWrap" style="display:none;margin-top:14px;">
+          <textarea id="segRatingComment" placeholder="¿Quieres contarnos algo más? (opcional)"
+            style="width:100%;min-height:70px;padding:10px 12px;border:2px solid var(--border);border-radius:var(--radius-md);
+                  font-size:13px;font-family:'DM Sans',sans-serif;color:var(--text-primary);resize:vertical;"></textarea>
+        </div>
+
+        <div id="segRatingReadonlyComment" style="display:none;margin-top:10px;font-size:13px;color:var(--text-secondary);font-style:italic;"></div>
+
+        <div style="display:flex;justify-content:flex-end;margin-top:10px;">
+          <button type="button" class="btn-submit" id="segRatingSubmit" style="display:none;padding:9px 20px;font-size:12.5px;">ENVIAR</button>
+        </div>
       </div>
-      <div class="seg-rating-stars" id="segRatingStars">
-        <i class="fa-regular fa-star" data-v="1"></i>
-        <i class="fa-regular fa-star" data-v="2"></i>
-        <i class="fa-regular fa-star" data-v="3"></i>
-        <i class="fa-regular fa-star" data-v="4"></i>
-        <i class="fa-regular fa-star" data-v="5"></i>
-      </div>
-    </div>
+
   </div>
 </div>
 
@@ -757,10 +903,7 @@
           <i class="fa-solid fa-circle-plus nav-icon"></i>
           <span>Agregar Requerimiento TIC</span>
         </button>
-        <button class="nav-btn" data-screen="seguimiento">
-          <i class="fa-solid fa-magnifying-glass nav-icon"></i>
-          <span>Seguimiento de Requerimientos</span>
-        </button>
+        
       </nav>
 
       <div class="sidebar-footer">
@@ -869,7 +1012,12 @@
           </div>
         </div>
 
-        <div class="req-cards-wrap" id="reqCardsWrap"></div>
+        <div class="req-table-wrap">
+          <table class="req-table">
+            <thead><tr id="reqTableHead"></tr></thead>
+            <tbody id="reqTableBody"></tbody>
+          </table>
+        </div>
         <div id="reqEmpty" class="req-empty" style="display:none;">No hay datos disponibles</div>
 
         <div class="req-pag-wrap">
@@ -1039,18 +1187,19 @@
     pendientes: [
       {key:'fecha_creacion', label:'FECHA'},
       {key:'area',           label:'ÁREA REQUERIDA'},
-      {key:'requerimiento',  label:'DESCRIPCIÓN'},
+      /*{key:'requerimiento',  label:'DESCRIPCIÓN'},*/
       {key:'vencimiento',    label:'FECHA VENCIMIENTO'},
-      {key:'responsable',    label:'PERSONA ASIGNADA'},
-      {key:'plan_accion',    label:'PLAN A ACCIONAR'},
+     /* {key:'responsable',    label:'PERSONA ASIGNADA'},*/
+      /*{key:'plan_accion',    label:'PLAN A ACCIONAR'},*/
     ],
     solucionados: [
       {key:'fecha_creacion', label:'FECHA CREACIÓN'},
-      {key:'requerimiento',  label:'REQUERIMIENTO'},
+      /*{key:'requerimiento',  label:'REQUERIMIENTO'},*/
       {key:'area',           label:'ÁREA'},
-      {key:'responsable',    label:'RESPONSABLE'},
-      {key:'plan_accion',    label:'PLAN DE ACCIÓN'},
-      {key:'solucion',       label:'SOLUCIÓN'},
+      /*{key:'responsable',    label:'RESPONSABLE'},
+        {key:'plan_accion',    label:'PLAN DE ACCIÓN'},
+        {key:'solucion',       label:'SOLUCIÓN'},
+      */
       {key:'vencimiento',    label:'FECHA VENCIMIENTO'},
       {key:'fecha_solucion', label:'FECHA SOLUCIÓN'},
       {key:'clasificacion',  label:'CLASIFICACIÓN'},
@@ -1061,6 +1210,12 @@
   const PEND_ESTADOS = ['Abierto','Asignado','En Proceso','Pendiente Aprobación'];
   const SOL_ESTADOS  = ['Cerrado', 'Calificado'];
   let tab = 'pendientes', page = 1, size = 10, q = '';
+
+  // ===== [FIX 1] Variables globales para el control de la calificación:
+  // ratingLocked evita clics una vez ya calificado, ratingSeleccionada
+  // guarda la estrella elegida antes de confirmar con el botón ENVIAR. =====
+  let ratingLocked = false;
+  let ratingSeleccionada = 0;
 
   function getPerfil(){ try{ return JSON.parse(sessionStorage.getItem('amm_perfil')||'{}'); }catch(e){ return {}; } }
   function setPerfil(obj){ sessionStorage.setItem('amm_perfil', JSON.stringify(obj)); }
@@ -1078,7 +1233,6 @@
     } catch(e){
       console.error('Error cargando requerimientos:', e);
     } finally {
-      // Repinta siempre que se cargan datos, sin importar desde dónde se llamó
       if (document.getElementById('screen-mis-req')?.classList.contains('active')) {
         renderMisReq();
       }
@@ -1107,34 +1261,30 @@
     return `<span class="prio-badge ${c}"><span class="pd"></span>${p}</span>`;
   }
   function estBadge(e){
-  const m = {'Abierto':'est-abierto','Asignado':'est-asignado','En Proceso':'est-en-proceso',
-             'Cerrado':'est-cerrado','Calificado':'est-cerrado',
-             'Pendiente Aprobación':'est-pendiente-aprob','Rechazado':'est-rechazado'};
-  return `<span class="est-badge ${m[e]||''}"><span class="ed"></span>${e}</span>`;
-}
-  function renderField(r, col){
-    let val = r[col.key];
-    let html;
-    if(val===undefined || val===null || val==='') html = `<span class="req-field-value muted">—</span>`;
-    else html = `<span class="req-field-value">${val}</span>`;
-    const cls = FULL_WIDTH_FIELDS.has(col.key) ? 'req-field full' : 'req-field';
-    return `<div class="${cls}"><span class="req-field-label">${col.label}</span>${html}</div>`;
+    const m = {'Abierto':'est-abierto','Asignado':'est-asignado','En Proceso':'est-en-proceso',
+               'Cerrado':'est-cerrado','Calificado':'est-cerrado',
+               'Pendiente Aprobación':'est-pendiente-aprob','Rechazado':'est-rechazado'};
+    return `<span class="est-badge ${m[e]||''}"><span class="ed"></span>${e}</span>`;
   }
 
-  function renderCard(r){
-    const codigo = r.codigo ? `<span class="codigo-mono">${r.codigo}</span>` : '';
-    const prio   = r.prioridad ? prioBadge(r.prioridad) : '';
-    const est    = r.estado ? estBadge(r.estado) : '';
-    const fields = COLS[tab].map(c => renderField(r, c)).join('');
-    return `
-      <div class="req-card">
-        <div class="req-card-top">
-          <div class="req-card-top-left">${codigo}${prio}</div>
-          <div class="req-card-top-right">${est}</div>
-        </div>
-        <div class="req-card-body">${fields}</div>
-      </div>
-    `;
+  function renderTableHead(){
+    const head = document.getElementById('reqTableHead');
+    let h = `<th>CÓDIGO</th><th>PRIORIDAD</th>`;
+    COLS[tab].forEach(c => h += `<th>${c.label}</th>`);
+    h += `<th>ACCIÓN</th>`;
+    head.innerHTML = h;
+  }
+
+  function renderTableRow(r){
+    let tds = `<td><span class="codigo-mono">${r.codigo || '—'}</span></td>`;
+    tds += `<td>${r.prioridad ? prioBadge(r.prioridad) : '<span class="muted">—</span>'}</td>`;
+    COLS[tab].forEach(c=>{
+      const val = r[c.key];
+      const cls = (val===undefined || val===null || val==='') ? ' class="muted"' : '';
+      tds += `<td${cls}>${(val===undefined||val===null||val==='') ? '—' : val}</td>`;
+    });
+    tds += `<td><button class="req-action-btn" title="Ver seguimiento" data-codigo="${r.codigo}"><i class="fa-solid fa-magnifying-glass"></i></button></td>`;
+    return `<tr>${tds}</tr>`;
   }
 
   function renderMisReq(){
@@ -1146,11 +1296,21 @@
     const to   = Math.min(page*size,total);
     const rows = data.slice(from-1,to);
 
-    const wrap  = document.getElementById('reqCardsWrap');
+    const tbody = document.getElementById('reqTableBody');
     const empty = document.getElementById('reqEmpty');
 
-    if(!rows.length){ wrap.innerHTML=''; empty.style.display='flex'; }
-    else { empty.style.display='none'; wrap.innerHTML = rows.map(r => renderCard(r)).join(''); }
+    renderTableHead();
+
+    if(!rows.length){
+      tbody.innerHTML='';
+      empty.style.display='flex';
+    } else {
+      empty.style.display='none';
+      tbody.innerHTML = rows.map(r => renderTableRow(r)).join('');
+      tbody.querySelectorAll('.req-action-btn').forEach(btn=>{
+        btn.addEventListener('click', () => abrirTripModal(btn.dataset.codigo));
+      });
+    }
 
     document.getElementById('pagFrom').textContent  = from;
     document.getElementById('pagTo').textContent    = to;
@@ -1220,7 +1380,7 @@
     if(fCargo  && perfil.cargo_txt)                fCargo.value  = perfil.cargo_txt;
   }
 
-  /* ===== MODAL DE IDENTIFICACIÓN ===== */
+  /*  MODAL DE IDENTIFICACIÓN  */
   const idModalOverlay = document.getElementById('idModalOverlay');
   const idModalInput   = document.getElementById('idModalInput');
   const idModalError   = document.getElementById('idModalError');
@@ -1326,20 +1486,21 @@
       detalle:(r)=> r.plan_accion || 'Se está trabajando en la solución de tu requerimiento.'},
     {estado:'Cerrado',    label:'Cerrado',     icon:'fa-circle-check',
       detalle:(r)=> r.solucion ? `${r.solucion}${r.fecha_solucion ? ' (Solucionado el '+r.fecha_solucion+')' : ''}` : 'Tu requerimiento fue solucionado.'},
+    // ===== [FIX 4] El paso "Calificado" ahora revisa el campo correcto
+    // (r.calificacion, no r.evaluacion) y valida si el paso realmente ya
+    // pasó, en vez de asumir "ya fue calificado" solo por hacer clic ahí. =====
     {estado:'Calificado', label:'Calificado', icon:'fa-star',
-    detalle:(r)=> r.evaluacion ? `Calificaste este requerimiento con ${r.evaluacion} de 5 estrellas.` : 'Este requerimiento ya fue calificado.'},
+      detalle:(r)=> {
+        if(r.estado !== 'Calificado') return 'Aún no has calificado este requerimiento.';
+        return r.calificacion ? `Calificaste este requerimiento con ${r.calificacion} de 5 estrellas.` : 'Este requerimiento ya fue calificado.';
+      }},
   ];
 
-  // Arma la línea de tiempo para un requerimiento en concreto.
-  // El paso "Aprobación" (o "Rechazado") SOLO se agrega si el requerimiento
-  // realmente pasó por ese flujo (r.requiere_aprobacion === true).
   function buildTripSteps(r){
     if(!r.requiere_aprobacion) return TRIP_STEPS_BASE;
 
     const fueRechazado = r.estado === 'Rechazado';
     const pasoAprobacion = {
-      // Mientras el flujo no haya terminado, este paso "es" el estado 'Pendiente Aprobación'
-      // o 'Rechazado' tal cual viene del backend, para que idxActual lo detecte como paso actual.
       estado: fueRechazado ? 'Rechazado' : 'Pendiente Aprobación',
       label: fueRechazado ? 'Rechazado' : 'Aprobación',
       icon:  fueRechazado ? 'fa-file-circle-xmark' : 'fa-file-signature',
@@ -1410,40 +1571,125 @@
       `;
     }).join('');
 
+    /* ===== DETALLE DEL PASO: altura sincronizada con ResizeObserver,
+       nunca se recorta el texto y no hay choques al cambiar de paso. ===== */
     const detailBox   = document.getElementById('tripStepDetail');
+    const detailClip  = detailBox.querySelector('.trip-step-detail-clip');
+    const detailInner = detailBox.querySelector('.trip-step-detail-inner');
     const detailIcon  = document.getElementById('tripStepDetailIcon');
     const detailTitle = document.getElementById('tripStepDetailTitle');
     const detailText  = document.getElementById('tripStepDetailText');
     detailBox.classList.remove('show');
+    detailClip.style.height = '0px';
 
     let pasoSeleccionado = null;
+
+    if(!detailClip._ro){
+      detailClip._ro = new ResizeObserver(() => {
+        if(detailBox.classList.contains('show')){
+          detailClip.style.height = detailInner.scrollHeight + 'px';
+        }
+      });
+      detailClip._ro.observe(detailInner);
+    }
+
+    function pintarContenido(s){
+      detailIcon.innerHTML = `<i class="fa-solid ${s.icon}"></i>`;
+      detailTitle.textContent = s.label;
+      detailText.textContent = s.detalle(r);
+    }
+
+    function abrirDetalle(s){
+      pintarContenido(s);
+      detailBox.classList.add('show');
+      detailClip.style.height = detailInner.scrollHeight + 'px';
+    }
+
+    function cerrarDetalle(){
+      detailBox.classList.remove('show');
+      detailClip.style.height = '0px';
+    }
+
+    function cambiarDetalle(s){
+      detailInner.classList.add('fading');
+      setTimeout(() => {
+        pintarContenido(s);
+        detailInner.classList.remove('fading');
+        detailClip.style.height = detailInner.scrollHeight + 'px';
+      }, 160);
+    }
+
     stepsWrap.querySelectorAll('.trip-step').forEach(stepEl => {
       stepEl.addEventListener('click', () => {
         const i = +stepEl.dataset.i;
         const s = tripSteps[i];
+
         if(pasoSeleccionado === i){
-          detailBox.classList.remove('show');
           stepEl.classList.remove('selected');
           pasoSeleccionado = null;
+          cerrarDetalle();
           return;
         }
+
         stepsWrap.querySelectorAll('.trip-step').forEach(x=>x.classList.remove('selected'));
         stepEl.classList.add('selected');
+
+        if(pasoSeleccionado === null){
+          abrirDetalle(s);
+        } else {
+          cambiarDetalle(s);
+        }
         pasoSeleccionado = i;
-        detailIcon.innerHTML = `<i class="fa-solid ${s.icon}"></i>`;
-        detailTitle.textContent = s.label;
-        detailText.textContent = s.detalle(r);
-        detailBox.classList.add('show');
       });
     });
 
-    const riderCard = document.getElementById('segRiderCard');
-    if(r.responsable){ riderCard.style.display='flex'; document.getElementById('segRiderName').textContent = r.responsable; }
-    else { riderCard.style.display='none'; }
+    /*  [FIX 2] CALIFICACIÓN: ahora contempla el textarea de comentario
+       y el modo de solo lectura, en vez de solo mostrar/ocultar la fila.  */
+    const ratingRow       = document.getElementById('segRatingRow');
+    const ratingStars     = document.getElementById('segRatingStars');
+    const ratingSubmit    = document.getElementById('segRatingSubmit');
+    const ratingSub       = document.getElementById('segRatingSub');
+    const commentWrap     = document.getElementById('segRatingCommentWrap');
+    const commentInput    = document.getElementById('segRatingComment');
+    const commentReadonly = document.getElementById('segRatingReadonlyComment');
 
-    const ratingRow = document.getElementById('segRatingRow');
-    if(r.estado === 'Cerrado' || r.estado === 'Calificado'){ ratingRow.style.display='flex'; pintarEstrellas(r.calificacion || 0); }
-    else { ratingRow.style.display='none'; }
+    if(r.estado === 'Cerrado' || r.estado === 'Calificado'){
+      ratingRow.style.display = 'flex';
+
+      if(r.estado === 'Calificado' || r.calificacion){
+        // Ya fue calificado: solo lectura, se muestra lo que ya se calificó
+        ratingLocked = true;
+        ratingSeleccionada = r.calificacion || 0;
+        pintarEstrellas(ratingSeleccionada);
+        ratingStars.classList.add('readonly');
+        ratingSubmit.style.display = 'none';
+        ratingSub.textContent = 'Ya calificaste este requerimiento';
+
+        commentWrap.style.display = 'none';
+        if(r.comentario_evaluacion){
+          commentReadonly.style.display = 'block';
+          commentReadonly.textContent = '"' + r.comentario_evaluacion + '"';
+        } else {
+          commentReadonly.style.display = 'none';
+        }
+      } else {
+        // Cerrado pero sin calificar: modo interactivo
+        ratingLocked = false;
+        ratingSeleccionada = 0;
+        pintarEstrellas(0);
+        ratingStars.classList.remove('readonly');
+        ratingSubmit.style.display = 'inline-flex';
+        ratingSubmit.disabled = true;
+        ratingSubmit.textContent = 'ENVIAR';
+        ratingSub.textContent = 'Tu calificación nos ayuda a mejorar';
+
+        commentReadonly.style.display = 'none';
+        commentWrap.style.display = 'block';
+        commentInput.value = '';
+      }
+    } else {
+      ratingRow.style.display = 'none';
+    }
 
     document.getElementById('tripLineFill').style.width = '0%';
     tripModalOverlay.classList.remove('hidden');
@@ -1461,17 +1707,72 @@
       st.className = (v<=valor ? 'fa-solid' : 'fa-regular') + ' fa-star' + (v<=valor?' active':'');
     });
   }
+
+  /* ===== [FIX 3] Listeners globales de calificación: ahora la selección
+     solo se previsualiza al clic/hover, y el envío real (con comentario
+     incluido) solo ocurre al presionar el botón ENVIAR. Una vez enviado,
+     queda bloqueado en modo solo lectura. ===== */
   document.querySelectorAll('#segRatingStars i').forEach(st=>{
     st.addEventListener('click', () => {
+      if(ratingLocked) return;
+      ratingSeleccionada = +st.dataset.v;
+      pintarEstrellas(ratingSeleccionada);
+      document.getElementById('segRatingSubmit').disabled = false;
+    });
+    st.addEventListener('mouseenter', () => {
+      if(ratingLocked) return;
       pintarEstrellas(+st.dataset.v);
-      const codigoActual = document.getElementById('tripCodigo').textContent;
-      fetch('/SYSTRACK/requerimiento/api/calificar/', {
-        method: 'POST',
-        headers: {'Content-Type': 'application/json'},
-        body: JSON.stringify({ codigo: codigoActual, calificacion: +st.dataset.v })
-      }).then(r => r.json()).then(resp => {
-        if(!resp.ok) console.error('Error al calificar:', resp.error);
-      });
+    });
+  });
+  document.getElementById('segRatingStars').addEventListener('mouseleave', () => {
+    if(ratingLocked) return;
+    pintarEstrellas(ratingSeleccionada);
+  });
+
+  document.getElementById('segRatingSubmit').addEventListener('click', () => {
+    if(ratingLocked || !ratingSeleccionada) return;
+    const btn = document.getElementById('segRatingSubmit');
+    btn.disabled = true;
+    btn.textContent = 'Enviando...';
+    const codigoActual = document.getElementById('tripCodigo').textContent;
+    const comentarioTexto = document.getElementById('segRatingComment').value.trim();
+
+    fetch('/SYSTRACK/requerimiento/api/calificar/', {
+      method: 'POST',
+      headers: {'Content-Type': 'application/json'},
+      body: JSON.stringify({
+        codigo: codigoActual,
+        calificacion: ratingSeleccionada,
+        comentario: comentarioTexto || null
+      })
+    })
+    .then(r => r.json())
+    .then(resp => {
+      if(resp.ok){
+        ratingLocked = true;
+        document.getElementById('segRatingStars').classList.add('readonly');
+        btn.style.display = 'none';
+        document.getElementById('segRatingSub').textContent = 'Ya calificaste este requerimiento';
+        document.getElementById('segRatingCommentWrap').style.display = 'none';
+        if(comentarioTexto){
+          const cr = document.getElementById('segRatingReadonlyComment');
+          cr.style.display = 'block';
+          cr.textContent = '"' + comentarioTexto + '"';
+        }
+        // Actualiza en memoria para que quede bloqueado si reabren el modal sin recargar
+        const reg = misRequerimientos().find(x => String(x.codigo) === String(codigoActual));
+        if(reg){ reg.estado = 'Calificado'; reg.calificacion = ratingSeleccionada; }
+        showNotif('¡Gracias!', 'Tu calificación fue registrada.', 'success');
+      } else {
+        btn.disabled = false;
+        btn.textContent = 'ENVIAR';
+        showNotif('No se pudo calificar', resp.error || 'Intenta de nuevo.', 'error');
+      }
+    })
+    .catch(() => {
+      btn.disabled = false;
+      btn.textContent = 'ENVIAR';
+      showNotif('Error de conexión', 'Intenta de nuevo.', 'error');
     });
   });
 
@@ -1661,28 +1962,25 @@
   })();
 
 
-/* ===== Abrir seguimiento directo desde el correo (?seg=REQ-0001) ===== */
-(function manejarLinkSeguimiento(){
-  const params = new URLSearchParams(window.location.search);
-  const codigoSeg = params.get('seg');
-  if(!codigoSeg) return;
+  /* ===== Abrir seguimiento directo desde el correo (?seg=REQ-0001) ===== */
+  (function manejarLinkSeguimiento(){
+    const params = new URLSearchParams(window.location.search);
+    const codigoSeg = params.get('seg');
+    if(!codigoSeg) return;
 
-  function abrirSeguimientoConCodigo(){
-    irAVista('seguimiento');
-    segCodigoInput.value = codigoSeg;
-    // pequeño delay para asegurar que DATA ya se cargó antes de buscar
-    setTimeout(buscarRequerimiento, 300);
-    // limpia el parámetro de la URL para que un refresh no vuelva a abrir el modal
-    window.history.replaceState({}, '', window.location.pathname);
-  }
+    function abrirSeguimientoConCodigo(){
+      irAVista('seguimiento');
+      segCodigoInput.value = codigoSeg;
+      setTimeout(buscarRequerimiento, 300);
+      window.history.replaceState({}, '', window.location.pathname);
+    }
 
-  if(getDocumento()){
-    abrirSeguimientoConCodigo();
-  } else {
-    pedirDocumento(abrirSeguimientoConCodigo);
-  }
-})();
-
+    if(getDocumento()){
+      abrirSeguimientoConCodigo();
+    } else {
+      pedirDocumento(abrirSeguimientoConCodigo);
+    }
+  })();
 
 </script>
 
