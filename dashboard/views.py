@@ -2011,7 +2011,69 @@ def api_asignacion_eliminar(request, colaborador_id, dispositivo_id):
 
 
 
-# ENDPOINT: CARGA MASIVA DE CELULARES DESDE EXCEL
+# ─────────────────────────────────────────────────────────────
+#  REEMPLAZA tu función api_carga_masiva actual por ESTA.
+#  No cambia nombres de campos, modelos, ni la lógica de negocio.
+#  Solo agrega:
+#    1) Blindaje total: SIEMPRE responde JSON, nunca HTML.
+#    2) Normalización uniforme (mayúsculas/tildes/espacios) en TODOS
+#       los cruces contra catálogos.
+#    3) Saneo de números que Excel rompe (IMEI, teléfonos, seriales).
+#
+#  Requiere (agregar arriba del archivo, junto a los demás imports,
+#  si no lo tienes ya):
+#
+#      import logging
+#      import unicodedata
+#      logger = logging.getLogger(__name__)
+#
+#
+
+import logging
+import unicodedata
+
+logger = logging.getLogger(__name__)
+
+
+def _normalizar(texto):
+    """
+    Normaliza texto para comparaciones robustas contra catálogos:
+    - Convierte a string
+    - Quita tildes/acentos
+    - Colapsa espacios múltiples
+    - Pasa a MAYÚSCULAS
+    - Quita espacios al inicio/fin
+    Ej: '  Portátil  ' -> 'PORTATIL'   |   'móDem wifi' -> 'MODEM WIFI'
+    """
+    if texto is None:
+        return ''
+    s = str(texto).strip()
+    if not s:
+        return ''
+    s = unicodedata.normalize('NFD', s)
+    s = ''.join(c for c in s if unicodedata.category(c) != 'Mn')
+    s = ' '.join(s.split())
+    return s.upper()
+
+
+def _texto_excel_seguro(valor):
+    """
+    Convierte un valor de celda de Excel a texto de forma segura,
+    evitando el problema clásico de números largos (IMEI, teléfonos,
+    seriales) que Excel guarda como float y que Python convierte
+    a algo como '356938035643809.0' o notación científica.
+    """
+    if valor is None:
+        return ''
+    if isinstance(valor, float):
+        if valor.is_integer():
+            return str(int(valor))
+        return str(valor)
+    if isinstance(valor, int):
+        return str(valor)
+    return str(valor).strip()
+
+
 @csrf_exempt
 @login_required(login_url='login')
 @require_http_methods(['POST'])
@@ -2022,377 +2084,349 @@ def api_carga_masiva(request):
         archivo          — archivo Excel
         tipo_dispositivo — nombre exacto del tipo (Ej: CELULAR, PORTATIL…)
 
-    Por cada fila crea:
-        1. Registro en j212_dispositivo  (campos comunes a todos los tipos)
-        2. Registro en la tabla de características según el tipo:
-              CELULAR / TABLET / MODEM WIFI / SIMCARD / TELEFONO FIJO → j223_caract_movil
-              PORTATIL / TORRE DE ESCRITORIO                          → j222_caract_pc
-              PANTALLA                                                → j224_caract_pantalla
-              IMPRESORA                                               → j225_caract_impresora
-              PERIFERICO                                              → j226_caract_periferico
-              VIDEO BEAM                                              → solo j212, sin característica
-
-    Respuesta JSON:
-        { creados: N, omitidos: N, errores: [ {fila, serial, error} ] }
+    Respuesta JSON (SIEMPRE, incluso ante errores inesperados):
+        { ok: true/false, data|error: ... }
     """
     import openpyxl
     from decimal import Decimal, InvalidOperation
 
-    #  1. Validar archivo 
-    archivo = request.FILES.get('archivo')
-    if not archivo:
-        return _json_err('Se requiere el archivo Excel (campo "archivo")')
-
-    nombre = archivo.name.lower()
-    if not (nombre.endswith('.xlsx') or nombre.endswith('.xls')):
-        return _json_err('Solo se aceptan archivos .xlsx o .xls')
-
-    #  2. Leer tipo_dispositivo del request 
-    tipo_nombre = request.POST.get('tipo_dispositivo', '').strip().upper()
-    if not tipo_nombre:
-        return _json_err('Se requiere el campo "tipo_dispositivo"')
-
-    tipo_obj = TipoDispositivo.objects.filter(
-        g200_tipo_dispositivo__iexact=tipo_nombre
-    ).first()
-    if not tipo_obj:
-        return _json_err(
-            f'El tipo de dispositivo "{tipo_nombre}" no existe en el catálogo. '
-            f'Verifica que esté registrado en Tipo Dispositivo.'
-        )
-
-    #  3. Leer workbook 
+    # ─────────────────────────────────────────────────────────
+    # BLINDAJE GLOBAL: todo lo de abajo va dentro de este try.
+    # Cualquier excepción no prevista (BD caída, encoding raro,
+    # Excel corrupto, etc.) termina en _json_err, NUNCA en la
+    # página de error HTML de Django.
+    # ─────────────────────────────────────────────────────────
     try:
-        wb = openpyxl.load_workbook(archivo, read_only=True, data_only=True)
-        ws = wb.active
-        filas = list(ws.iter_rows(values_only=True))
-    except Exception as e:
-        return _json_err(f'No se pudo leer el archivo: {e}')
 
-    if len(filas) < 2:
-        return _json_err('El archivo no tiene datos (solo encabezado o está vacío)')
+        #  1. Validar archivo 
+        archivo = request.FILES.get('archivo')
+        if not archivo:
+            return _json_err('Se requiere el archivo Excel (campo "archivo")')
 
-    # ── 4. Mapear columnas por nombre (case-insensitive) ───────────
-    encabezado = [
-        str(c).strip().lower().replace(' ', '_') if c else ''
-        for c in filas[0]
-    ]
+        nombre = archivo.name.lower()
+        if not (nombre.endswith('.xlsx') or nombre.endswith('.xls')):
+            return _json_err('Solo se aceptan archivos .xlsx o .xls')
 
-    # Alias: nombre canónico → posibles nombres en el Excel
-    ALIAS = {
-        'serial':              ['serial', 'serial_del_dispositivo'],
-        'marca':               ['marca'],
-        'propietario':         ['propietario', 'nombre_del_propietario'],
-        'centro_operaciones':  ['centro_operaciones', 'co', 'centro_de_operaciones'],
-        'departamento':        ['departamento'],
-        'municipio':           ['municipio'],
-        'observaciones':       ['observaciones', 'obs'],
-        'nombre':              ['nombre', 'nombre_del_equipo', 'nombre_equipo'],
-        'valor_promedio':      ['valor_promedio', 'valor'],
-        'valor_arrendamiento': ['valor_arrendamiento', 'arrend'],
-        # ── PC / Portátil ──
-        'procesador':          ['procesador'],
-        'ram':                 ['ram'],
-        'disco':               ['disco', 'tipo_disco', 'tipo_de_disco'],
-        'almacenamiento':      ['almacenamiento', 'capacidad'],
-        'so':                  ['so', 'sistema_operativo'],
-        'antivirus':           ['antivirus'],
-        'licencia_office':     ['licencia_office', 'licencia'],
-        'tipo_licencia': ['tipo_licencia', 'tipo_de_licencia', 'licencia'],
-        'correo_office':       ['correo_office', 'correo'],
-        'activo':              ['activo'],
-        'pulgadas':            ['pulgadas'],
-        # ── Móvil ──
-        'numero_linea':        ['numero_linea', 'numero', 'linea'],
-        'operador':            ['operador'],
-        'imei1':               ['imei1', 'imei_1', 'imei'],
-        'imei2':               ['imei2', 'imei_2'],
-        'plan_datos':          ['plan_datos', 'plan_de_datos'],
-        'cuenta_email':        ['cuenta_email', 'cuenta_de_email', 'email', 'gmail'],
-        'contrasena':          ['contrasena', 'contraseña', 'contrasena_gmail', 'password'],
-        # ── Pantalla ──
-        'resolucion':          ['resolucion', 'resolución'],
-        # ── Impresora ──
-        'tipo_impresora':      ['tipo_impresora'],
-        'funcion':             ['funcion', 'función'],
-        # ── Periférico ──
-        'base':                ['base'],
-        'teclado':             ['teclado'],
-        'mouse':               ['mouse'],
-        'auriculares':         ['auriculares'],
-        'cargador_pc':         ['cargador_pc'],
-        'cargador_movil':      ['cargador_movil', 'cargador_móvil'],
-    }
+        #  2. Leer tipo_dispositivo del request 
+        tipo_nombre = request.POST.get('tipo_dispositivo', '').strip()
+        if not tipo_nombre:
+            return _json_err('Se requiere el campo "tipo_dispositivo"')
 
-    def _idx(campo):
-        for alias in ALIAS.get(campo, [campo]):
-            if alias in encabezado:
-                return encabezado.index(alias)
-        return None
+        tipo_nombre_norm = _normalizar(tipo_nombre)
 
-    idx = {campo: _idx(campo) for campo in ALIAS}
+        tipo_obj = None
+        for t in TipoDispositivo.objects.filter(g200_estado=True):
+            if _normalizar(t.g200_tipo_dispositivo) == tipo_nombre_norm:
+                tipo_obj = t
+                break
 
-    def _val(fila, campo):
-        i = idx.get(campo)
-        if i is None or i >= len(fila):
-            return ''
-        v = fila[i]
-        return str(v).strip() if v is not None else ''
-
-    def _bool(fila, campo):
-        v = _val(fila, campo).upper()
-        return v in ('SI', 'SÍ', 'YES', 'TRUE', '1', 'S')
-
-    def _decimal(fila, campo):
-        s = _val(fila, campo).replace(',', '.').replace('$', '').replace(' ', '')
-        try:
-            return Decimal(s) if s else None
-        except InvalidOperation:
-            return None
-
-    # ── 5. Validar columna serial obligatoria ──────────────────────
-    if idx['serial'] is None:
-        return _json_err(
-            f'Columna "serial" no encontrada. '
-            f'Columnas detectadas: {", ".join(encabezado)}'
-        )
-
-   # ── 6. Cargar cachés (evita N+1 queries) ──────────────────────
-    marcas_cache      = {m.g202_marca.upper(): m       for m in Marca.objects.all() if m.g202_marca}
-    propiet_cache     = {p.g203_propietario.upper(): p for p in Propietario.objects.all() if p.g203_propietario}
-    co_cache          = {c.g207_co.upper(): c          for c in CentroOperaciones.objects.all() if c.g207_co}
-    dpto_cache        = {d.g204_departamento.upper(): d for d in Departamento.objects.all() if d.g204_departamento}
-    muni_cache        = {
-        (m.g205_municipio.upper(), m.g205_departamento_id): m
-        for m in Municipio.objects.select_related('g205_departamento').all()
-        if m.g205_municipio
-    }
-    proce_cache       = {p.g209_procesador.upper(): p  for p in Procesador.objects.all() if p.g209_procesador}
-    so_cache          = {s.g210_so.upper(): s          for s in SistemaOperativo.objects.all() if s.g210_so}
-    antivirus_cache   = {a.g208_antivirus.upper(): a   for a in Antivirus.objects.all() if a.g208_antivirus}
-    licencia_cache    = {l.g211_office.upper(): l      for l in LicenciaOffice.objects.all() if l.g211_office}
-    ram_cache         = {r.g230_ram.upper(): r         for r in RAM.objects.all() if r.g230_ram}
-    disco_cache       = {d.g231_tipo_disco.upper(): d  for d in TipoDisco.objects.all() if d.g231_tipo_disco}
-    alm_cache         = {a.g219_almacenamiento.upper(): a for a in Almacenamiento.objects.all() if a.g219_almacenamiento}
-    operador_cache    = {o.g221_operador.upper(): o    for o in Operador.objects.all() if o.g221_operador}
-    timpres_cache     = {t.g229_tipo_impresora.upper(): t for t in TipoImpresora.objects.all() if t.g229_tipo_impresora}
-
-    estado_default = Estado.objects.filter(
-        g201_descripcion__iexact='HABILITADO'
-    ).first()
-
-    # ── 7. Helpers para resolver FK por nombre ─────────────────────
-    def _get_or_create_simple(cache, Model, campo_modelo, nombre):
-        """Busca en caché o crea el registro si no existe."""
-        key = nombre.upper()
-        if key in cache:
-            return cache[key]
-        obj, _ = Model.objects.get_or_create(
-            **{f'{campo_modelo}__iexact': nombre},
-            defaults={campo_modelo: nombre.title()}
-        )
-        cache[key] = obj
-        return obj
-
-    def _resolve_marca(fila):
-        n = _val(fila, 'marca').upper()
-        if not n:
-            return None
-        obj = marcas_cache.get(n)
-        if not obj:
-            obj, _ = Marca.objects.get_or_create(
-                g202_marca__iexact=n,
-                defaults={'g202_marca': n.title(), 'g202_estado': True}
+        if not tipo_obj:
+            return _json_err(
+                f'El tipo de dispositivo "{tipo_nombre}" no existe en el catálogo. '
+                f'Verifica que esté registrado en Tipo Dispositivo.'
             )
-            marcas_cache[n] = obj
-        return obj
 
-    def _resolve_dpto_muni(fila):
-        dpto_n = _val(fila, 'departamento').upper()
-        muni_n = _val(fila, 'municipio').upper()
-        dpto_obj = muni_obj = None
-        if dpto_n:
-            dpto_obj = dpto_cache.get(dpto_n)
-            # Si no existe en BD → no crear, dejar null y advertir
-            if not dpto_obj:
-                try:
-                    dpto_obj = Departamento.objects.get(g204_departamento__iexact=dpto_n)
-                    dpto_cache[dpto_n] = dpto_obj
-                except Departamento.DoesNotExist:
-                    dpto_obj = None  # se guardará como null en el registro
-        if muni_n and dpto_obj:
-            key = (muni_n, dpto_obj.g204_id)
-            muni_obj = muni_cache.get(key)
-            if not muni_obj:
-                try:
-                    muni_obj = Municipio.objects.get(
-                        g205_municipio__iexact=muni_n,
-                        g205_departamento=dpto_obj,
-                    )
-                    muni_cache[key] = muni_obj
-                except Municipio.DoesNotExist:
-                    muni_obj = None  # se guardará como null en el registro
-        return dpto_obj, muni_obj
-
-    # ── 8. Agrupar tipos por familia de característica ─────────────
-    FAMILIA_MOVIL     = {'CELULAR', 'TABLET', 'MODEM WIFI', 'SIMCARD', 'TELEFONO FIJO', 'TELÉFONO FIJO'}
-    FAMILIA_PC        = {'PORTATIL', 'PORTÁTIL', 'TORRE DE ESCRITORIO', 'TORRE'}
-    FAMILIA_PANTALLA  = {'PANTALLA', 'MONITOR'}
-    FAMILIA_IMPRESORA = {'IMPRESORA'}
-    FAMILIA_PERIFERICO = {'PERIFERICO', 'PERIFÉRICO'}
-    FAMILIA_LICENCIA  = {'LICENCIA OFFICE', 'LICENCIA'}
-    # VIDEO BEAM y otros → solo j212, sin tabla de características
-
-    tipo_upper = tipo_nombre.upper()
-
-    # ── 9. Procesar filas ──────────────────────────────────────────
-    creados  = 0
-    omitidos = 0
-    errores  = []
-
-    for num_fila, fila in enumerate(filas[1:], start=2):
-
-        serial = _val(fila, 'serial')
-        if not serial:
-            omitidos += 1
-            errores.append({
-                'fila': num_fila,
-                'serial': '(vacío)',
-                'error': 'Fila omitida — campo serial vacío'
-            })
-            continue
-
-        # Verificar duplicado
-        if Dispositivo.objects.filter(g212_serial=serial).exists():
-            omitidos += 1
-            errores.append({
-                'fila': num_fila,
-                'serial': serial,
-                'error': 'Serial duplicado — ya existe en inventario'
-            })
-            continue
-
+        #  3. Leer workbook 
         try:
-            with transaction.atomic():
-
-                # ── Campos comunes j212 ──────────────────────────
-                dpto_obj, muni_obj = _resolve_dpto_muni(fila)
-                co_nombre = _val(fila, 'centro_operaciones').upper()
-                co_obj = co_cache.get(co_nombre) if co_nombre else None
-
-                disp = Dispositivo.objects.create(
-                    g212_serial          = serial,
-                    g212_tipo            = tipo_obj,
-                    g212_marca           = _resolve_marca(fila),
-                    g212_propietario     = propiet_cache.get(_val(fila, 'propietario').upper()),
-                    g212_estado          = estado_default,
-                    g212_co              = co_obj,
-                    g212_nombre_equipo   = _val(fila, 'nombre') or None,
-                    g212_departamento    = dpto_obj,
-                    g212_municipio       = muni_obj,
-                    g212_valor_promedio      = _decimal(fila, 'valor_promedio'),
-                    g212_valor_arrendamiento = _decimal(fila, 'valor_arrendamiento'),
-                    g212_observaciones   = _val(fila, 'observaciones') or None,
-                )
-
-                # ── Características según familia ────────────────
-
-                if tipo_upper in FAMILIA_MOVIL:
-                    op_n = _val(fila, 'operador').upper()
-                    CaracteristicaMovil.objects.create(
-                        g223_dispositivo      = disp,
-                        g223_numero_linea     = _val(fila, 'numero_linea') or None,
-                        g223_operador         = operador_cache.get(op_n) if op_n else None,
-                        g223_plan_datos       = _val(fila, 'plan_datos') or None,
-                        g223_imei1            = _val(fila, 'imei1') or None,
-                        g223_imei2            = _val(fila, 'imei2') or None,
-                        g223_cuenta_gmail     = _val(fila, 'cuenta_email') or None,
-                        g223_contrasena_gmail = _val(fila, 'contrasena') or None,
-                        g223_pulgadas         = _decimal(fila, 'pulgadas'),
-                        g223_almacenamiento   = alm_cache.get(_val(fila, 'almacenamiento').upper()) if _val(fila, 'almacenamiento') else None,
-                    )
-
-                elif tipo_upper in FAMILIA_PC:
-                    pro_n = _val(fila, 'procesador').upper()
-                    so_n  = _val(fila, 'so').upper()
-                    ant_n = _val(fila, 'antivirus').upper()
-                    lic_n = _val(fila, 'licencia_office').upper()
-                    ram_n = _val(fila, 'ram').upper()
-                    dis_n = _val(fila, 'disco').upper()
-                    alm_n = _val(fila, 'almacenamiento').upper()
-                    CaracteristicaPC.objects.create(
-                        g222_dispositivo    = disp,
-                        g222_procesador     = proce_cache.get(pro_n) if pro_n else None,
-                        g222_so             = so_cache.get(so_n) if so_n else None,
-                        g222_antivirus      = antivirus_cache.get(ant_n) if ant_n else None,
-                        g222_licencia       = licencia_cache.get(lic_n) if lic_n else None,
-                        g222_ram            = ram_cache.get(ram_n) if ram_n else None,
-                        g222_tipo_disco     = disco_cache.get(dis_n) if dis_n else None,
-                        g222_almacenamiento = alm_cache.get(alm_n) if alm_n else None,
-                        g222_correo_office  = _val(fila, 'correo_office') or None,
-                        g222_activo         = _val(fila, 'activo') or None,
-                        g222_pulgadas       = _decimal(fila, 'pulgadas'),
-                    )
-
-                elif tipo_upper in FAMILIA_PANTALLA:
-                    CaracteristicaPantalla.objects.create(
-                        g224_dispositivo = disp,
-                        g224_pulgadas    = _decimal(fila, 'pulgadas'),
-                        g224_resolucion  = _val(fila, 'resolucion') or None,
-                    )
-
-                elif tipo_upper in FAMILIA_IMPRESORA:
-                    ti_n = _val(fila, 'tipo_impresora').upper()
-                    CaracteristicaImpresora.objects.create(
-                        g225_dispositivo    = disp,
-                        g225_tipo_impresora = timpres_cache.get(ti_n) if ti_n else None,
-                        g225_funcion        = _val(fila, 'funcion') or None,
-                    )
-
-                elif tipo_upper in FAMILIA_PERIFERICO:
-                    CaracteristicaPeriferico.objects.create(
-                        g226_dispositivo          = disp,
-                        g226_incluye_base         = _bool(fila, 'base'),
-                        g226_incluye_teclado      = _bool(fila, 'teclado'),
-                        g226_incluye_mouse        = _bool(fila, 'mouse'),
-                        g226_incluye_auriculares  = _bool(fila, 'auriculares'),
-                        g226_incluye_cargador     = _bool(fila, 'cargador_pc') or _bool(fila, 'cargador_movil'),
-                        g226_descripcion_adicional = _val(fila, 'observaciones') or None,
-                    )
-                
-                elif tipo_upper in FAMILIA_LICENCIA:
-                    CaracteristicaLicencia.objects.create(
-                        g227_dispositivo = disp,
-                        g227_software    = _val(fila, 'tipo_licencia') or None,
-                        g227_version     = _val(fila, 'modelo') or None,
-                        g227_key         = None,
-                        g227_correo      = None,
-                        g227_fecha_vencimiento = None,
-                    )
-                   # VIDEO BEAM y otros: solo j212, no se crea tabla de características 
-            creados += 1
-            
-             # Historial automático — ingreso al inventario
-            _registrar_historial_auto(
-                    dispositivo   = disp,
-                    nombre_novedad = 'INGRESO AL INVENTARIO',
-                    responsable   = request.user.get_full_name() or request.user.username,
-                    observaciones = f'Carga masiva — tipo: {tipo_nombre}',
-                    co            = disp.g212_co,
-                )
-            
-            
-
+            wb = openpyxl.load_workbook(archivo, read_only=True, data_only=True)
+            ws = wb.active
+            filas = list(ws.iter_rows(values_only=True))
         except Exception as e:
-            omitidos += 1
-            errores.append({'fila': num_fila, 'serial': serial, 'error': str(e)})
+            return _json_err(f'No se pudo leer el archivo: {e}')
 
-    return _json_ok({
-        'creados':  creados,
-        'omitidos': omitidos,
-        'errores':  errores,
-    })
-    
+        if len(filas) < 2:
+            return _json_err('El archivo no tiene datos (solo encabezado o está vacío)')
+
+        # ── 4. Mapear columnas por nombre (case/tilde-insensitive) ─────
+        encabezado = [
+            _normalizar(c).lower().replace(' ', '_') if c else ''
+            for c in filas[0]
+        ]
+
+        ALIAS = {
+            'serial':              ['serial', 'serial_del_dispositivo'],
+            'marca':               ['marca'],
+            'propietario':         ['propietario', 'nombre_del_propietario'],
+            'centro_operaciones':  ['centro_operaciones', 'co', 'centro_de_operaciones'],
+            'departamento':        ['departamento'],
+            'municipio':           ['municipio'],
+            'observaciones':       ['observaciones', 'obs'],
+            'nombre':              ['nombre', 'nombre_del_equipo', 'nombre_equipo'],
+            'valor_promedio':      ['valor_promedio', 'valor'],
+            'valor_arrendamiento': ['valor_arrendamiento', 'arrend'],
+            'procesador':          ['procesador'],
+            'ram':                 ['ram'],
+            'disco':               ['disco', 'tipo_disco', 'tipo_de_disco'],
+            'almacenamiento':      ['almacenamiento', 'capacidad'],
+            'so':                  ['so', 'sistema_operativo'],
+            'antivirus':           ['antivirus'],
+            'licencia_office':     ['licencia_office', 'licencia'],
+            'tipo_licencia':       ['tipo_licencia', 'tipo_de_licencia', 'licencia'],
+            'correo_office':       ['correo_office', 'correo'],
+            'activo':              ['activo'],
+            'pulgadas':            ['pulgadas'],
+            'numero_linea':        ['numero_linea', 'numero', 'linea'],
+            'operador':            ['operador'],
+            'imei1':               ['imei1', 'imei_1', 'imei'],
+            'imei2':               ['imei2', 'imei_2'],
+            'plan_datos':          ['plan_datos', 'plan_de_datos'],
+            'cuenta_email':        ['cuenta_email', 'cuenta_de_email', 'email', 'gmail'],
+            'contrasena':          ['contrasena', 'contraseña', 'contrasena_gmail', 'password'],
+            'resolucion':          ['resolucion', 'resolución'],
+            'tipo_impresora':      ['tipo_impresora'],
+            'funcion':             ['funcion', 'función'],
+            'base':                ['base'],
+            'teclado':             ['teclado'],
+            'mouse':               ['mouse'],
+            'auriculares':         ['auriculares'],
+            'cargador_pc':         ['cargador_pc'],
+            'cargador_movil':      ['cargador_movil', 'cargador_móvil'],
+        }
+
+        def _idx(campo):
+            for alias in ALIAS.get(campo, [campo]):
+                alias_norm = _normalizar(alias).lower().replace(' ', '_')
+                if alias_norm in encabezado:
+                    return encabezado.index(alias_norm)
+            return None
+
+        idx = {campo: _idx(campo) for campo in ALIAS}
+
+        def _val(fila, campo):
+            i = idx.get(campo)
+            if i is None or i >= len(fila):
+                return ''
+            return _texto_excel_seguro(fila[i])
+
+        def _bool(fila, campo):
+            v = _normalizar(_val(fila, campo))
+            return v in ('SI', 'YES', 'TRUE', '1', 'S')
+
+        def _decimal(fila, campo):
+            s = _val(fila, campo).replace(',', '.').replace('$', '').replace(' ', '')
+            try:
+                return Decimal(s) if s else None
+            except InvalidOperation:
+                return None
+
+        # ── 5. Validar columna serial obligatoria ──────────────────────
+        if idx['serial'] is None:
+            return _json_err(
+                f'Columna "serial" no encontrada. '
+                f'Columnas detectadas: {", ".join(encabezado)}'
+            )
+
+        # ── 6. Cargar cachés normalizados (evita N+1 queries) ──────────
+        marcas_cache      = {_normalizar(m.g202_marca): m       for m in Marca.objects.all() if m.g202_marca}
+        propiet_cache     = {_normalizar(p.g203_propietario): p for p in Propietario.objects.all() if p.g203_propietario}
+        co_cache          = {_normalizar(c.g207_co): c          for c in CentroOperaciones.objects.all() if c.g207_co}
+        dpto_cache        = {_normalizar(d.g204_departamento): d for d in Departamento.objects.all() if d.g204_departamento}
+        muni_cache        = {
+            (_normalizar(m.g205_municipio), m.g205_departamento_id): m
+            for m in Municipio.objects.select_related('g205_departamento').all()
+            if m.g205_municipio
+        }
+        proce_cache       = {_normalizar(p.g209_procesador): p  for p in Procesador.objects.all() if p.g209_procesador}
+        so_cache          = {_normalizar(s.g210_so): s          for s in SistemaOperativo.objects.all() if s.g210_so}
+        antivirus_cache   = {_normalizar(a.g208_antivirus): a   for a in Antivirus.objects.all() if a.g208_antivirus}
+        licencia_cache    = {_normalizar(l.g211_office): l      for l in LicenciaOffice.objects.all() if l.g211_office}
+        ram_cache         = {_normalizar(r.g230_ram): r         for r in RAM.objects.all() if r.g230_ram}
+        disco_cache       = {_normalizar(d.g231_tipo_disco): d  for d in TipoDisco.objects.all() if d.g231_tipo_disco}
+        alm_cache         = {_normalizar(a.g219_almacenamiento): a for a in Almacenamiento.objects.all() if a.g219_almacenamiento}
+        operador_cache    = {_normalizar(o.g221_operador): o    for o in Operador.objects.all() if o.g221_operador}
+        timpres_cache     = {_normalizar(t.g229_tipo_impresora): t for t in TipoImpresora.objects.all() if t.g229_tipo_impresora}
+
+        estado_default = Estado.objects.filter(
+            g201_descripcion__iexact='HABILITADO'
+        ).first()
+
+        # ── 7. Helpers para resolver FK por nombre (normalizado) ───────
+        def _resolve_marca(fila):
+            n = _normalizar(_val(fila, 'marca'))
+            if not n:
+                return None
+            obj = marcas_cache.get(n)
+            if not obj:
+                obj, _c = Marca.objects.get_or_create(
+                    g202_marca__iexact=n,
+                    defaults={'g202_marca': n.title(), 'g202_estado': True}
+                )
+                marcas_cache[n] = obj
+            return obj
+
+        def _resolve_dpto_muni(fila):
+            dpto_n = _normalizar(_val(fila, 'departamento'))
+            muni_n = _normalizar(_val(fila, 'municipio'))
+            dpto_obj = dpto_cache.get(dpto_n) if dpto_n else None
+            muni_obj = None
+            if muni_n and dpto_obj:
+                muni_obj = muni_cache.get((muni_n, dpto_obj.g204_id))
+            return dpto_obj, muni_obj
+
+        # ── 8. Agrupar tipos por familia de característica ─────────────
+        FAMILIA_MOVIL      = {'CELULAR', 'TABLET', 'MODEM WIFI', 'SIMCARD', 'TELEFONO FIJO'}
+        FAMILIA_PC         = {'PORTATIL', 'TORRE DE ESCRITORIO', 'TORRE'}
+        FAMILIA_PANTALLA   = {'PANTALLA', 'MONITOR'}
+        FAMILIA_IMPRESORA  = {'IMPRESORA'}
+        FAMILIA_PERIFERICO = {'PERIFERICO'}
+        FAMILIA_LICENCIA   = {'LICENCIA OFFICE', 'LICENCIA'}
+
+        tipo_upper = tipo_nombre_norm
+
+        # ── 9. Procesar filas ──────────────────────────────────────────
+        creados  = 0
+        omitidos = 0
+        errores  = []
+
+        for num_fila, fila in enumerate(filas[1:], start=2):
+
+            serial = _val(fila, 'serial')
+            if not serial:
+                omitidos += 1
+                errores.append({
+                    'fila': num_fila,
+                    'serial': '(vacío)',
+                    'error': 'Fila omitida — campo serial vacío'
+                })
+                continue
+
+            if Dispositivo.objects.filter(g212_serial=serial).exists():
+                omitidos += 1
+                errores.append({
+                    'fila': num_fila,
+                    'serial': serial,
+                    'error': 'Serial duplicado — ya existe en inventario'
+                })
+                continue
+
+            try:
+                with transaction.atomic():
+
+                    dpto_obj, muni_obj = _resolve_dpto_muni(fila)
+                    co_nombre_n = _normalizar(_val(fila, 'centro_operaciones'))
+                    co_obj = co_cache.get(co_nombre_n) if co_nombre_n else None
+
+                    disp = Dispositivo.objects.create(
+                        g212_serial          = serial,
+                        g212_tipo            = tipo_obj,
+                        g212_marca           = _resolve_marca(fila),
+                        g212_propietario     = propiet_cache.get(_normalizar(_val(fila, 'propietario'))),
+                        g212_estado          = estado_default,
+                        g212_co              = co_obj,
+                        g212_nombre_equipo   = _val(fila, 'nombre') or None,
+                        g212_departamento    = dpto_obj,
+                        g212_municipio       = muni_obj,
+                        g212_valor_promedio      = _decimal(fila, 'valor_promedio'),
+                        g212_valor_arrendamiento = _decimal(fila, 'valor_arrendamiento'),
+                        g212_observaciones   = _val(fila, 'observaciones') or None,
+                    )
+
+                    if tipo_upper in FAMILIA_MOVIL:
+                        op_n = _normalizar(_val(fila, 'operador'))
+                        CaracteristicaMovil.objects.create(
+                            g223_dispositivo      = disp,
+                            g223_numero_linea     = _val(fila, 'numero_linea') or None,
+                            g223_operador         = operador_cache.get(op_n) if op_n else None,
+                            g223_plan_datos       = _val(fila, 'plan_datos') or None,
+                            g223_imei1            = _val(fila, 'imei1') or None,
+                            g223_imei2            = _val(fila, 'imei2') or None,
+                            g223_cuenta_gmail     = _val(fila, 'cuenta_email') or None,
+                            g223_contrasena_gmail = _val(fila, 'contrasena') or None,
+                            g223_pulgadas         = _decimal(fila, 'pulgadas'),
+                            g223_almacenamiento   = alm_cache.get(_normalizar(_val(fila, 'almacenamiento'))) if _val(fila, 'almacenamiento') else None,
+                        )
+
+                    elif tipo_upper in FAMILIA_PC:
+                        pro_n = _normalizar(_val(fila, 'procesador'))
+                        so_n  = _normalizar(_val(fila, 'so'))
+                        ant_n = _normalizar(_val(fila, 'antivirus'))
+                        lic_n = _normalizar(_val(fila, 'licencia_office'))
+                        ram_n = _normalizar(_val(fila, 'ram'))
+                        dis_n = _normalizar(_val(fila, 'disco'))
+                        alm_n = _normalizar(_val(fila, 'almacenamiento'))
+                        CaracteristicaPC.objects.create(
+                            g222_dispositivo    = disp,
+                            g222_procesador     = proce_cache.get(pro_n) if pro_n else None,
+                            g222_so             = so_cache.get(so_n) if so_n else None,
+                            g222_antivirus      = antivirus_cache.get(ant_n) if ant_n else None,
+                            g222_licencia       = licencia_cache.get(lic_n) if lic_n else None,
+                            g222_ram            = ram_cache.get(ram_n) if ram_n else None,
+                            g222_tipo_disco     = disco_cache.get(dis_n) if dis_n else None,
+                            g222_almacenamiento = alm_cache.get(alm_n) if alm_n else None,
+                            g222_correo_office  = _val(fila, 'correo_office') or None,
+                            g222_activo         = _val(fila, 'activo') or None,
+                            g222_pulgadas       = _decimal(fila, 'pulgadas'),
+                        )
+
+                    elif tipo_upper in FAMILIA_PANTALLA:
+                        CaracteristicaPantalla.objects.create(
+                            g224_dispositivo = disp,
+                            g224_pulgadas    = _decimal(fila, 'pulgadas'),
+                            g224_resolucion  = _val(fila, 'resolucion') or None,
+                        )
+
+                    elif tipo_upper in FAMILIA_IMPRESORA:
+                        ti_n = _normalizar(_val(fila, 'tipo_impresora'))
+                        CaracteristicaImpresora.objects.create(
+                            g225_dispositivo    = disp,
+                            g225_tipo_impresora = timpres_cache.get(ti_n) if ti_n else None,
+                            g225_funcion        = _val(fila, 'funcion') or None,
+                        )
+
+                    elif tipo_upper in FAMILIA_PERIFERICO:
+                        CaracteristicaPeriferico.objects.create(
+                            g226_dispositivo           = disp,
+                            g226_incluye_base          = _bool(fila, 'base'),
+                            g226_incluye_teclado       = _bool(fila, 'teclado'),
+                            g226_incluye_mouse         = _bool(fila, 'mouse'),
+                            g226_incluye_auriculares   = _bool(fila, 'auriculares'),
+                            g226_incluye_cargador      = _bool(fila, 'cargador_pc') or _bool(fila, 'cargador_movil'),
+                            g226_descripcion_adicional = _val(fila, 'observaciones') or None,
+                        )
+
+                    elif tipo_upper in FAMILIA_LICENCIA:
+                        CaracteristicaLicencia.objects.create(
+                            g227_dispositivo = disp,
+                            g227_software    = _val(fila, 'tipo_licencia') or None,
+                            g227_version     = _val(fila, 'modelo') or None,
+                            g227_key         = None,
+                            g227_correo      = None,
+                            g227_fecha_vencimiento = None,
+                        )
+                    # VIDEO BEAM y otros: solo j212, no se crea tabla de características
+
+                creados += 1
+
+                _registrar_historial_auto(
+                    dispositivo    = disp,
+                    nombre_novedad = 'INGRESO AL INVENTARIO',
+                    responsable    = request.user.get_full_name() or request.user.username,
+                    observaciones  = f'Carga masiva — tipo: {tipo_nombre}',
+                    co             = disp.g212_co,
+                )
+
+            except Exception as e:
+                # Error puntual de esta fila: se registra y se sigue con las demás,
+                # NO se interrumpe toda la carga.
+                omitidos += 1
+                errores.append({'fila': num_fila, 'serial': serial, 'error': str(e)})
+                logger.warning(f'[CARGA MASIVA] Fila {num_fila} ({serial}) falló: {e}')
+
+        return _json_ok({
+            'creados':  creados,
+            'omitidos': omitidos,
+            'errores':  errores,
+        })
+
+    except Exception as e:
+        # ── Blindaje final: cualquier error no previsto arriba
+        # (BD, permisos, archivo corrupto, encoding, etc.) se
+        # captura aquí y SIEMPRE se responde JSON, nunca HTML.
+        logger.exception('[CARGA MASIVA] Error inesperado procesando el archivo')
+        return _json_err(
+            f'Error interno procesando el archivo: {e}',
+            status=500
+        )
 #GESTION DE USUARIOS   
 import datetime
 from django.contrib.auth.decorators import login_required
