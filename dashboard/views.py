@@ -2087,8 +2087,7 @@ def api_carga_masiva(request):
     Respuesta JSON (SIEMPRE, incluso ante errores inesperados):
         { ok: true/false, data|error: ... }
     """
-    import openpyxl
-    from decimal import Decimal, InvalidOperation
+   
 
     # ─────────────────────────────────────────────────────────
     # BLINDAJE GLOBAL: todo lo de abajo va dentro de este try.
@@ -2097,6 +2096,8 @@ def api_carga_masiva(request):
     # página de error HTML de Django.
     # ─────────────────────────────────────────────────────────
     try:
+        import openpyxl
+        from decimal import Decimal, InvalidOperation
 
         #  1. Validar archivo 
         archivo = request.FILES.get('archivo')
