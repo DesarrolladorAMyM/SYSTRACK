@@ -411,6 +411,106 @@ def _enviar_correo_confirmacion(request, req, pendiente=False):
         )
 
 
+def _obtener_link_base():
+    """Dominio base para construir links en correos enviados desde Signals.py,
+    donde NO hay objeto request disponible (post_save se dispara fuera del ciclo
+    request/response). Configura SITE_URL en settings.py para producción."""
+    return getattr(settings, 'SITE_URL', 'https://systraker.tuempresa.com').rstrip('/')
+
+
+def _enviar_correo_solucion(req):
+    """Avisa al solicitante que su requerimiento fue solucionado (estado -> Cerrado).
+    Se dispara desde Signals.py (post_save), por eso NO recibe request."""
+    if not req.Email:
+        logger.warning(
+            "No se envió correo de solución: Requerimiento %s no tiene Email.",
+            req.codigo()
+        )
+        return
+
+    base_url = _obtener_link_base()
+    link_seguimiento = f"{base_url}{PREFIJO_APP}/requerimiento/?seg={req.codigo()}"
+    link_calificar   = f"{base_url}{PREFIJO_APP}/requerimiento/calificar/?codigo={req.codigo()}"
+
+    asunto = f"Requerimiento solucionado — {req.codigo()}"
+    cuerpo_html = render_to_string('requerimientos/correo_solucion.html', {
+        'req': req, 'link_seguimiento': link_seguimiento, 'link_calificar': link_calificar,
+    })
+
+    try:
+        enviados = send_mail(
+            subject=asunto,
+            message=(f"Tu requerimiento {req.codigo()} fue solucionado. "
+                      f"Solución: {req.Solucion or '(sin detalle)'}. "
+                      f"Califica la atención aquí: {link_calificar}"),
+            from_email=settings.DEFAULT_FROM_EMAIL,
+            recipient_list=[req.Email],
+            html_message=cuerpo_html,
+            fail_silently=False,
+        )
+        logger.info(
+            "Correo de solución -> %s (Requerimiento %s): send_mail devolvió %s",
+            req.Email, req.codigo(), enviados
+        )
+    except Exception:
+        logger.exception(
+            "FALLÓ el envío del correo de solución a %s para el requerimiento %s",
+            req.Email, req.codigo()
+        )
+
+
+def _enviar_correo_asignacion(req, es_reasignacion=False):
+    """Notifica al técnico que se le asignó (o reasignó) un requerimiento.
+    Se dispara desde Signals.py (post_save), por eso NO recibe request."""
+    if not req.IdUsuarioAsig:
+        return
+
+    try:
+        tecnico = Usuario.objects.using(DB).get(IdUsuario=req.IdUsuarioAsig)
+    except Usuario.DoesNotExist:
+        logger.warning(
+            "No se envió correo de asignación: Usuario IdUsuario=%s no existe (Requerimiento %s).",
+            req.IdUsuarioAsig, req.codigo()
+        )
+        return
+
+    if not tecnico.Email:
+        logger.warning(
+            "No se envió correo de asignación: técnico %s (IdUsuario=%s) no tiene Email (Requerimiento %s).",
+            tecnico.NombreCompleto, tecnico.IdUsuario, req.codigo()
+        )
+        return
+
+    base_url = _obtener_link_base()
+    link_ver = f"{base_url}{PREFIJO_APP}/requerimiento/?seg={req.codigo()}"
+
+    asunto = (f"Requerimiento reasignado — {req.codigo()}" if es_reasignacion
+              else f"Nuevo requerimiento asignado — {req.codigo()}")
+    cuerpo_html = render_to_string('requerimientos/correo_asignacion.html', {
+        'req': req, 'tecnico': tecnico, 'link_ver': link_ver, 'es_reasignacion': es_reasignacion,
+    })
+
+    try:
+        enviados = send_mail(
+            subject=asunto,
+            message=(f"Se te {'reasignó' if es_reasignacion else 'asignó'} el requerimiento {req.codigo()}. "
+                      f"Ver: {link_ver}"),
+            from_email=settings.DEFAULT_FROM_EMAIL,
+            recipient_list=[tecnico.Email],
+            html_message=cuerpo_html,
+            fail_silently=False,
+        )
+        logger.info(
+            "Correo de asignación -> %s (Requerimiento %s, reasignación=%s): send_mail devolvió %s",
+            tecnico.Email, req.codigo(), es_reasignacion, enviados
+        )
+    except Exception:
+        logger.exception(
+            "FALLÓ el envío del correo de asignación a %s para el requerimiento %s",
+            tecnico.Email, req.codigo()
+        )
+
+
 @require_GET
 def aprobar_requerimiento(request, token):
     try:

@@ -1,0 +1,90 @@
+<!DOCTYPE html>
+<html>
+<head>
+  <meta charset="UTF-8">
+</head>
+<body style="margin:0; padding:0; background:#f3f4f6; font-family:Arial, Helvetica, sans-serif;">
+  <table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="background:#f3f4f6; padding:24px 0;">
+    <tr>
+      <td align="center">
+        <table role="presentation" width="560" cellpadding="0" cellspacing="0"
+               style="background:#ffffff; border-radius:12px; overflow:hidden; box-shadow:0 1px 4px rgba(0,0,0,.08);">
+
+          <!-- Encabezado -->
+          <tr>
+            <td style="background:#355EAB; padding:20px 32px;">
+              <span style="color:#ffffff; font-size:18px; font-weight:bold;">
+                {% if es_reasignacion %}Systraker · Requerimiento reasignado{% else %}Systraker · Nuevo requerimiento asignado{% endif %}
+              </span>
+            </td>
+          </tr>
+
+          <!-- Cuerpo -->
+          <tr>
+            <td style="padding:28px 32px 8px 32px;">
+              <p style="color:#1f2937; font-size:15px; line-height:1.5; margin:0 0 16px 0;">
+                Hola <strong>{{ tecnico.NombreCompleto }}</strong>,
+                {% if es_reasignacion %}
+                  se te reasignó el requerimiento <strong>{{ req.codigo }}</strong>.
+                {% else %}
+                  se te asignó el requerimiento <strong>{{ req.codigo }}</strong>.
+                {% endif %}
+                Por favor revísalo y dale seguimiento.
+              </p>
+            </td>
+          </tr>
+
+          <!-- Detalle -->
+          <tr>
+            <td style="padding:0 32px;">
+              <table role="presentation" width="100%" cellpadding="0" cellspacing="0"
+                     style="border:1px solid #e5e7eb; border-radius:8px; font-size:14px;">
+                <tr>
+                  <td style="padding:10px 14px; color:#6b7280; width:150px; border-bottom:1px solid #e5e7eb;">Código</td>
+                  <td style="padding:10px 14px; color:#111827; border-bottom:1px solid #e5e7eb;"><strong>{{ req.codigo }}</strong></td>
+                </tr>
+                <tr>
+                  <td style="padding:10px 14px; color:#6b7280; border-bottom:1px solid #e5e7eb;">Solicitante</td>
+                  <td style="padding:10px 14px; color:#111827; border-bottom:1px solid #e5e7eb;">{{ req.NombreUsuario }}</td>
+                </tr>
+                <tr>
+                  <td style="padding:10px 14px; color:#6b7280;">Descripción</td>
+                  <td style="padding:10px 14px; color:#111827;">{{ req.Requerimiento }}</td>
+                </tr>
+              </table>
+            </td>
+          </tr>
+
+          <!-- Botón -->
+          <tr>
+            <td align="center" style="padding:24px 32px 8px 32px;">
+              <table role="presentation" cellpadding="0" cellspacing="0">
+                <tr>
+                  <td style="border-radius:8px; background:#355EAB;">
+                    <a href="{{ link_ver }}"
+                       style="display:inline-block; padding:13px 32px; font-size:14px; font-weight:bold;
+                              color:#ffffff; text-decoration:none;">
+                      Ver requerimiento
+                    </a>
+                  </td>
+                </tr>
+              </table>
+            </td>
+          </tr>
+
+          <!-- Pie -->
+          <tr>
+            <td style="padding:24px 32px 24px 32px;">
+              <p style="font-size:12px; color:#9ca3af; margin:0; line-height:1.4;">
+                Si el botón no funciona, copia y pega esta URL en tu navegador:<br>
+                <span style="color:#6b7280;">{{ link_ver }}</span>
+              </p>
+            </td>
+          </tr>
+
+        </table>
+      </td>
+    </tr>
+  </table>
+</body>
+</html>

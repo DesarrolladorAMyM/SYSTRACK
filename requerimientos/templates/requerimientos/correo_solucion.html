@@ -1,0 +1,93 @@
+<!DOCTYPE html>
+<html>
+<head>
+  <meta charset="UTF-8">
+</head>
+<body style="margin:0; padding:0; background:#f3f4f6; font-family:Arial, Helvetica, sans-serif;">
+  <table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="background:#f3f4f6; padding:24px 0;">
+    <tr>
+      <td align="center">
+        <table role="presentation" width="560" cellpadding="0" cellspacing="0"
+               style="background:#ffffff; border-radius:12px; overflow:hidden; box-shadow:0 1px 4px rgba(0,0,0,.08);">
+
+          <!-- Encabezado -->
+          <tr>
+            <td style="background:#355EAB; padding:20px 32px;">
+              <span style="color:#ffffff; font-size:18px; font-weight:bold;">Systraker · Requerimiento solucionado</span>
+            </td>
+          </tr>
+
+          <!-- Cuerpo -->
+          <tr>
+            <td style="padding:28px 32px 8px 32px;">
+              <p style="color:#1f2937; font-size:15px; line-height:1.5; margin:0 0 16px 0;">
+                Hola <strong>{{ req.NombreUsuario }}</strong>, ya se le dio solución a tu requerimiento
+                <strong>{{ req.codigo }}</strong>. Por favor tómate un momento para darnos tu calificación
+                sobre la atención recibida.
+              </p>
+            </td>
+          </tr>
+
+          <!-- Solución -->
+          <tr>
+            <td style="padding:0 32px;">
+              <table role="presentation" width="100%" cellpadding="0" cellspacing="0"
+                     style="border:1px solid #e5e7eb; border-radius:8px; font-size:14px;">
+                <tr>
+                  <td style="padding:10px 14px; color:#6b7280; width:150px; border-bottom:1px solid #e5e7eb;">Código</td>
+                  <td style="padding:10px 14px; color:#111827; border-bottom:1px solid #e5e7eb;"><strong>{{ req.codigo }}</strong></td>
+                </tr>
+                <tr>
+                  <td style="padding:10px 14px; color:#6b7280;">Solución</td>
+                  <td style="padding:10px 14px; color:#111827;">{{ req.Solucion }}</td>
+                </tr>
+              </table>
+            </td>
+          </tr>
+
+          <!-- Botón -->
+          <tr>
+            <td align="center" style="padding:24px 32px 8px 32px;">
+              <table role="presentation" cellpadding="0" cellspacing="0">
+                <tr>
+                  <td style="border-radius:8px; background:#355EAB;">
+                    <a href="{{ link_calificar }}"
+                       style="display:inline-block; padding:13px 32px; font-size:14px; font-weight:bold;
+                              color:#ffffff; text-decoration:none;">
+                      Calificar atención
+                    </a>
+                  </td>
+                </tr>
+              </table>
+            </td>
+          </tr>
+
+          
+          <!-- Recordatorio de seguimiento -->
+          <tr>
+            <td style="padding:8px 32px 0 32px;">
+              <p style="color:#4b5563; font-size:13px; line-height:1.5; margin:0;">
+                Recuerda que en la plataforma de Systraker también puedes ver en qué va el seguimiento
+                de tu requerimiento con el código <strong>{{ req.codigo }}</strong>:<br>
+                <a href="{{ link_seguimiento }}" style="color:#1e3a8a;">{{ link_seguimiento }}</a>
+              </p>
+            </td>
+          </tr>
+          
+
+          <!-- Pie -->
+          <tr>
+            <td style="padding:24px 32px 24px 32px;">
+              <p style="font-size:12px; color:#9ca3af; margin:0; line-height:1.4;">
+                Si el botón no funciona, copia y pega esta URL en tu navegador:<br>
+                <span style="color:#6b7280;">{{ link_calificar }}</span>
+              </p>
+            </td>
+          </tr>
+
+        </table>
+      </td>
+    </tr>
+  </table>
+</body>
+</html>

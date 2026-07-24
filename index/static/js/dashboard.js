@@ -3136,7 +3136,8 @@ async function cargarRequerimientos() {
       solicitante:        r.solicitante,
       prioridad:          r.prioridad,
       fecha_vencimiento:  r.vencimiento,
-      responsable:        r.solicitante,
+      asignado:           r.asignado,        
+      responsable:        r.asignado,
       plan_accion:        r.plan_accion,
       solucion:           r.solucion,
       fecha_solucion:     r.fecha_solucion,
@@ -3707,7 +3708,7 @@ async function cargarIndicadores() {
 }
 
 async function indCargarResumen() {
-  const res = await apiFetch('/inventario/api/indicadores/resumen/');
+  const res = await apiFetch(`${BASE}/inventario/api/indicadores/resumen/`);
   if (!res.ok) return;
   const d = res.data;
   document.getElementById('ind-r-asignados').textContent   = d.asignados;
@@ -3752,7 +3753,7 @@ async function indCargarTendencia() {
   if (categoriaId)    params.set('categoria_id', categoriaId);
   if (subcategoriaId) params.set('subcategoria_id', subcategoriaId);
 
-  const res = await apiFetch(`/inventario/api/indicadores/tendencia/?${params}`);
+  const res = await apiFetch(`${BASE}/inventario/api/indicadores/tendencia/?${params}`);
   if (res.ok) {
     const { serie, pct_cumplimiento, total_cerrados, a_tiempo } = res.data;
     _indRenderTendenciaChart(serie);
@@ -3768,7 +3769,7 @@ async function indCargarCalificacion(categoriaId, subcategoriaId, dias) {
   if (categoriaId)    params.set('categoria_id', categoriaId);
   if (subcategoriaId) params.set('subcategoria_id', subcategoriaId);
 
-  const res = await apiFetch(`/inventario/api/indicadores/calificacion/?${params}`);
+  const res = await apiFetch(`${BASE}/inventario/api/indicadores/calificacion/?${params}`);
   if (!res.ok) return;
 
   const { promedio, total_evaluaciones, distribucion, tendencia } = res.data;

@@ -1436,6 +1436,152 @@ def _enviar_correo_acta(destinatario, nombre_colaborador, pdf_bytes, nombre_arch
     
     
     
+# ── Correos disparados por Signals.py (post_save de Requerimiento) ────────
+# IMPORTANTE: se ejecutan en un hilo aparte (igual que _enviar_correo_acta).
+# Así, si el SMTP falla, el error queda aislado en el hilo y NUNCA rompe el
+# r.save(using='requerimientos') que dispara la señal — eso es lo que antes
+# tumbaba la respuesta HTTP de api_req_tic_accion y dejaba los indicadores
+# desactualizados.
+
+def _enviar_correo_solucion(req):
+    """
+    Notifica al solicitante que su requerimiento fue solucionado (IdEstado -> 4).
+    Llamada por Signals.py::_notificar_solucion.
+    """
+    if not req.Email:
+        logging.getLogger(__name__).warning(
+            f'[CORREO SOLUCION] Requerimiento {req.codigo()} no tiene Email, no se envía.'
+        )
+        return
+
+    hilo = threading.Thread(
+        target=_enviar_correo_solucion_smtp,
+        args=(req.Email, req.NombreUsuario or '', req.codigo(), req.Solucion or ''),
+        daemon=True,
+    )
+    hilo.start()
+
+
+def _enviar_correo_solucion_smtp(destinatario, nombre_usuario, codigo, solucion):
+    remitente = settings.EMAIL_HOST_USER
+    password  = settings.EMAIL_HOST_PASSWORD
+    host      = settings.EMAIL_HOST
+    port      = settings.EMAIL_PORT
+
+    msg = MIMEMultipart('mixed')
+    msg['Subject'] = f'Requerimiento solucionado — {codigo}'
+    msg['From']    = remitente
+    msg['To']      = destinatario
+
+    cuerpo_html = f"""
+    <html><body style="font-family:Arial,sans-serif;font-size:14px;color:#222;line-height:1.6">
+      <div style="max-width:600px;margin:0 auto;border:1px solid #e5e7eb;border-radius:8px;overflow:hidden">
+        <div style="background:#355EAB;padding:24px 30px">
+          <h2 style="margin:0;color:#fff;font-size:18px">Requerimiento solucionado</h2>
+        </div>
+        <div style="padding:30px">
+          <p>Hola <strong>{nombre_usuario}</strong>,</p>
+          <p>Ya se le dio solución a tu requerimiento <strong>{codigo}</strong>.</p>
+          <div style="background:#f0f4ff;border-left:4px solid #355EAB;padding:14px 18px;margin:20px 0;border-radius:0 6px 6px 0">
+            <strong>Solución:</strong> {solucion or '(sin detalle)'}
+          </div>
+          <p>Gracias,<br><strong>Área de Tecnología e Informática</strong></p>
+        </div>
+      </div>
+    </body></html>
+    """
+    parte_alternativa = MIMEMultipart('alternative')
+    parte_alternativa.attach(MIMEText(cuerpo_html, 'html', 'utf-8'))
+    msg.attach(parte_alternativa)
+
+    try:
+        with smtplib.SMTP(host, port, timeout=15) as servidor:
+            servidor.ehlo()
+            servidor.starttls()
+            servidor.ehlo()
+            servidor.login(remitente, password)
+            servidor.sendmail(remitente, destinatario, msg.as_bytes())
+    except Exception as e:
+        logging.getLogger(__name__).error(f'[CORREO SOLUCION] Error enviando a {destinatario}: {e}')
+
+
+def _enviar_correo_asignacion(req, es_reasignacion=False):
+    """
+    Notifica al técnico que se le asignó (o reasignó) un requerimiento.
+    Llamada por Signals.py::_notificar_asignacion.
+    """
+    if not req.IdUsuarioAsig:
+        return
+
+    try:
+        tecnico = Usuario.objects.using('requerimientos').get(IdUsuario=req.IdUsuarioAsig)
+    except Usuario.DoesNotExist:
+        logging.getLogger(__name__).warning(
+            f'[CORREO ASIGNACION] Usuario IdUsuario={req.IdUsuarioAsig} no existe (Requerimiento {req.codigo()}).'
+        )
+        return
+
+    if not tecnico.Email:
+        logging.getLogger(__name__).warning(
+            f'[CORREO ASIGNACION] Técnico {tecnico.NombreCompleto} (IdUsuario={tecnico.IdUsuario}) no tiene Email.'
+        )
+        return
+
+    hilo = threading.Thread(
+        target=_enviar_correo_asignacion_smtp,
+        args=(tecnico.Email, tecnico.NombreCompleto or '', req.codigo(),
+              req.NombreUsuario or '', req.Requerimiento or '', es_reasignacion),
+        daemon=True,
+    )
+    hilo.start()
+
+
+def _enviar_correo_asignacion_smtp(destinatario, nombre_tecnico, codigo, solicitante, descripcion, es_reasignacion):
+    remitente = settings.EMAIL_HOST_USER
+    password  = settings.EMAIL_HOST_PASSWORD
+    host      = settings.EMAIL_HOST
+    port      = settings.EMAIL_PORT
+
+    titulo = 'Requerimiento reasignado' if es_reasignacion else 'Nuevo requerimiento asignado'
+
+    msg = MIMEMultipart('mixed')
+    msg['Subject'] = f'{titulo} — {codigo}'
+    msg['From']    = remitente
+    msg['To']      = destinatario
+
+    cuerpo_html = f"""
+    <html><body style="font-family:Arial,sans-serif;font-size:14px;color:#222;line-height:1.6">
+      <div style="max-width:600px;margin:0 auto;border:1px solid #e5e7eb;border-radius:8px;overflow:hidden">
+        <div style="background:#355EAB;padding:24px 30px">
+          <h2 style="margin:0;color:#fff;font-size:18px">{titulo}</h2>
+        </div>
+        <div style="padding:30px">
+          <p>Hola <strong>{nombre_tecnico}</strong>,</p>
+          <p>Se te {'reasignó' if es_reasignacion else 'asignó'} el requerimiento <strong>{codigo}</strong>.</p>
+          <div style="background:#f0f4ff;border-left:4px solid #355EAB;padding:14px 18px;margin:20px 0;border-radius:0 6px 6px 0">
+            <strong>Solicitante:</strong> {solicitante}<br>
+            <strong>Descripción:</strong> {descripcion}
+          </div>
+          <p>Por favor revísalo y dale seguimiento.</p>
+          <p>Gracias,<br><strong>Área de Tecnología e Informática</strong></p>
+        </div>
+      </div>
+    </body></html>
+    """
+    parte_alternativa = MIMEMultipart('alternative')
+    parte_alternativa.attach(MIMEText(cuerpo_html, 'html', 'utf-8'))
+    msg.attach(parte_alternativa)
+
+    try:
+        with smtplib.SMTP(host, port, timeout=15) as servidor:
+            servidor.ehlo()
+            servidor.starttls()
+            servidor.ehlo()
+            servidor.login(remitente, password)
+            servidor.sendmail(remitente, destinatario, msg.as_bytes())
+    except Exception as e:
+        logging.getLogger(__name__).error(f'[CORREO ASIGNACION] Error enviando a {destinatario}: {e}')
+
 
 @login_required(login_url='login')
 @require_http_methods(['POST'])
@@ -2605,7 +2751,11 @@ def api_mis_req_tic(request):
             'estado':             ESTADOS.get(r.IdEstado, '—'),
             'estado_id':          r.IdEstado or 0,
             'prioridad':          PRIORIDADES.get(r.IdPrioridad, '—'),
-            'fecha':              str(r.Fecha) if r.Fecha else '',
+            'asignado':           r.NombreUsuariAsig or '',
+            'fecha':              _fmt_fecha_hora(r.Fecha)['fecha'],
+            'hora':               _fmt_fecha_hora(r.Fecha)['hora'],
+            'vencimiento':        _fmt_fecha_hora(r.FechaEstiSoluci)['fecha'],
+            'hora_vencimiento':   _fmt_fecha_hora(r.FechaEstiSoluci)['hora'],'fecha':              str(r.Fecha) if r.Fecha else '',
             'vencimiento':        str(r.FechaEstiSoluci) if r.FechaEstiSoluci else '',
             'plan_accion':        r.PlanAccion or '',
             'solucion':           r.Solucion or '',
@@ -2725,7 +2875,7 @@ def api_todos_req_tic(request):
             'id':                 r.Codigo,
             'codigo':             r.codigo(),
             'descripcion':        r.Requerimiento or '',
-            'fecha':              str(r.Fecha) if r.Fecha else '',
+            'fecha':              _fmt_fecha_hora(r.Fecha)['fecha'],
             'solicitante':        r.NombreUsuario or '—',
             'documento':          r.CedulaUsuario or '',
             'correo':             r.Email or '',
@@ -2735,7 +2885,9 @@ def api_todos_req_tic(request):
             'categoria':          CATEGORIAS.get(r.IdCategoria, '—'),
             'subcategoria':       SUBCATEGORIAS.get(r.IdSubCategoria, '—'),
             'prioridad':          PRIORIDADES.get(r.IdPrioridad, '—'),
-            'fecha_vencimiento':  str(r.FechaEstiSoluci) if r.FechaEstiSoluci else '',
+            'hora':               _fmt_fecha_hora(r.Fecha)['hora'],
+            'fecha_vencimiento':  _fmt_fecha_hora(r.FechaEstiSoluci)['fecha'],
+            'hora_vencimiento':   _fmt_fecha_hora(r.FechaEstiSoluci)['hora'],
             'asignado':           r.NombreUsuariAsig or '',
             'estado':             ESTADOS.get(r.IdEstado, '—'),
             'clasificacion':      CLASIFICAC.get(r.Clasificacion, 'No hay Clasificación'),
@@ -2760,6 +2912,16 @@ def api_colaboradores_ti(request):
     return _json_ok(data)
 
 
+
+def _fmt_fecha_hora(valor):
+    """Formatea date/datetime a 'DD/MM/YYYY' y hora 'HH:MM AM/PM' por separado."""
+    if not valor:
+        return {'fecha': '', 'hora': ''}
+    if hasattr(valor, 'hour'):  # es datetime, no solo date
+        return {'fecha': valor.strftime('%d/%m/%Y'), 'hora': valor.strftime('%I:%M %p')}
+    return {'fecha': valor.strftime('%d/%m/%Y'), 'hora': ''}
+
+
 @login_required(login_url='login')
 @require_http_methods(['GET'])
 def api_historial_req_tic(request):
@@ -2781,14 +2943,16 @@ def api_historial_req_tic(request):
         data.append({
             'id':                  r.Codigo,
             'consecutivo':         r.codigo(),
-            'fecha_requerimiento': str(r.Fecha) if r.Fecha else '',
+            'fecha_requerimiento': _fmt_fecha_hora(r.Fecha)['fecha'],
             'remitente':           r.NombreUsuario or '—',
             'descripcion':         r.Requerimiento or '',
             'prioridad':           PRIORIDADES.get(r.IdPrioridad, ''),
             'asignado':            r.NombreUsuariAsig or '',
             'clasificacion':       str(r.Clasificacion) if r.Clasificacion else '',
             'plan_accion':         r.PlanAccion or '',
-            'fecha_solucion':      str(r.FechaRealSoluci) if r.FechaRealSoluci else '',
+            'hora_requerimiento':  _fmt_fecha_hora(r.Fecha)['hora'],
+            'fecha_solucion':      _fmt_fecha_hora(r.FechaRealSoluci)['fecha'],
+            'hora_solucion':       _fmt_fecha_hora(r.FechaRealSoluci)['hora'],
             'solucion':            r.Solucion or '',
             'estado':              ESTADOS.get(estado_id, str(estado_id)),
         })
@@ -2820,7 +2984,7 @@ def api_subcategorias_req(request):
 
 
 # INDICADORES — Panel de requerimientos
-# ─────────────────────────────────────────────
+
 @login_required(login_url='login')
 @require_http_methods(['GET'])
 def api_indicadores_resumen(request):
