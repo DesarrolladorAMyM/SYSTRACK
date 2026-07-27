@@ -12,9 +12,16 @@ urlpatterns = [
     path('requerimiento/api/aprobar/<str:token>/',  views.aprobar_requerimiento,  name='req_aprobar'),
     path('requerimiento/api/rechazar/<str:token>/', views.rechazar_requerimiento, name='req_rechazar'),
 
+    path('requerimiento/api/notificaciones/',              views.mis_notificaciones,            name='req_notificaciones'),
+    path('requerimiento/api/notificaciones/<int:pk>/leida/', views.marcar_notificacion_leida,   name='req_notificacion_leida'),
+    path('requerimiento/api/notificaciones/leer-todas/',   views.marcar_notificaciones_leidas,  name='req_notificaciones_leer_todas'),
+    
+    path('requerimiento/seguimiento/',              views.seguimiento_publico,      name='req_seguimiento_publico'),
+    path('requerimiento/api/seguimiento-publico/',  views.api_seguimiento_publico,  name='req_api_seguimiento_publico'),
+
     path('requerimiento/api/usuarios/',                   views.api_usuarios_req,         name='req_usuarios'),
     path('api/tipos-usuario/',                            views.api_req_tipos_usuario,    name='api_req_tipos_usuario'),
     path('requerimiento/api/usuarios/crear/',             views.api_usuario_req_crear,    name='req_usuario_crear'),
     path('requerimiento/api/usuarios/<int:pk>/editar/',   views.api_usuario_req_editar,   name='req_usuario_editar'),
     path('requerimiento/api/usuarios/<int:pk>/eliminar/', views.api_usuario_req_eliminar, name='req_usuario_eliminar'),
-] 
+]

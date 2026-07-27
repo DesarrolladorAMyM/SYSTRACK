@@ -98,7 +98,40 @@
     display:flex;align-items:center;justify-content:center;cursor:pointer;transition:background .2s;position:relative;
   }
   .bell-btn:hover{background:rgba(255,255,255,0.26);}
-  .bell-btn::after{content:'';position:absolute;top:8px;right:9px;width:7px;height:7px;background:var(--warning);border-radius:50%;border:1.5px solid var(--primary);}
+  .bell-btn.bell-alert i{animation:bell-shake 2.2s ease-in-out infinite;}
+  .bell-badge{
+    display:none;position:absolute;top:-4px;right:-4px;min-width:18px;height:18px;padding:0 4px;
+    background:#dc2626;color:#fff;border:1.5px solid var(--primary);border-radius:10px;
+    font-size:10px;font-weight:800;line-height:15px;text-align:center;font-family:'DM Sans',sans-serif;
+  }
+  @keyframes bell-shake{
+    0%,85%,100%{transform:rotate(0);}
+    87%{transform:rotate(-12deg);} 89%{transform:rotate(10deg);} 91%{transform:rotate(-8deg);}
+    93%{transform:rotate(6deg);} 95%{transform:rotate(0);}
+  }
+  .bell-panel{
+    position:fixed;width:340px;max-height:420px;overflow-y:auto;
+    background:#fff;border-radius:var(--radius-lg);box-shadow:0 12px 32px rgba(0,0,0,.18);
+    border:1.5px solid var(--border);z-index:1000;
+  }
+  .bell-panel.hidden{display:none;}
+  .bell-panel-header{padding:14px 16px;font-weight:700;font-size:13.5px;color:var(--text-primary);border-bottom:1.5px solid var(--border);}
+  .bell-panel-empty{padding:24px 16px;text-align:center;color:var(--text-light);font-size:13px;}
+  .bell-item{display:flex;gap:10px;padding:12px 16px;border-bottom:1px solid var(--border);cursor:pointer;transition:background .15s;}
+  .bell-item:last-child{border-bottom:none;}
+  .bell-item:hover{background:rgba(27,70,152,0.05);}
+  .bell-item.unread{background:rgba(27,70,152,0.04);}
+  .bell-item-icon{width:32px;height:32px;border-radius:50%;display:flex;align-items:center;justify-content:center;flex-shrink:0;font-size:13px;color:#fff;}
+  .bell-item-icon.asignado{background:#2563eb;}
+  .bell-item-icon.aprobado{background:#16a34a;}
+  .bell-item-icon.rechazado{background:#dc2626;}
+  .bell-item-icon.solucionado{background:#f59e0b;}
+  .bell-item-icon.pendiente_calificar{background:#7c3aed;}
+  .bell-item-icon.vencido{background:#dc2626;}
+  .bell-item-body{flex:1;min-width:0;}
+  .bell-item-title{font-size:12.5px;font-weight:700;color:var(--text-primary);}
+  .bell-item-msg{font-size:12px;color:var(--text-secondary);margin-top:2px;line-height:1.4;}
+  .bell-item-time{font-size:10.5px;color:var(--text-light);margin-top:4px;}
 
   /* ===== LAYOUT ===== */
   .main-layout{display:grid;grid-template-columns:290px 1fr;gap:24px;}
@@ -874,9 +907,16 @@
           <span class="status-dot"></span>
           <span class="label">Sistema operativo</span>
         </div>
-        <button class="bell-btn" id="btnBell" title="Notificaciones">
-          <i class="fa-solid fa-bell"></i>
-        </button>
+        <div class="bell-wrap" style="position:relative;">
+          <button class="bell-btn" id="btnBell" title="Notificaciones">
+            <i class="fa-solid fa-bell"></i>
+            <span class="bell-badge" id="bellBadge"></span>
+          </button>
+          <div class="bell-panel hidden" id="bellPanel">
+            <div class="bell-panel-header">Notificaciones</div>
+            <div class="bell-panel-list" id="bellPanelList"></div>
+          </div>
+        </div>
       </div>
     </div>
   </header>
@@ -1233,6 +1273,8 @@
     } catch(e){
       console.error('Error cargando requerimientos:', e);
     } finally {
+      actualizarBell();
+      cargarNotificaciones(cedula);
       if (document.getElementById('screen-mis-req')?.classList.contains('active')) {
         renderMisReq();
       }
@@ -1247,6 +1289,154 @@
     const doc = getDocumento();
     return DATA.filter(r => r.estado !== 'Eliminado' && (!doc || String(r.documento) === String(doc)));
   }
+
+  // ===== Requerimientos ya solucionados (Cerrado) que el usuario aún
+  // no ha calificado. Mientras existan, se bloquea crear uno nuevo.
+  // Se basa en DATA (ya cargado) para que el bloqueo sea instantáneo,
+  // sin depender de otro fetch. =====
+  function requerimientosPendientesCalificar(){
+    return misRequerimientos().filter(r => r.estado === 'Cerrado');
+  }
+
+  // ===== Notificaciones reales (asignado/aprobado/rechazado/solucionado
+  // + vencidos por SLA), traídas de /api/notificaciones/. Alimentan tanto
+  // el número del badge como el panel desplegable. =====
+  let NOTIF = { notificaciones: [], vencidos: [], pendientes_calificar: [], total_alertas: 0 };
+  const ICONOS_NOTIF = {
+    asignado:  'fa-user-gear', aprobado: 'fa-check', rechazado: 'fa-xmark',
+    solucionado: 'fa-circle-check', pendiente_calificar: 'fa-star', vencido: 'fa-clock',
+  };
+
+  async function cargarNotificaciones(cedula){
+    if(!cedula) return;
+    try {
+      const r    = await fetch('/SYSTRACK/requerimiento/api/notificaciones/?cedula=' + encodeURIComponent(cedula));
+      const resp = await r.json();
+      if(resp.ok){
+        NOTIF = resp;
+      }
+    } catch(e){
+      console.error('Error cargando notificaciones:', e);
+    } finally {
+      actualizarBell();
+    }
+  }
+
+  function actualizarBell(){
+    const btnBell = document.getElementById('btnBell');
+    const badge   = document.getElementById('bellBadge');
+    if(!btnBell || !badge) return;
+    // El badge combina: notificaciones reales sin leer + vencidos + pendientes por calificar.
+    // requerimientosPendientesCalificar() (DATA local) manda sobre pendientes_calificar del
+    // backend por si el usuario acaba de calificar y el fetch de /notificaciones/ aún no llega.
+    const noLeidas   = NOTIF.notificaciones.filter(n => !n.leida).length;
+    const pendientes = requerimientosPendientesCalificar().length;
+    const vencidos    = NOTIF.vencidos.length;
+    const total = noLeidas + pendientes + vencidos;
+    if(total > 0){
+      badge.textContent = total > 9 ? '9+' : String(total);
+      badge.style.display = 'flex';
+      btnBell.classList.add('bell-alert');
+    } else {
+      badge.style.display = 'none';
+      btnBell.classList.remove('bell-alert');
+    }
+  }
+
+  function renderBellPanel(){
+    const list = document.getElementById('bellPanelList');
+    const items = [];
+
+    requerimientosPendientesCalificar().forEach(r => items.push({
+      tipo: 'pendiente_calificar', codigo: r.codigo, titulo: `${r.codigo} pendiente por calificar`,
+      mensaje: 'Ya fue solucionado. Califica la atención recibida.', fecha: r.fecha_solucion || '', leida: true,
+    }));
+    NOTIF.vencidos.forEach(v => items.push({
+      tipo: 'vencido', codigo: v.codigo, titulo: `${v.codigo} está vencido`,
+      mensaje: `Debió resolverse antes del ${v.fecha_estimada}.`, fecha: v.fecha_estimada, leida: true,
+    }));
+    NOTIF.notificaciones.forEach(n => items.push({
+      tipo: n.tipo, codigo: n.codigo, titulo: n.titulo, mensaje: n.mensaje, fecha: n.fecha, leida: n.leida, id: n.id,
+    }));
+
+    if(items.length === 0){
+      list.innerHTML = '<div class="bell-panel-empty">No tienes notificaciones nuevas.</div>';
+      return;
+    }
+
+    list.innerHTML = items.map(it => `
+      <div class="bell-item ${it.leida ? '' : 'unread'}" data-codigo="${it.codigo || ''}">
+        <div class="bell-item-icon ${it.tipo}"><i class="fa-solid ${ICONOS_NOTIF[it.tipo] || 'fa-bell'}"></i></div>
+        <div class="bell-item-body">
+          <div class="bell-item-title">${it.titulo}</div>
+          <div class="bell-item-msg">${it.mensaje}</div>
+          ${it.fecha ? `<div class="bell-item-time">${it.fecha}</div>` : ''}
+        </div>
+      </div>
+    `).join('');
+
+    list.querySelectorAll('.bell-item').forEach(el => {
+      el.addEventListener('click', () => {
+        const codigo = el.dataset.codigo;
+        cerrarBellPanel();
+        if(!codigo) return;
+        const enSolucionados = SOL_ESTADOS.includes(
+          (misRequerimientos().find(r => r.codigo === codigo) || {}).estado
+        );
+        irAVista('mis-req');
+        tab = enSolucionados ? 'solucionados' : 'pendientes'; page = 1;
+        document.querySelectorAll('.req-tab').forEach(x => x.classList.toggle('active', x.dataset.tab === tab));
+        renderMisReq();
+        setTimeout(() => abrirTripModal(codigo), 150);
+      });
+    });
+  }
+
+  function abrirBellPanel(){
+    const btn   = document.getElementById('btnBell');
+    const panel = document.getElementById('bellPanel');
+    const rect  = btn.getBoundingClientRect();
+    panel.style.top   = (rect.bottom + 10) + 'px';
+    panel.style.right = (window.innerWidth - rect.right) + 'px';
+    panel.classList.remove('hidden');
+    renderBellPanel();
+    // Marcar como leídas las notificaciones reales (no los pendientes/vencidos,
+    // que solo desaparecen cuando el requerimiento deja de estarlo).
+    const doc = getDocumento();
+    if(doc && NOTIF.notificaciones.some(n => !n.leida)){
+      fetch('/SYSTRACK/requerimiento/api/notificaciones/leer-todas/', {
+        method: 'POST', headers: {'Content-Type': 'application/json'},
+        body: JSON.stringify({ cedula: doc })
+      }).then(() => {
+        NOTIF.notificaciones.forEach(n => n.leida = true);
+        actualizarBell();
+      }).catch(() => {});
+    }
+  }
+
+  function cerrarBellPanel(){
+    document.getElementById('bellPanel').classList.add('hidden');
+  }
+
+  window.addEventListener('resize', () => {
+    const panel = document.getElementById('bellPanel');
+    if(!panel.classList.contains('hidden')) abrirBellPanel();
+  });
+
+  function irASolucionadosPendientes(){
+    irAVista('mis-req');
+    tab = 'solucionados'; page = 1;
+    document.querySelectorAll('.req-tab').forEach(x => x.classList.toggle('active', x.dataset.tab === 'solucionados'));
+    renderMisReq();
+  }
+
+  // Refresco automático: cada 2 minutos y al volver a la pestaña, por si
+  // algo cambió (asignación, solución, aprobación) mientras el usuario
+  // tenía el portal abierto sin navegar.
+  setInterval(() => { const d = getDocumento(); if(d) cargarNotificaciones(d); }, 120000);
+  document.addEventListener('visibilitychange', () => {
+    if(document.visibilityState === 'visible'){ const d = getDocumento(); if(d) cargarNotificaciones(d); }
+  });
 
   function filtered(){
     return misRequerimientos().filter(r => {
@@ -1339,6 +1529,22 @@
   const VISTAS_QUE_PIDEN_DOC = ['mis-req','agregar','seguimiento'];
 
   function irAVista(nombre){
+    if(nombre === 'agregar'){
+      const pendientes = requerimientosPendientesCalificar();
+      if(pendientes.length > 0){
+        const lista = pendientes.map(r => r.codigo).join(', ');
+        showNotif(
+          'Tienes requerimientos pendientes por calificar',
+          (pendientes.length === 1
+            ? `El requerimiento ${lista} ya fue solucionado y está pendiente por calificar.`
+            : `Los requerimientos ${lista} ya fueron solucionados y están pendientes por calificar.`)
+          + ' Por favor califícalos antes de crear un nuevo requerimiento.',
+          'error', 6000
+        );
+        irASolucionadosPendientes();
+        return;
+      }
+    }
     document.querySelectorAll('.nav-btn').forEach(b => b.classList.toggle('active', b.dataset.screen===nombre));
     document.querySelectorAll('.screen').forEach(s => s.classList.remove('active'));
     document.getElementById('screen-' + nombre).classList.add('active');
@@ -1359,8 +1565,17 @@
     });
   });
 
-  document.getElementById('btnBell').addEventListener('click', () => {
-    showNotif('Notificaciones', 'No tienes notificaciones nuevas.', 'success');
+  document.getElementById('btnBell').addEventListener('click', (e) => {
+    e.stopPropagation();
+    const panel = document.getElementById('bellPanel');
+    const abrir = () => panel.classList.contains('hidden') ? abrirBellPanel() : cerrarBellPanel();
+    if(!getDocumento()){ pedirDocumento(abrir); } else { abrir(); }
+  });
+  document.addEventListener('click', (e) => {
+    const panel = document.getElementById('bellPanel');
+    if(!panel.classList.contains('hidden') && !panel.contains(e.target) && e.target.id !== 'btnBell'){
+      cerrarBellPanel();
+    }
   });
 
   document.getElementById('btnContact').addEventListener('click', () => {
@@ -1557,11 +1772,12 @@
 
     const tripSteps = buildTripSteps(r);
     const idxActual = tripSteps.findIndex(s => s.estado === r.estado);
+    const esUltimoPaso = idxActual === tripSteps.length - 1;
     const stepsWrap = document.getElementById('tripSteps');
     stepsWrap.innerHTML = tripSteps.map((s, i) => {
       let cls = '';
       if(i < idxActual) cls = 'done';
-      else if(i === idxActual) cls = 'current';
+      else if(i === idxActual) cls = esUltimoPaso ? 'done' : 'current';
       return `
         <button type="button" class="trip-step ${cls}" data-i="${i}">
           <div class="trip-step-icon"><i class="fa-solid ${s.icon}"></i></div>
@@ -1749,20 +1965,24 @@
     .then(r => r.json())
     .then(resp => {
       if(resp.ok){
-        ratingLocked = true;
-        document.getElementById('segRatingStars').classList.add('readonly');
-        btn.style.display = 'none';
-        document.getElementById('segRatingSub').textContent = 'Ya calificaste este requerimiento';
-        document.getElementById('segRatingCommentWrap').style.display = 'none';
-        if(comentarioTexto){
-          const cr = document.getElementById('segRatingReadonlyComment');
-          cr.style.display = 'block';
-          cr.textContent = '"' + comentarioTexto + '"';
-        }
-        // Actualiza en memoria para que quede bloqueado si reabren el modal sin recargar
+        // Actualiza en memoria para que el resto de la app (badges, filtros,
+        // reapertura del modal, etc.) quede coherente con lo que ya se guardó.
         const reg = misRequerimientos().find(x => String(x.codigo) === String(codigoActual));
-        if(reg){ reg.estado = 'Calificado'; reg.calificacion = ratingSeleccionada; }
+        if(reg){ reg.estado = 'Calificado'; reg.calificacion = ratingSeleccionada; reg.comentario_evaluacion = comentarioTexto || ''; }
+        actualizarBell();
+
         showNotif('¡Gracias!', 'Tu calificación fue registrada.', 'success');
+
+        // Repinta el modal completo (badge "Cerrado" -> "Calificado", línea de
+        // tiempo con el chulito en el último paso, barra de progreso) sin
+        // necesidad de cerrar y volver a abrir.
+        abrirTripModal(codigoActual);
+
+        // Si la tabla de "Solucionados" está visible detrás del modal, también
+        // se refresca para que el estado quede consistente ahí.
+        if (document.getElementById('screen-mis-req')?.classList.contains('active')) {
+          renderMisReq();
+        }
       } else {
         btn.disabled = false;
         btn.textContent = 'ENVIAR';
@@ -1943,6 +2163,10 @@
           formAgregarReq.reset();
           document.getElementById('fileInputName').textContent = 'Ningún archivo seleccionado';
           await cargarMisRequerimientos(getDocumento());
+        } else if(resp.codigo_error === 'PENDIENTE_CALIFICACION'){
+          showNotif('Calificación pendiente', resp.error || 'Tienes requerimientos pendientes por calificar.', 'error', 6000);
+          await cargarMisRequerimientos(getDocumento());
+          irASolucionadosPendientes();
         } else {
           showNotif('No se pudo crear', resp.error || 'Error al crear el requerimiento.', 'error');
         }

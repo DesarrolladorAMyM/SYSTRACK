@@ -1,4 +1,4 @@
-import json, uuid, unicodedata, datetime, logging
+import json, uuid, unicodedata, datetime, logging, hashlib
 from django.shortcuts import render
 from django.http import JsonResponse
 from django.views.decorators.http import require_POST, require_GET
@@ -10,7 +10,8 @@ from django.contrib.auth.decorators import login_required
 from django.contrib.auth.hashers import make_password
 from .models import (
     Usuario, Requerimiento, Categoria, SubCategoria, CentroOperacion,
-    Cargo, TipoUsuario, Area, Prioridad, Clasificacion, EvaluacionReq, TipoRequerimiento
+    Cargo, TipoUsuario, Area, Prioridad, Clasificacion, EvaluacionReq, TipoRequerimiento,
+    Notificacion,
 )
 
 DB = 'requerimientos'
@@ -27,6 +28,17 @@ CATEGORIA_SOPORTE_EXTERNO = 'soporte tecnico externo'
 
 # Subcategorías (dentro de esa categoría) que exigen aprobación del jefe de área.
 SUBCATEGORIAS_REQUIEREN_APROBACION = ['compras']
+
+
+def _token_seguimiento(req):
+    """
+    Token público de solo-lectura para el link de seguimiento del correo.
+    No se guarda en BD: se calcula con el código + email + SECRET_KEY,
+    así que solo es válido para ESE requerimiento y no se puede adivinar
+    ni reutilizar en otro código.
+    """
+    base = f"{req.codigo()}-{req.Email or ''}-{settings.SECRET_KEY}"
+    return hashlib.sha256(base.encode()).hexdigest()[:24]
 
 
 def _normaliza(txt):
@@ -191,7 +203,7 @@ def mis_requerimientos(request):
             'solucion':        r.Solucion or '',
             'fecha_solucion':  str(r.FechaRealSoluci) if r.FechaRealSoluci else '',
             'clasificacion':   clasif_map.get(r.Clasificacion, ''),
-            'evaluacion':      evaluacion_map.get(r.Codigo, None),
+            'calificacion':    evaluacion_map.get(r.Codigo, None),
             'estado':          ESTADOS.get(r.IdEstado, str(r.IdEstado or '')),
             'requiere_aprobacion': bool(r.IdJefeArea),
             'fecha_aprobacion':    str(r.FechaAprobacion) if r.FechaAprobacion else '',
@@ -215,7 +227,29 @@ def crear_requerimiento(request):
         except Usuario.DoesNotExist:
             return JsonResponse({'ok': False, 'error': 'Cédula no registrada.'}, status=403)
 
+        # ── Bloqueo: no permitir crear si tiene requerimientos ya
+        # solucionados (Cerrado, IdEstado=4) pendientes de calificar ──────
+        pendientes_calificar = list(
+            Requerimiento.objects
+            .using(DB)
+            .filter(CedulaUsuario=cedula, IdEstado=4)
+            .order_by('-FechaRealSoluci')
+        )
+        if pendientes_calificar:
+            codigos = [r.codigo() for r in pendientes_calificar]
+            if len(codigos) == 1:
+                detalle = f'tienes el requerimiento {codigos[0]} pendiente por calificar'
+            else:
+                detalle = f'tienes {len(codigos)} requerimientos pendientes por calificar ({", ".join(codigos)})'
+            return JsonResponse({
+                'ok': False,
+                'codigo_error': 'PENDIENTE_CALIFICACION',
+                'pendientes': codigos,
+                'error': f'Antes de crear un nuevo requerimiento, por favor califica el servicio recibido: {detalle}.'
+            }, status=409)
+
         id_cat  = data.get('id_categoria')
+
         id_sub  = data.get('id_subcategoria')
         cat_txt = sub_txt = prioridad = ''
         tiempo_dias_cat = tiempo_dias_sub = None
@@ -382,7 +416,8 @@ def _enviar_correo_confirmacion(request, req, pendiente=False):
         )
         return
     base_url = request.build_absolute_uri('/').rstrip('/')
-    link_seguimiento = f"{base_url}{PREFIJO_APP}/requerimiento/?seg={req.codigo()}"
+    link_seguimiento = (f"{base_url}{PREFIJO_APP}/requerimiento/seguimiento/"
+                         f"?codigo={req.codigo()}&t={_token_seguimiento(req)}")
 
     asunto = f"Confirmación de tu requerimiento — {req.codigo()}"
     cuerpo_html = render_to_string('requerimientos/correo_confirmacion.html', {
@@ -407,6 +442,84 @@ def _enviar_correo_confirmacion(request, req, pendiente=False):
     except Exception:
         logger.exception(
             "FALLÓ el envío del correo de confirmación a %s para el requerimiento %s",
+            req.Email, req.codigo()
+        )
+
+
+def _enviar_correo_aprobado(request, req):
+    """Avisa al solicitante que su jefe de área APROBÓ el requerimiento."""
+    if not req.Email:
+        logger.warning(
+            "No se envió correo de aprobado: Requerimiento %s no tiene Email.",
+            req.codigo()
+        )
+        return
+    base_url = request.build_absolute_uri('/').rstrip('/')
+    link_seguimiento = (f"{base_url}{PREFIJO_APP}/requerimiento/seguimiento/"
+                         f"?codigo={req.codigo()}&t={_token_seguimiento(req)}")
+
+    asunto = f"Tu requerimiento fue aprobado — {req.codigo()}"
+    cuerpo_html = render_to_string('requerimientos/correo_aprobado.html', {
+        'req': req, 'link_seguimiento': link_seguimiento,
+    })
+
+    try:
+        enviados = send_mail(
+            subject=asunto,
+            message=(f"Tu jefe de área aprobó el requerimiento {req.codigo()}. "
+                      f"Ya quedó habilitado para que el área de Tecnología lo gestione. "
+                      f"Seguimiento: {link_seguimiento}"),
+            from_email=settings.DEFAULT_FROM_EMAIL,
+            recipient_list=[req.Email],
+            html_message=cuerpo_html,
+            fail_silently=False,
+        )
+        logger.info(
+            "Correo de aprobado -> %s (Requerimiento %s): send_mail devolvió %s",
+            req.Email, req.codigo(), enviados
+        )
+    except Exception:
+        logger.exception(
+            "FALLÓ el envío del correo de aprobado a %s para el requerimiento %s",
+            req.Email, req.codigo()
+        )
+
+
+def _enviar_correo_rechazo(request, req):
+    """Avisa al solicitante que su jefe de área RECHAZÓ el requerimiento."""
+    if not req.Email:
+        logger.warning(
+            "No se envió correo de rechazo: Requerimiento %s no tiene Email.",
+            req.codigo()
+        )
+        return
+    base_url = request.build_absolute_uri('/').rstrip('/')
+    link_seguimiento = (f"{base_url}{PREFIJO_APP}/requerimiento/seguimiento/"
+                         f"?codigo={req.codigo()}&t={_token_seguimiento(req)}")
+
+    asunto = f"Tu requerimiento fue rechazado — {req.codigo()}"
+    cuerpo_html = render_to_string('requerimientos/correo_rechazo.html', {
+        'req': req, 'link_seguimiento': link_seguimiento,
+    })
+
+    try:
+        enviados = send_mail(
+            subject=asunto,
+            message=(f"Tu jefe de área rechazó el requerimiento {req.codigo()}. "
+                      f"Comunícate con tu jefe de área para más información. "
+                      f"Seguimiento: {link_seguimiento}"),
+            from_email=settings.DEFAULT_FROM_EMAIL,
+            recipient_list=[req.Email],
+            html_message=cuerpo_html,
+            fail_silently=False,
+        )
+        logger.info(
+            "Correo de rechazo -> %s (Requerimiento %s): send_mail devolvió %s",
+            req.Email, req.codigo(), enviados
+        )
+    except Exception:
+        logger.exception(
+            "FALLÓ el envío del correo de rechazo a %s para el requerimiento %s",
             req.Email, req.codigo()
         )
 
@@ -511,6 +624,18 @@ def _enviar_correo_asignacion(req, es_reasignacion=False):
         )
 
 
+def _crear_notificacion_portal(req, tipo, titulo, mensaje):
+    """Igual que Signals._crear_notificacion, pero para los eventos que se
+    disparan desde una vista (aprobar/rechazar) en vez de un post_save."""
+    try:
+        Notificacion.objects.using(DB).create(
+            CedulaUsuario=req.CedulaUsuario, Tipo=tipo, Codigo=req.Codigo,
+            Titulo=titulo, Mensaje=mensaje,
+        )
+    except Exception:
+        logger.exception("No se pudo crear la notificación '%s' para %s", tipo, req.codigo())
+
+
 @require_GET
 def aprobar_requerimiento(request, token):
     try:
@@ -522,6 +647,11 @@ def aprobar_requerimiento(request, token):
     req.FechaAprobacion = datetime.datetime.now()
     req.TokenAprobacion = None
     req.save(using=DB)
+    _enviar_correo_aprobado(request, req)
+    _crear_notificacion_portal(
+        req, 'aprobado', f'{req.codigo()} fue aprobado',
+        'Tu jefe de área lo aprobó. Ya quedó habilitado para que Tecnología lo gestione.'
+    )
     return render(request, 'requerimientos/aprobacion_resultado.html', {'accion': 'aprobado', 'req': req})
 
 
@@ -536,6 +666,11 @@ def rechazar_requerimiento(request, token):
     req.FechaAprobacion = datetime.datetime.now()
     req.TokenAprobacion = None
     req.save(using=DB)
+    _enviar_correo_rechazo(request, req)
+    _crear_notificacion_portal(
+        req, 'rechazado', f'{req.codigo()} fue rechazado',
+        'Tu jefe de área lo rechazó. Comunícate con él para más información.'
+    )
     return render(request, 'requerimientos/aprobacion_resultado.html', {'accion': 'rechazado', 'req': req})
 
 
@@ -543,9 +678,10 @@ def rechazar_requerimiento(request, token):
 @require_POST
 def calificar_requerimiento(request):
     try:
-        data   = json.loads(request.body)
-        codigo = str(data.get('codigo', '')).strip()
-        cal    = int(data.get('calificacion', 0))
+        data       = json.loads(request.body)
+        codigo     = str(data.get('codigo', '')).strip()
+        cal        = int(data.get('calificacion', 0))
+        comentario = str(data.get('comentario', '')).strip()
 
         if not (1 <= cal <= 5):
             return JsonResponse({'ok': False, 'error': 'Calificación debe ser 1-5.'})
@@ -557,11 +693,15 @@ def calificar_requerimiento(request):
             return JsonResponse({'ok': False, 'error': 'Solo puedes calificar requerimientos cerrados.'})
 
         ev, created = EvaluacionReq.objects.using(DB).get_or_create(
-            IdReq=pk, defaults={'Evaluacion': cal}
+            IdReq=pk, defaults={'Evaluacion': cal, 'Comentario': comentario}
         )
         if not created:
             ev.Evaluacion = cal
+            ev.Comentario = comentario
             ev.save(using=DB)
+
+        req.IdEstado = 6  # Calificado
+        req.save(using=DB)
 
         return JsonResponse({'ok': True})
 
@@ -690,3 +830,163 @@ def api_req_tipos_usuario(request):
     tipos = TipoUsuario.objects.using(DB).order_by('Descripcion')
     data = [{'id': t.idTipoUsuario, 'nombre': t.Descripcion} for t in tipos]
     return JsonResponse({'ok': True, 'results': data})
+
+# ────────────────────────── SEGUIMIENTO PÚBLICO (link del correo) ──────────────────────────
+
+ESTADOS_PUBLICO = {
+    1: 'Abierto', 2: 'Asignado', 3: 'En Proceso', 4: 'Cerrado',
+    5: 'Eliminado', 6: 'Calificado', 7: 'Pendiente Aprobación', 8: 'Rechazado',
+}
+
+
+def seguimiento_publico(request):
+    """
+    Página pública (sin login, sin cédula) que abre desde el link de los
+    correos de confirmación / aprobado / rechazado.
+    Solo renderiza el cascarón; el contenido lo carga el JS con la API de abajo.
+    """
+    codigo = request.GET.get('codigo', '').strip()
+    token  = request.GET.get('t', '').strip()
+    return render(request, 'requerimientos/seguimiento_publico.html', {
+        'codigo': codigo,
+        'token': token,
+    })
+
+
+@require_GET
+def api_seguimiento_publico(request):
+    """
+    Devuelve el detalle de UN requerimiento, sin cédula, validando el token
+    calculado en _token_seguimiento. Mismo shape de datos que usa el modal
+    en requerimientos.html (para reusar buildTripSteps/estBadge tal cual).
+    """
+    codigo = request.GET.get('codigo', '').strip()
+    token  = request.GET.get('t', '').strip()
+
+    if not codigo or not token:
+        return JsonResponse({'ok': False, 'error': 'Link inválido.'}, status=400)
+
+    try:
+        pk = int(codigo.replace('REQ-', '').lstrip('0') or '0')
+        req = Requerimiento.objects.using(DB).get(pk=pk)
+    except (Requerimiento.DoesNotExist, ValueError):
+        return JsonResponse({'ok': False, 'error': 'Requerimiento no encontrado.'}, status=404)
+
+    if token != _token_seguimiento(req):
+        return JsonResponse({'ok': False, 'error': 'Link inválido o vencido.'}, status=403)
+
+    categoria_txt = ''
+    if req.IdCategoria:
+        try:
+            categoria_txt = Categoria.objects.using(DB).get(IdCategoria=req.IdCategoria).Descripcion
+        except Categoria.DoesNotExist:
+            pass
+
+    evaluacion = EvaluacionReq.objects.using(DB).filter(IdReq=req.Codigo).first()
+
+    data = {
+        'codigo':              req.codigo(),
+        'fecha_creacion':      str(req.Fecha) if req.Fecha else '',
+        'requerimiento':       req.Requerimiento or '',
+        'area':                categoria_txt,
+        'responsable':         req.NombreUsuariAsig or '',
+        'plan_accion':         req.PlanAccion or '',
+        'solucion':            req.Solucion or '',
+        'fecha_solucion':      str(req.FechaRealSoluci) if req.FechaRealSoluci else '',
+        'estado':              ESTADOS_PUBLICO.get(req.IdEstado, str(req.IdEstado or '')),
+        'requiere_aprobacion': bool(req.IdJefeArea),
+        'fecha_aprobacion':    str(req.FechaAprobacion) if req.FechaAprobacion else '',
+        'calificacion':        evaluacion.Evaluacion if evaluacion else None,
+        'comentario_evaluacion': evaluacion.Comentario if evaluacion else '',
+    }
+    return JsonResponse({'ok': True, 'data': data})
+
+
+# ────────────────────────── NOTIFICACIONES (campanita) ──────────────────────────
+
+# Estados en los que un requerimiento sigue "vivo" y por lo tanto puede
+# considerarse vencido si ya pasó su FechaEstiSoluci.
+ESTADOS_VENCIMIENTO_ACTIVO = [1, 2, 3, 7]  # Abierto, Asignado, En Proceso, Pendiente Aprobación
+
+
+@require_GET
+def mis_notificaciones(request):
+    """
+    Todo lo que debe verse en la campanita para un usuario, en un solo viaje:
+      - notificaciones reales guardadas en BD (asignado/aprobado/rechazado/solucionado)
+      - requerimientos solucionados sin calificar (estos además bloquean crear uno nuevo)
+      - requerimientos vencidos por SLA (ya pasó FechaEstiSoluci y sigue abierto)
+    """
+    cedula = request.GET.get('cedula', '').strip()
+    if not cedula:
+        return JsonResponse({'ok': False, 'error': 'Cédula requerida.'}, status=400)
+
+    notifs = list(
+        Notificacion.objects
+        .using(DB)
+        .filter(CedulaUsuario=cedula)
+        .order_by('Leida', '-FechaCreacion')[:30]
+    )
+    data_notifs = [{
+        'id':     n.IdNotificacion,
+        'tipo':   n.Tipo,
+        'codigo': f'REQ-{n.Codigo:04d}' if n.Codigo else None,
+        'titulo': n.Titulo,
+        'mensaje': n.Mensaje,
+        'leida':  n.Leida,
+        'fecha':  n.FechaCreacion.strftime('%Y-%m-%d %H:%M') if n.FechaCreacion else '',
+    } for n in notifs]
+
+    hoy = datetime.date.today()
+    vencidos = list(
+        Requerimiento.objects
+        .using(DB)
+        .filter(CedulaUsuario=cedula, IdEstado__in=ESTADOS_VENCIMIENTO_ACTIVO, FechaEstiSoluci__lt=hoy)
+    )
+    data_vencidos = [{'codigo': r.codigo(), 'fecha_estimada': str(r.FechaEstiSoluci)} for r in vencidos]
+
+    pendientes_calificar = list(
+        Requerimiento.objects.using(DB).filter(CedulaUsuario=cedula, IdEstado=4)
+    )
+    data_pendientes = [r.codigo() for r in pendientes_calificar]
+
+    no_leidas     = sum(1 for n in notifs if not n.Leida)
+    total_alertas = no_leidas + len(data_vencidos) + len(data_pendientes)
+
+    return JsonResponse({
+        'ok': True,
+        'notificaciones':       data_notifs,
+        'vencidos':             data_vencidos,
+        'pendientes_calificar': data_pendientes,
+        'total_alertas':        total_alertas,
+    })
+
+
+@csrf_exempt
+@require_POST
+def marcar_notificacion_leida(request, pk):
+    try:
+        n = Notificacion.objects.using(DB).get(IdNotificacion=pk)
+        n.Leida = True
+        n.save(using=DB)
+        return JsonResponse({'ok': True})
+    except Notificacion.DoesNotExist:
+        return JsonResponse({'ok': False, 'error': 'Notificación no encontrada.'}, status=404)
+    except Exception as e:
+        return JsonResponse({'ok': False, 'error': str(e)}, status=500)
+
+
+@csrf_exempt
+@require_POST
+def marcar_notificaciones_leidas(request):
+    """Marca como leídas TODAS las notificaciones de un usuario (se usa al
+    abrir el panel de la campanita)."""
+    try:
+        data   = json.loads(request.body)
+        cedula = str(data.get('cedula', '')).strip()
+        if not cedula:
+            return JsonResponse({'ok': False, 'error': 'Cédula requerida.'}, status=400)
+        Notificacion.objects.using(DB).filter(CedulaUsuario=cedula, Leida=False).update(Leida=True)
+        return JsonResponse({'ok': True})
+    except Exception as e:
+        return JsonResponse({'ok': False, 'error': str(e)}, status=500)

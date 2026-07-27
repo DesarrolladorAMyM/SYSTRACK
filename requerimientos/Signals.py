@@ -2,13 +2,31 @@ import logging
 from django.db.models.signals import pre_save, post_save
 from django.dispatch import receiver
 
-from .models import Requerimiento
+from .models import Requerimiento, Notificacion
 
 logger = logging.getLogger('requerimientos')
 
 DB = 'requerimientos'
 ESTADO_ASIGNADO = 2
 ESTADO_CERRADO  = 4
+
+
+def _crear_notificacion(req, tipo, titulo, mensaje):
+    """Inserta la fila en mv_Notificaciones. Nunca debe tumbar el flujo
+    principal (guardado del requerimiento / envío de correo) si falla."""
+    try:
+        Notificacion.objects.using(DB).create(
+            CedulaUsuario = req.CedulaUsuario,
+            Tipo          = tipo,
+            Codigo        = req.Codigo,
+            Titulo        = titulo,
+            Mensaje       = mensaje,
+        )
+    except Exception:
+        logger.exception(
+            "No se pudo crear la notificación '%s' para el requerimiento %s",
+            tipo, req.codigo()
+        )
 
 
 @receiver(pre_save, sender=Requerimiento)
@@ -33,7 +51,8 @@ def _guardar_estado_anterior(sender, instance, **kwargs):
 @receiver(post_save, sender=Requerimiento)
 def _notificar_solucion(sender, instance, created, **kwargs):
     """Si el requerimiento acaba de pasar a estado 4 (Cerrado), envía el correo
-    de solución. No dispara si ya nació en estado 4, ni si ya estaba en 4 antes."""
+    de solución y deja la notificación en el portal. No dispara si ya nació
+    en estado 4, ni si ya estaba en 4 antes."""
     if created:
         return
 
@@ -45,6 +64,11 @@ def _notificar_solucion(sender, instance, created, **kwargs):
             instance.codigo(), estado_anterior
         )
         _enviar_correo_solucion(instance)
+        _crear_notificacion(
+            instance, 'solucionado',
+            f'{instance.codigo()} fue solucionado',
+            'Ya está resuelto. Por favor califica la atención recibida.'
+        )
 
 
 @receiver(post_save, sender=Requerimiento)
@@ -53,7 +77,8 @@ def _notificar_asignacion(sender, instance, created, **kwargs):
     valor nuevo (asignación inicial o reasignación a otra persona). Se basa
     en el cambio del técnico, no del estado — así también cubre el caso de
     reasignar un requerimiento que ya estaba en estado Asignado (2 → 2) a
-    otra persona distinta."""
+    otra persona distinta. Además, avisa al SOLICITANTE en el portal de que
+    su requerimiento ya tiene alguien trabajándolo."""
     if created:
         return
 
@@ -69,3 +94,9 @@ def _notificar_asignacion(sender, instance, created, **kwargs):
             usuario_nuevo, usuario_anterior
         )
         _enviar_correo_asignacion(instance, es_reasignacion=es_reasignacion)
+        if not es_reasignacion:
+            _crear_notificacion(
+                instance, 'asignado',
+                f'{instance.codigo()} tiene técnico asignado',
+                f'{instance.NombreUsuariAsig or "Un técnico"} está trabajando en tu requerimiento.'
+            )

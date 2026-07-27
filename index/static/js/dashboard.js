@@ -3032,6 +3032,7 @@ function _reqEstadoBadge(e) {
     'EN PROCESO': 'req-estado-badge req-estado-proceso',
     'RESUELTO':   'req-estado-badge req-estado-resuelto',
     'CERRADO':    'req-estado-badge req-estado-cerrado',
+    'CALIFICADO': 'req-estado-badge req-estado-calificado',
   };
   const cls = m[(e || '').toUpperCase()] || 'req-estado-badge req-estado-pendiente';
   return `<span class="${cls}">${e || '—'}</span>`;
@@ -3147,8 +3148,9 @@ async function cargarRequerimientos() {
       id_usuario_asig:    r.id_usuario_asig,
     });
 
-    reqActivos  = lista.filter(r => r.estado_id !== 4).map(mapRow);
-    reqCerrados = lista.filter(r => r.estado_id === 4).map(mapRow);
+    const ESTADOS_CERRADOS = [4, 6]; // 4 = Cerrado, 6 = Calificado
+    reqActivos  = lista.filter(r => !ESTADOS_CERRADOS.includes(r.estado_id)).map(mapRow);
+    reqCerrados = lista.filter(r =>  ESTADOS_CERRADOS.includes(r.estado_id)).map(mapRow);
 
     renderReqActivos();
     renderReqCerrados();

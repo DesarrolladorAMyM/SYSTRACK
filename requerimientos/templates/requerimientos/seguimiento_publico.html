@@ -1,0 +1,331 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Seguimiento de tu requerimiento | AM&M Montacargas</title>
+
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=DM+Sans:wght@400;500;600;700;800&family=DM+Mono:wght@400;500&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.1/css/all.min.css">
+
+<style>
+  :root{
+    --primary:       #1B4698;
+    --primary-light: #375EAB;
+    --primary-dark:  #132f6b;
+    --gray-light:    #BEBFC1;
+    --danger:        #ef4444;
+    --success:       #22c55e;
+    --warning:       #f59e0b;
+    --text-primary:  #1e293b;
+    --text-secondary:#64748b;
+    --text-light:    #94a3b8;
+    --border:        #dde3ef;
+    --radius-sm:     8px;
+    --radius-md:     12px;
+    --radius-lg:     16px;
+    --radius-xl:     20px;
+  }
+  *{margin:0;padding:0;box-sizing:border-box;}
+  html{overflow-x:hidden;}
+  body{
+    font-family:'DM Sans',-apple-system,BlinkMacSystemFont,sans-serif;
+    background:linear-gradient(135deg,#1B4698 0%,#375EAB 60%,#4C4C4D 100%);
+    min-height:100vh;
+    display:flex;align-items:center;justify-content:center;
+    padding:20px;color:var(--text-primary);
+  }
+
+  .codigo-mono{font-family:'DM Mono',monospace;font-weight:600;font-size:13px;color:var(--primary);background:rgba(27,70,152,0.08);padding:5px 10px;border-radius:8px;}
+
+  .est-badge{display:inline-flex;align-items:center;gap:5px;padding:4px 10px;border-radius:20px;font-size:11px;font-weight:700;}
+  .est-abierto    {background:#fef3c7;color:#92400e;border:1px solid #fde68a;}
+  .est-asignado   {background:#dce9ff;color:#1B4698;border:1px solid #93c5fd;}
+  .est-en-proceso {background:#e0e7ff;color:#3730a3;border:1px solid #c7d2fe;}
+  .est-cerrado    {background:#d1fae5;color:#065f46;border:1px solid #6ee7b7;}
+  .est-pendiente-aprob{background:#fef3c7;color:#92400e;}
+  .est-rechazado  {background:#fee2e2;color:#991b1b;}
+  .ed{width:6px;height:6px;border-radius:50%;flex-shrink:0;}
+  .est-abierto .ed{background:#f59e0b;}.est-asignado .ed{background:#1B4698;}
+  .est-en-proceso .ed{background:#4338ca;}.est-cerrado .ed{background:#22c55e;}
+
+  /* ===== TARJETA (misma vista del modal, ahora como página) ===== */
+  .trip-modal-box{
+    background:linear-gradient(180deg,#ffffff 0%,#fbfcff 100%);
+    border-radius:24px;padding:0;max-width:540px;width:100%;
+    max-height:92vh;overflow-y:auto;
+    box-shadow:0 30px 70px rgba(19,47,107,0.35),0 0 0 1px rgba(27,70,152,0.06);
+    position:relative;display:flex;flex-direction:column;
+    animation:trip-modal-pop .45s cubic-bezier(.2,.9,.25,1.2);
+  }
+  .trip-modal-box > *:last-child{margin-bottom:26px;}
+  @keyframes trip-modal-pop{
+    0%{opacity:0;transform:scale(.88) translateY(18px);}
+    100%{opacity:1;transform:scale(1) translateY(0);}
+  }
+  .trip-modal-header{
+    display:flex;align-items:center;justify-content:space-between;gap:12px;flex-wrap:wrap;
+    padding:26px 30px 0;
+  }
+
+  .trip-summary-card{
+    display:flex;align-items:flex-start;gap:12px;
+    margin:16px 30px 0;padding:16px 18px;
+    background:linear-gradient(135deg,rgba(27,70,152,0.05) 0%,rgba(27,70,152,0.015) 100%);
+    border:1.5px solid var(--border);border-radius:var(--radius-lg);
+  }
+  .trip-summary-icon{
+    width:34px;height:34px;border-radius:10px;flex-shrink:0;
+    background:rgba(27,70,152,0.10);color:var(--primary);
+    display:flex;align-items:center;justify-content:center;font-size:14px;
+  }
+  .trip-summary-body{min-width:0;}
+  .trip-summary-label{
+    font-size:10.5px;font-weight:700;letter-spacing:.6px;color:var(--text-light);
+    text-transform:uppercase;margin-bottom:3px;
+  }
+  .trip-modal-desc{font-size:14px;color:var(--text-primary);line-height:1.55;font-weight:500;}
+
+  .trip-track{position:relative;padding:36px 30px 6px;}
+  .trip-line-bg{position:absolute;top:58px;left:30px;right:30px;height:4px;background:var(--border);border-radius:4px;z-index:1;}
+  .trip-line-fill{position:absolute;top:58px;left:30px;height:4px;width:0%;
+    background:linear-gradient(90deg,var(--primary) 0%,var(--primary-light) 100%);
+    border-radius:4px;z-index:2;transition:width .6s ease;}
+  .trip-steps{position:relative;z-index:3;display:flex;justify-content:space-between;}
+  .trip-step{
+    background:none;border:none;cursor:pointer;display:flex;flex-direction:column;align-items:center;gap:8px;
+    flex:1;min-width:0;opacity:0;transform:translateY(10px) scale(.9);transition:all .4s ease;
+  }
+  .trip-step.show{opacity:1;transform:translateY(0) scale(1);}
+  .trip-step-icon{
+    width:46px;height:46px;border-radius:50%;background:#fff;border:2.5px solid var(--border);
+    color:var(--text-light);display:flex;align-items:center;justify-content:center;font-size:16px;
+    transition:all .3s ease;position:relative;
+  }
+  .trip-step:hover .trip-step-icon{transform:scale(1.08);}
+  .trip-step.selected .trip-step-icon{box-shadow:0 0 0 4px rgba(27,70,152,0.18);}
+  .trip-step.done .trip-step-icon{background:var(--primary);border-color:var(--primary);color:#fff;}
+  .trip-step.done .trip-step-icon::after{
+    content:'';position:absolute;bottom:-2px;right:-2px;width:16px;height:16px;border-radius:50%;
+    background:var(--success);border:2px solid #fff;
+  }
+  @keyframes trip-check-pop{0%{transform:scale(0);}70%{transform:scale(1.3);}100%{transform:scale(1);}}
+  .trip-step.done .trip-step-icon i{animation:trip-check-pop .4s cubic-bezier(.34,1.56,.64,1);}
+  .trip-step.current .trip-step-icon{
+    background:linear-gradient(135deg,var(--primary) 0%,var(--primary-light) 100%);
+    border-color:var(--primary);color:#fff;box-shadow:0 0 0 6px rgba(27,70,152,0.14);
+  }
+  .trip-step-label{font-size:12px;font-weight:700;color:var(--text-secondary);text-align:center;}
+  .trip-step.done .trip-step-label,.trip-step.current .trip-step-label{color:var(--primary);}
+  .trip-step-time{font-size:10.5px;color:var(--text-light);text-align:center;}
+
+  .trip-step-detail{max-height:0;overflow:hidden;transition:max-height .3s ease;margin:0 30px;}
+  .trip-step-detail.show{max-height:300px;}
+  .trip-step-detail-clip{height:0;overflow:hidden;transition:height .3s ease;}
+  .trip-step-detail.show .trip-step-detail-clip{}
+  .trip-step-detail > .trip-step-detail-clip > .trip-step-detail-inner{
+    display:flex;gap:12px;padding:16px 0;opacity:1;transition:opacity .16s ease;
+  }
+  .trip-step-detail-inner.fading{opacity:0;}
+  .trip-step-detail-icon{
+    width:30px;height:30px;border-radius:9px;flex-shrink:0;background:rgba(27,70,152,0.08);
+    color:var(--primary);display:flex;align-items:center;justify-content:center;font-size:13px;
+  }
+  .trip-step-detail-title{font-size:14px;font-weight:700;color:var(--text-primary);margin-bottom:4px;}
+  .trip-step-detail-text{font-size:13px;color:var(--text-secondary);line-height:1.55;}
+
+  .seg-publico-cerrar{
+    position:absolute;top:18px;right:18px;width:32px;height:32px;border-radius:50%;
+    background:rgba(27,70,152,0.06);border:none;color:var(--text-secondary);cursor:pointer;
+    display:flex;align-items:center;justify-content:center;font-size:14px;
+  }
+
+  .seg-publico-error{
+    background:#fff;border-radius:20px;padding:40px 30px;max-width:440px;width:100%;text-align:center;
+    box-shadow:0 30px 70px rgba(19,47,107,0.35);
+  }
+  .seg-publico-error i{font-size:34px;color:var(--danger);margin-bottom:14px;}
+  .seg-publico-error h3{font-size:17px;color:var(--text-primary);margin-bottom:6px;}
+  .seg-publico-error p{font-size:13.5px;color:var(--text-secondary);line-height:1.5;}
+
+  @media(max-width:640px){
+    .trip-step-label{font-size:10px;}
+    .trip-step-icon{width:40px;height:40px;font-size:15px;}
+    .trip-step-time{display:none;}
+    .trip-modal-header,.trip-modal-desc,.trip-track{padding-left:20px;padding-right:20px;}
+    .trip-summary-card,.trip-step-detail{margin-left:20px;margin-right:20px;}
+    .trip-modal-header{flex-direction:column;align-items:flex-start;gap:8px;}
+  }
+</style>
+</head>
+<body>
+
+<div id="segPublicoRoot">
+  <!-- El contenido se pinta por JS según la respuesta de la API -->
+</div>
+
+<script>
+  const params = new URLSearchParams(window.location.search);
+  const codigoUrl = params.get('codigo') || '';
+  const tokenUrl  = params.get('t') || '';
+  const root      = document.getElementById('segPublicoRoot');
+
+  const TRIP_STEPS_BASE = [
+    {estado:'Abierto',    label:'Abierto',     icon:'fa-file-pen',
+      detalle:(r)=> `Tu requerimiento fue registrado el ${r.fecha_creacion||'—'} y está a la espera de ser asignado a un responsable.`},
+    {estado:'Asignado',   label:'Asignado',    icon:'fa-user-check',
+      detalle:(r)=> r.responsable ? `Fue asignado a ${r.responsable}, quien revisará tu solicitud en breve.` : 'Está a la espera de que se le asigne un responsable.'},
+    {estado:'En Proceso', label:'En proceso',  icon:'fa-screwdriver-wrench',
+      detalle:(r)=> r.plan_accion || 'Se está trabajando en la solución de tu requerimiento.'},
+    {estado:'Cerrado',    label:'Cerrado',     icon:'fa-circle-check',
+      detalle:(r)=> r.solucion ? `${r.solucion}${r.fecha_solucion ? ' (Solucionado el '+r.fecha_solucion+')' : ''}` : 'Tu requerimiento fue solucionado.'},
+    {estado:'Calificado', label:'Calificado', icon:'fa-star',
+      detalle:(r)=> {
+        if(r.estado !== 'Calificado') return 'Aún no has calificado este requerimiento.';
+        return r.calificacion ? `Calificaste este requerimiento con ${r.calificacion} de 5 estrellas.` : 'Este requerimiento ya fue calificado.';
+      }},
+  ];
+
+  function buildTripSteps(r){
+    if(!r.requiere_aprobacion) return TRIP_STEPS_BASE;
+    const fueRechazado = r.estado === 'Rechazado';
+    const pasoAprobacion = {
+      estado: fueRechazado ? 'Rechazado' : 'Pendiente Aprobación',
+      label: fueRechazado ? 'Rechazado' : 'Aprobación',
+      icon:  fueRechazado ? 'fa-file-circle-xmark' : 'fa-file-signature',
+      detalle: (r) => {
+        if(r.estado === 'Rechazado') return `Tu requerimiento fue rechazado por el jefe de área${r.fecha_aprobacion ? ' el '+r.fecha_aprobacion : ''}.`;
+        if(r.estado === 'Pendiente Aprobación') return 'Tu requerimiento está a la espera de aprobación por el jefe de área.';
+        return `Tu requerimiento fue aprobado por el jefe de área${r.fecha_aprobacion ? ' el '+r.fecha_aprobacion : ''} y continuó su curso normal.`;
+      }
+    };
+    return [pasoAprobacion, ...TRIP_STEPS_BASE];
+  }
+
+  function estBadge(e){
+    const m = {'Abierto':'est-abierto','Asignado':'est-asignado','En Proceso':'est-en-proceso',
+               'Cerrado':'est-cerrado','Calificado':'est-cerrado',
+               'Pendiente Aprobación':'est-pendiente-aprob','Rechazado':'est-rechazado'};
+    return `<span class="est-badge ${m[e]||''}"><span class="ed"></span>${e}</span>`;
+  }
+
+  function mostrarError(msg){
+    root.innerHTML = `
+      <div class="seg-publico-error">
+        <i class="fa-solid fa-circle-exclamation"></i>
+        <h3>No pudimos abrir tu seguimiento</h3>
+        <p>${msg}</p>
+      </div>`;
+  }
+
+  function pintarVista(r){
+    root.innerHTML = `
+      <div class="trip-modal-box">
+        <div class="trip-modal-header">
+          <span class="codigo-mono">${r.codigo}</span>
+          ${estBadge(r.estado)}
+        </div>
+        <div class="trip-summary-card">
+          <div class="trip-summary-icon"><i class="fa-solid fa-file-lines"></i></div>
+          <div class="trip-summary-body">
+            <div class="trip-summary-label">Descripción del requerimiento</div>
+            <p class="trip-modal-desc">${r.requerimiento || ''}</p>
+          </div>
+        </div>
+        <div class="trip-track">
+          <div class="trip-line-bg"></div>
+          <div class="trip-line-fill" id="tripLineFill"></div>
+          <div class="trip-steps" id="tripSteps"></div>
+        </div>
+        <div class="trip-step-detail" id="tripStepDetail">
+          <div class="trip-step-detail-clip">
+            <div class="trip-step-detail-inner">
+              <div class="trip-step-detail-icon" id="tripStepDetailIcon"><i class="fa-solid fa-circle-info"></i></div>
+              <div>
+                <div class="trip-step-detail-title" id="tripStepDetailTitle"></div>
+                <div class="trip-step-detail-text" id="tripStepDetailText"></div>
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+    `;
+
+    const tripSteps = buildTripSteps(r);
+    const idxActual = tripSteps.findIndex(s => s.estado === r.estado);
+    const stepsWrap = document.getElementById('tripSteps');
+    stepsWrap.innerHTML = tripSteps.map((s, i) => {
+      let cls = '';
+      if(i < idxActual) cls = 'done';
+      else if(i === idxActual) cls = 'current';
+      return `
+        <button type="button" class="trip-step ${cls}" data-i="${i}">
+          <div class="trip-step-icon"><i class="fa-solid ${s.icon}"></i></div>
+          <div class="trip-step-label">${s.label}</div>
+          <div class="trip-step-time">${i===0 ? (r.fecha_creacion||'') : ''}</div>
+        </button>
+      `;
+    }).join('');
+
+    const detailBox   = document.getElementById('tripStepDetail');
+    const detailClip  = detailBox.querySelector('.trip-step-detail-clip');
+    const detailInner = detailBox.querySelector('.trip-step-detail-inner');
+    const detailIcon  = document.getElementById('tripStepDetailIcon');
+    const detailTitle = document.getElementById('tripStepDetailTitle');
+    const detailText  = document.getElementById('tripStepDetailText');
+    let pasoSeleccionado = null;
+
+    new ResizeObserver(() => {
+      if(detailBox.classList.contains('show')) detailClip.style.height = detailInner.scrollHeight + 'px';
+    }).observe(detailInner);
+
+    function pintarContenido(s){
+      detailIcon.innerHTML = `<i class="fa-solid ${s.icon}"></i>`;
+      detailTitle.textContent = s.label;
+      detailText.textContent = s.detalle(r);
+    }
+    function abrirDetalle(s){ pintarContenido(s); detailBox.classList.add('show'); detailClip.style.height = detailInner.scrollHeight + 'px'; }
+    function cerrarDetalle(){ detailBox.classList.remove('show'); detailClip.style.height = '0px'; }
+    function cambiarDetalle(s){
+      detailInner.classList.add('fading');
+      setTimeout(() => { pintarContenido(s); detailInner.classList.remove('fading'); detailClip.style.height = detailInner.scrollHeight + 'px'; }, 160);
+    }
+
+    stepsWrap.querySelectorAll('.trip-step').forEach(stepEl => {
+      stepEl.addEventListener('click', () => {
+        const i = +stepEl.dataset.i;
+        const s = tripSteps[i];
+        if(pasoSeleccionado === i){
+          stepEl.classList.remove('selected'); pasoSeleccionado = null; cerrarDetalle(); return;
+        }
+        stepsWrap.querySelectorAll('.trip-step').forEach(x=>x.classList.remove('selected'));
+        stepEl.classList.add('selected');
+        if(pasoSeleccionado === null) abrirDetalle(s); else cambiarDetalle(s);
+        pasoSeleccionado = i;
+      });
+    });
+
+    /* Animación de entrada de los pasos, igual que en la app */
+    const pasos = Array.from(stepsWrap.querySelectorAll('.trip-step'));
+    const pct = idxActual <= 0 ? 0 : (idxActual / (tripSteps.length - 1)) * 100;
+    pasos.forEach((stepEl, i) => { setTimeout(() => stepEl.classList.add('show'), 180 + i*220); });
+    setTimeout(() => { document.getElementById('tripLineFill').style.width = pct + '%'; }, 180 + idxActual*220 + 160);
+  }
+
+  (function init(){
+    if(!codigoUrl || !tokenUrl){
+      mostrarError('El link no incluye la información necesaria. Verifica que abriste el enlace completo desde tu correo.');
+      return;
+    }
+    fetch('/SYSTRACK/requerimiento/api/seguimiento-publico/?codigo=' + encodeURIComponent(codigoUrl) + '&t=' + encodeURIComponent(tokenUrl))
+      .then(r => r.json())
+      .then(resp => {
+        if(resp.ok) pintarVista(resp.data);
+        else mostrarError(resp.error || 'Este link ya no es válido.');
+      })
+      .catch(() => mostrarError('No pudimos conectarnos. Intenta de nuevo en unos minutos.'));
+  })();
+</script>
+</body>
+</html>

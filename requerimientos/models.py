@@ -186,3 +186,23 @@ class EvaluacionReq(models.Model):
     class Meta:
         managed  = False
         db_table = 'mv_EvaluacionReq'
+
+
+class Notificacion(models.Model):
+    """Notificaciones dentro del portal, en paralelo a los correos que ya
+    se envían desde Signals.py y desde aprobar/rechazar. Una fila = un
+    evento visible en la campanita para el CedulaUsuario dueño del
+    requerimiento (asignado, aprobado, rechazado, solucionado)."""
+    IdNotificacion = models.AutoField(primary_key=True)
+    CedulaUsuario  = models.CharField(max_length=20)
+    Tipo           = models.CharField(max_length=30)
+    Codigo         = models.IntegerField(null=True, blank=True)
+    Titulo         = models.CharField(max_length=200)
+    Mensaje        = models.CharField(max_length=500)
+    Leida          = models.BooleanField(default=False)
+    FechaCreacion  = models.DateTimeField(null=True, blank=True)
+
+    class Meta:
+        managed  = False
+        db_table = 'mv_Notificaciones'
+        ordering = ['-FechaCreacion']

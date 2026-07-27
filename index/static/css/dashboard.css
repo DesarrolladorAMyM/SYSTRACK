@@ -716,6 +716,7 @@ a.nav-btn.active {
 .req-estado-proceso    { background:#dce9ff; color:#1B4698; border:1px solid #93c5fd; }
 .req-estado-resuelto   { background:#d1fae5; color:#065f46; border:1px solid #6ee7b7; }
 .req-estado-cerrado    { background:#f3f4f6; color:#6b7280; border:1px solid #d1d5db; }
+.req-estado-calificado { background:#e0f2fe; color:#0369a1; border:1px solid #7dd3fc; }
 
 .req-estado-badge {
   display: inline-flex;
