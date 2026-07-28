@@ -83,37 +83,34 @@ WSGI_APPLICATION = 'systraker.wsgi.application'
 # Database
 # https://docs.djangoproject.com/en/6.0/ref/settings/#databases
 
+
 # aqui va la base de datos 
 DATABASES = {
     'default': {
         'ENGINE': 'mssql',
-        'NAME': 'NEW_SYSTRAKER',
-        'HOST': 'SQLSERVER', 
-        'USER': 'desarrollo',
-        'PASSWORD': '4ndr3$-31',
-        'PORT': '1433',
+        'NAME': os.getenv('DB_DEFAULT_NAME'),
+        'HOST': os.getenv('DB_DEFAULT_HOST'),
+        'USER': os.getenv('DB_DEFAULT_USER'),
+        'PASSWORD': os.getenv('DB_DEFAULT_PASSWORD'),
+        'PORT': os.getenv('DB_DEFAULT_PORT'),
         'OPTIONS': {
             'driver': 'ODBC Driver 18 for SQL Server',
             'extra_params': 'Encrypt=no;TrustServerCertificate=yes;'
-            
         },
     },
-    
+
     'requerimientos': {
         'ENGINE': 'mssql',
-        'NAME': 'PB_REQUERIMIENTOS',
-        'HOST': 'SQLSERVER', 
-        'USER': 'desarrollo',
-        'PASSWORD': '4ndr3$-31',
-        'PORT': '1433',
-        'OPTIONS': {'driver': 'ODBC Driver 18 for SQL Server',
-                    'extra_params': 'Encrypt=no;TrustServerCertificate=yes;'
-                    
-        
+        'NAME': os.getenv('DB_REQ_NAME'),
+        'HOST': os.getenv('DB_REQ_HOST'),
+        'USER': os.getenv('DB_REQ_USER'),
+        'PASSWORD': os.getenv('DB_REQ_PASSWORD'),
+        'PORT': os.getenv('DB_REQ_PORT'),
+        'OPTIONS': {
+            'driver': 'ODBC Driver 18 for SQL Server',
+            'extra_params': 'Encrypt=no;TrustServerCertificate=yes;'
         },
     },
-    
-    
 }
 
 # Router de bases de datos
