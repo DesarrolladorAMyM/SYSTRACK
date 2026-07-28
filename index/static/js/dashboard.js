@@ -246,6 +246,15 @@ function poblarSelects() {
     ccCoEl.innerHTML = '<option value="">Todos los centros</option>' +
       coOpts.map(c => `<option value="${c.id}">${c.label}</option>`).join('');
   }
+  // Proceso / Área (Acta) → misma fuente que Centros de Costo (tabla j228_Area)
+ const actaProcesoEl = document.getElementById('acta-proceso');
+  if (actaProcesoEl) {
+    const current = actaProcesoEl.value;
+    actaProcesoEl.innerHTML = '<option value="">Seleccione una opción</option>' +
+      coOpts.map(c => `<option value="${c.label}">${c.label}</option>`).join('');
+    if (current) actaProcesoEl.value = current;
+  }
+
 
   const ccPropEl = document.getElementById('cc-prop');
   if (ccPropEl) {
