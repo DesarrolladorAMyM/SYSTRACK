@@ -157,9 +157,9 @@ USE_TZ = True
 # https://docs.djangoproject.com/en/6.0/howto/static-files/
 
 # si vas a arrancar el proyecto de manera local quiata esas dos linea  que tiene la ruta del servidor y se coloca esta #STATIC_URL = '/static/'
-#STATIC_URL = '/SYSTRACK/index/static' #  este es la ruta correcta en servidor 
-#STATIC_ROOT = r'E:\inetpub\wwwroot\PRUEBAS\SYSTRACK\index\static'
-STATIC_URL = '/static/'
+STATIC_URL = '/SYSTRACK/index/static' #  este es la ruta correcta en servidor 
+STATIC_ROOT = r'E:\inetpub\wwwroot\PRUEBAS\SYSTRACK\index\static'
+#STATIC_URL = '/static/'
 
 
 
