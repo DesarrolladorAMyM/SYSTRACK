@@ -528,7 +528,7 @@ def _obtener_link_base():
     """Dominio base para construir links en correos enviados desde Signals.py,
     donde NO hay objeto request disponible (post_save se dispara fuera del ciclo
     request/response). Configura SITE_URL en settings.py para producción."""
-    return getattr(settings, 'SITE_URL', 'https://systraker.tuempresa.com').rstrip('/')
+    return getattr(settings, 'SITE_URL', 'https://app.montacargasamym.com:3878').rstrip('/')
 
 
 def _enviar_correo_solucion(req):
@@ -543,7 +543,7 @@ def _enviar_correo_solucion(req):
 
     base_url = _obtener_link_base()
     link_seguimiento = f"{base_url}{PREFIJO_APP}/requerimiento/?seg={req.codigo()}"
-    link_calificar   = f"{base_url}{PREFIJO_APP}/requerimiento/calificar/?codigo={req.codigo()}"
+    link_calificar   = f"{base_url}/CalificacionRequerimiento/calificar/{req.Codigo}/"
 
     asunto = f"Requerimiento solucionado — {req.codigo()}"
     cuerpo_html = render_to_string('requerimientos/correo_solucion.html', {

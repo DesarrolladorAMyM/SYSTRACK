@@ -224,3 +224,8 @@ LOGGING = {
         },
     },
 }
+
+
+SITE_URL = 'https://app.montacargasamym.com:3871'
+CALIFICACION_URL = 'https://app.montacargasamym.com:3878'
+INVENTARIO_URL = 'https://app.montacargasamym.com:3871/SYSTRACK/inventario/'
