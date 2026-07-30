@@ -157,9 +157,28 @@
     .trip-summary-card,.trip-step-detail{margin-left:20px;margin-right:20px;}
     .trip-modal-header{flex-direction:column;align-items:flex-start;gap:8px;}
   }
+
+  .seg-publico-volver{
+    position:fixed;top:20px;left:20px;z-index:50;
+    display:inline-flex;align-items:center;gap:8px;
+    padding:10px 18px 10px 14px;border-radius:999px;
+    background:rgba(255,255,255,0.14);border:1.5px solid rgba(255,255,255,0.35);
+    color:#ffffff;font-size:13px;font-weight:600;text-decoration:none;
+    backdrop-filter:blur(6px);-webkit-backdrop-filter:blur(6px);
+    transition:background .2s ease, transform .2s ease;
+  }
+  .seg-publico-volver:hover{background:rgba(255,255,255,0.24);transform:translateX(-2px);}
+  .seg-publico-volver i{font-size:12px;}
+  @media(max-width:640px){
+    .seg-publico-volver{top:12px;left:12px;padding:9px 14px 9px 12px;font-size:12.5px;}
+  }
 </style>
 </head>
 <body>
+
+<a class="seg-publico-volver" href="https://app.montacargasamym.com:3871/SYSTRACK/requerimiento/">
+  <i class="fa-solid fa-arrow-left"></i> Volver al Portal de Requerimientos
+</a>
 
 <div id="segPublicoRoot">
   <!-- El contenido se pinta por JS según la respuesta de la API -->

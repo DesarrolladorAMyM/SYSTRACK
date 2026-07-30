@@ -27,6 +27,65 @@
     <input type="text" id="idModalInput" placeholder="Número de documento" inputmode="numeric" autocomplete="off">
     <div class="id-modal-error" id="idModalError">Ingresa un número de documento válido.</div>
     <button class="btn-submit" id="idModalSubmit" style="width:100%;">CONTINUAR</button>
+    <p class="id-modal-registro-link" style="text-align:center;margin-top:14px;font-size:13px;">
+      ¿No estás registrado?
+      <a href="#" id="abrirRegistroLink" style="color:var(--primary,#2563eb);font-weight:600;text-decoration:none;">Regístrate aquí</a>
+    </p>
+  </div>
+</div>
+
+
+<div class="id-modal-overlay hidden" id="registroModalOverlay">
+  <div class="id-modal-box" style="max-width:480px;">
+    <button class="id-modal-close" id="registroModalClose" title="Cerrar" aria-label="Cerrar"><i class="fa-solid fa-xmark"></i></button>
+    <div class="id-modal-icon"><i class="fa-solid fa-user-plus"></i></div>
+    <h3>Regístrate</h3>
+    <p>Completa tus datos para crear tu usuario y poder radicar requerimientos.</p>
+
+    <form id="formRegistroUsuario" novalidate>
+      <div class="form-field">
+        <label for="r_documento">Número de documento<span class="req-mark">*</span></label>
+        <input type="text" id="r_documento" name="cedula" placeholder="Número de documento" inputmode="numeric" required>
+      </div>
+      <div class="form-field">
+        <label for="r_nombre">Nombre completo<span class="req-mark">*</span></label>
+        <input type="text" id="r_nombre" name="nombre_completo" placeholder="Nombre completo" required>
+      </div>
+      <div class="form-field">
+        <label>Cargo<span class="req-mark">*</span></label>
+        <div class="sdr-wrap" id="sdr_r_cargo">
+          <input type="text" class="sdr-input" placeholder="Buscar cargo..." autocomplete="off">
+          <input type="hidden" id="r_cargo" name="id_cargo">
+          <div class="sdr-dropdown">
+            <div class="sdr-empty">Sin resultados</div>
+          </div>
+        </div>
+      </div>
+      <div class="form-field">
+        <label>Centro de operación<span class="req-mark">*</span></label>
+        <div class="sdr-wrap" id="sdr_r_centro">
+          <input type="text" class="sdr-input" placeholder="Buscar centro de operación..." autocomplete="off">
+          <input type="hidden" id="r_centro" name="id_co">
+          <div class="sdr-dropdown">
+            <div class="sdr-empty">Sin resultados</div>
+          </div>
+        </div>
+      </div>
+      <div class="form-field">
+        <label for="r_area">Área<span class="req-mark">*</span></label>
+        <select id="r_area" name="id_area" required>
+          <option value="">Selecciona tu área...</option>
+        </select>
+      </div>
+      <div class="form-field">
+        <label for="r_correo">Correo corporativo<span class="req-mark">*</span></label>
+        <input type="email" id="r_correo" name="correo" placeholder="correo@empresa.com" required>
+      </div>
+
+      <div class="id-modal-error" id="registroModalError"></div>
+
+      <button type="submit" class="btn-submit" id="registroModalSubmit" style="width:100%;">REGISTRARME</button>
+    </form>
   </div>
 </div>
 

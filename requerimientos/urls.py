@@ -1,11 +1,14 @@
 from django.urls import path
 from . import views
+from . import views_registro
 
 urlpatterns = [
     path('requerimiento/',                        views.Requerimientos,           name='requerimiento'),
     path('requerimiento/api/catalogos/',          views.catalogos,                name='req_catalogos'),
     path('requerimiento/api/subcategorias/',      views.subcategorias,            name='req_subcategorias'),
     path('requerimiento/api/validar-cedula/',     views.validar_cedula,           name='req_validar_cedula'),
+    path('requerimiento/api/catalogos-registro/', views_registro.api_catalogos_registro,     name='req_catalogos_registro'),
+    path('requerimiento/api/registro/',           views_registro.api_registrar_usuario_req,  name='req_registro'),
     path('requerimiento/api/mis-requerimientos/', views.mis_requerimientos,       name='req_mis_requerimientos'),
     path('requerimiento/api/crear/',              views.crear_requerimiento,      name='req_crear'),
     path('requerimiento/api/calificar/',          views.calificar_requerimiento,  name='req_calificar'),

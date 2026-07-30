@@ -1,5 +1,4 @@
-
-  function showNotif(title, msg, type = 'success', duration = 3500) {
+function showNotif(title, msg, type = 'success', duration = 3500) {
     const nc = document.getElementById('notificationContainer');
     const n  = document.createElement('div');
     n.className = `notification ${type}`;
@@ -469,6 +468,137 @@
   document.addEventListener('keydown', (e) => {
     if(e.key === 'Escape' && !idModalOverlay.classList.contains('hidden')) cerrarModalDocumento();
   });
+
+  /* ===== AUTO-REGISTRO DE USUARIO NUEVO =====
+     Se abre desde el link "Regístrate aquí" del modal de identificación,
+     cuando validar-cedula responde que el documento no existe. Al terminar,
+     reutiliza confirmarDocumento() para entrar con la cédula recién creada. */
+  const registroModalOverlay = document.getElementById('registroModalOverlay');
+  const registroModalClose   = document.getElementById('registroModalClose');
+  const abrirRegistroLink    = document.getElementById('abrirRegistroLink');
+  const formRegistroUsuario  = document.getElementById('formRegistroUsuario');
+  const registroModalError   = document.getElementById('registroModalError');
+
+  // Convierte "Nombre completo" a mayúsculas mientras el usuario escribe.
+  const rNombreInput = document.getElementById('r_nombre');
+  if(rNombreInput){
+    rNombreInput.addEventListener('input', () => {
+      const pos = rNombreInput.selectionStart;
+      rNombreInput.value = rNombreInput.value.toUpperCase();
+      rNombreInput.setSelectionRange(pos, pos);
+    });
+  }
+
+  let catalogosRegistroCargados = false;
+
+  async function cargarCatalogosRegistro(){
+    if(catalogosRegistroCargados) return;
+    try {
+      const r    = await fetch('/SYSTRACK/requerimiento/api/catalogos-registro/');
+      const resp = await r.json();
+      if(!resp.ok) return;
+
+      const opsCargo  = resp.cargos.map(c=>({ value:String(c.IdCargo), label:c.Descripcion }));
+      const opsCentro = resp.centros.map(c=>({ value:String(c.IdCo), label:c.Descripcion }));
+
+      if(document.getElementById('sdr_r_cargo')?._sdr){
+        document.getElementById('sdr_r_cargo')._sdr.cargar(opsCargo);
+      } else {
+        crearSDR('sdr_r_cargo', 'r_cargo', opsCargo);
+      }
+
+      if(document.getElementById('sdr_r_centro')?._sdr){
+        document.getElementById('sdr_r_centro')._sdr.cargar(opsCentro);
+      } else {
+        crearSDR('sdr_r_centro', 'r_centro', opsCentro);
+      }
+
+      const selArea = document.getElementById('r_area');
+      resp.areas.forEach(a=>{
+        const opt = document.createElement('option');
+        opt.value = a.IdArea; opt.textContent = a.NombreArea;
+        selArea.appendChild(opt);
+      });
+
+      catalogosRegistroCargados = true;
+    } catch(e){ console.error('Error cargando catálogos de registro:', e); }
+  }
+
+  function abrirModalRegistro(){
+    const cedulaActual = idModalInput.value.trim();
+    registroModalError.textContent = '';
+    registroModalError.classList.remove('show');
+    idModalOverlay.classList.add('hidden');
+    registroModalOverlay.classList.remove('hidden');
+    cargarCatalogosRegistro();
+    if(cedulaActual) document.getElementById('r_documento').value = cedulaActual;
+  }
+
+  function cerrarModalRegistro(){
+    registroModalOverlay.classList.add('hidden');
+    idModalOverlay.classList.remove('hidden');
+  }
+
+  if(abrirRegistroLink){
+    abrirRegistroLink.addEventListener('click', (e)=>{ e.preventDefault(); abrirModalRegistro(); });
+  }
+  if(registroModalClose){
+    registroModalClose.addEventListener('click', cerrarModalRegistro);
+  }
+  registroModalOverlay.addEventListener('click', (e)=>{ if(e.target === registroModalOverlay) cerrarModalRegistro(); });
+  document.addEventListener('keydown', (e)=>{
+    if(e.key === 'Escape' && !registroModalOverlay.classList.contains('hidden')) cerrarModalRegistro();
+  });
+
+  if(formRegistroUsuario){
+    formRegistroUsuario.addEventListener('submit', async (e)=>{
+      e.preventDefault();
+      const btnSubmit = document.getElementById('registroModalSubmit');
+      btnSubmit.disabled = true;
+      btnSubmit.textContent = 'Registrando...';
+      registroModalError.textContent = '';
+      registroModalError.classList.remove('show');
+
+      const payload = {
+        cedula:          document.getElementById('r_documento').value.trim(),
+        nombre_completo: document.getElementById('r_nombre').value.trim(),
+        id_cargo:        document.getElementById('r_cargo').value,
+        id_co:           document.getElementById('r_centro').value,
+        id_area:         document.getElementById('r_area').value,
+        correo:          document.getElementById('r_correo').value.trim(),
+      };
+
+      try {
+        const r    = await fetch('/SYSTRACK/requerimiento/api/registro/', {
+          method: 'POST',
+          headers: {'Content-Type': 'application/json'},
+          body: JSON.stringify(payload)
+        });
+        const resp = await r.json();
+        btnSubmit.disabled = false;
+        btnSubmit.textContent = 'REGISTRARME';
+
+        if(!resp.ok){
+          registroModalError.textContent = resp.error || 'No se pudo completar el registro.';
+          registroModalError.classList.add('show');
+          return;
+        }
+
+        registroModalOverlay.classList.add('hidden');
+        showNotif('¡Registro exitoso!', 'Ya puedes usar tus requerimientos.', 'success');
+
+        idModalOverlay.classList.remove('hidden');
+        idModalInput.value = payload.cedula;
+        confirmarDocumento();
+
+      } catch(err){
+        btnSubmit.disabled = false;
+        btnSubmit.textContent = 'REGISTRARME';
+        registroModalError.textContent = 'Error de conexión. Intenta de nuevo.';
+        registroModalError.classList.add('show');
+      }
+    });
+  }
 
   function actualizarChipsDocumento(){
     const doc = getDocumento();
@@ -1002,4 +1132,3 @@
       pedirDocumento(abrirSeguimientoConCodigo);
     }
   })();
-

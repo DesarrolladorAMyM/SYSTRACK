@@ -271,7 +271,7 @@ def crear_requerimiento(request):
             except SubCategoria.DoesNotExist:
                 pass
 
-        # ── Resolver IdPrioridad (la columna no admite NULL) ──────────────
+        #  Resolver IdPrioridad (la columna no admite NULL) 
         id_prioridad = None
         if prioridad:
             prio_obj = Prioridad.objects.using(DB).filter(Descripcion__iexact=prioridad).first()
@@ -289,7 +289,7 @@ def crear_requerimiento(request):
                 'error': 'No hay prioridades configuradas en el sistema. Contacta al administrador.'
             }, status=500)
 
-        # ── Validación de aprobación por jefe de área ─────────────────────
+        #  Validación de aprobación por jefe de área 
         es_categoria_correcta = _normaliza(cat_txt) == CATEGORIA_SOPORTE_EXTERNO
         sub_normalizada = _normaliza(sub_txt)
         es_subcategoria_sensible = any(

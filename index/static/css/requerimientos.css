@@ -789,3 +789,31 @@
   from { opacity: 0; transform: translateX(20px); }
   to   { opacity: 1; transform: translateX(0); }
 }
+
+
+ /*MODAL registro de usuario nuevo */
+
+#registroModalOverlay .id-modal-box{
+    max-height:88vh;
+    overflow-y:auto;
+    -webkit-overflow-scrolling:touch;
+  }
+  #registroModalOverlay .id-modal-box::-webkit-scrollbar{ width:6px; }
+  #registroModalOverlay .id-modal-box::-webkit-scrollbar-thumb{
+    background:rgba(0,0,0,0.15); border-radius:999px;
+  }
+  #registroModalOverlay #formRegistroUsuario .form-field{
+    margin-bottom:14px;
+  }
+  #registroModalOverlay #formRegistroUsuario label{
+    display:block; margin-bottom:6px; font-weight:600; font-size:13.5px;
+  }
+  #registroModalOverlay #formRegistroUsuario input,
+  #registroModalOverlay #formRegistroUsuario select{
+    width:100%; box-sizing:border-box;
+    padding:10px 12px; border:1px solid #e2e8f0; border-radius:8px;
+    font-size:14px; font-family:inherit;
+  }
+  #registroModalOverlay #formRegistroUsuario select{
+    appearance:auto; background:#fff; cursor:pointer;
+  }
