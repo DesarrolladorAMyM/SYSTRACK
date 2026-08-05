@@ -34,7 +34,62 @@
   </div>
 </div>
 
+<!-- MENU: perfil (avatar) desplegable, compartido por las 3 vistas -->
+<div class="profile-dropdown-menu hidden" id="profileDropdownMenu">
+  <button type="button" class="profile-dropdown-item" id="btnAbrirPerfil"><i class="fa-solid fa-user"></i> Perfil</button>
+  <button type="button" class="profile-dropdown-item danger" id="btnCerrarSesion"><i class="fa-solid fa-right-from-bracket"></i> Cerrar sesión</button>
+</div>
 
+<!-- MODAL: perfil del usuario -->
+<div class="id-modal-overlay hidden" id="profileModalOverlay">
+  <div class="id-modal-box" id="profileModalBox">
+    <button class="id-modal-close" id="profileModalClose" title="Cerrar" aria-label="Cerrar"><i class="fa-solid fa-xmark"></i></button>
+    <div class="profile-modal-avatar-wrap">
+      <div class="profile-modal-avatar" id="profileModalAvatar"></div>
+      <button type="button" class="profile-modal-avatar-edit" id="profileModalAvatarBtn" title="Cambiar foto"><i class="fa-solid fa-camera"></i></button>
+      <input type="file" id="profileModalAvatarInput" accept="image/*" style="display:none;">
+    </div>
+    <h3 id="profileModalNombre">—</h3>
+    <p class="profile-modal-cargo" id="profileModalCargo"></p>
+    <div class="profile-modal-doc-label">Número de documento</div>
+    <div class="profile-modal-doc-grande" id="profileModalDocGrande">—</div>
+    <button class="btn-submit" id="profileModalCerrarSesion" style="width:100%;margin-top:8px;background:var(--danger,#ef4444);">CERRAR SESIÓN</button>
+  </div>
+</div>
+
+<!-- MODAL: registro de usuario nuevo -->
+<style>
+  #registroModalOverlay .id-modal-box{
+    max-height:88vh;
+    overflow-y:auto;
+    -webkit-overflow-scrolling:touch;
+  }
+  #registroModalOverlay .id-modal-box::-webkit-scrollbar{ width:6px; }
+  #registroModalOverlay .id-modal-box::-webkit-scrollbar-thumb{
+    background:rgba(0,0,0,0.15); border-radius:999px;
+  }
+  #registroModalOverlay #formRegistroUsuario .form-field{
+    margin-bottom:14px;
+  }
+  #registroModalOverlay #formRegistroUsuario label{
+    display:block; margin-bottom:6px; font-weight:600; font-size:13.5px;
+  }
+  #registroModalOverlay #formRegistroUsuario input,
+  #registroModalOverlay #formRegistroUsuario select{
+    width:100%; box-sizing:border-box;
+    padding:10px 12px; border:1px solid #e2e8f0; border-radius:8px;
+    font-size:14px; font-family:inherit;
+  }
+  #registroModalOverlay #formRegistroUsuario select{
+    appearance:auto; background:#fff; cursor:pointer;
+  }
+  #screen-equipos .equipo-badge{
+    display:inline-flex; align-items:center; gap:6px;
+    padding:4px 12px; border-radius:999px; font-size:12.5px; font-weight:600;
+  }
+  #screen-equipos .equipo-badge.disponible{ background:#dcfce7; color:#15803d; }
+  #screen-equipos .equipo-badge.no-disponible{ background:#fee2e2; color:#b91c1c; }
+</style>
 <div class="id-modal-overlay hidden" id="registroModalOverlay">
   <div class="id-modal-box" style="max-width:480px;">
     <button class="id-modal-close" id="registroModalClose" title="Cerrar" aria-label="Cerrar"><i class="fa-solid fa-xmark"></i></button>
@@ -88,6 +143,64 @@
     </form>
   </div>
 </div>
+
+<!-- MODAL: préstamo de equipo -->
+<div class="id-modal-overlay hidden" id="prestarEquipoOverlay">
+  <div class="id-modal-box" style="max-width:480px;">
+    <button class="id-modal-close" id="prestarEquipoClose" title="Cerrar" aria-label="Cerrar"><i class="fa-solid fa-xmark"></i></button>
+    <div class="id-modal-icon"><i class="fa-solid fa-right-left"></i></div>
+    <h3>Prestar equipo</h3>
+    <p>Vas a solicitar en préstamo: <strong id="peEquipoNombre"></strong></p>
+
+    <form id="formPrestarEquipo" novalidate>
+      <input type="hidden" id="pe_id_equipo" name="id_equipo">
+
+      <div class="form-field">
+        <label for="pe_cedula">Número de documento<span class="req-mark">*</span></label>
+        <input type="text" id="pe_cedula" name="cedula" placeholder="Número de documento" inputmode="numeric" autocomplete="off" required>
+      </div>
+      <div class="form-field">
+        <label for="pe_nombre">Nombre completo<span class="req-mark">*</span></label>
+        <input type="text" id="pe_nombre" name="nombre" placeholder="Nombre completo" required>
+      </div>
+      <div class="form-field">
+        <label for="pe_area">Área</label>
+        <input type="text" id="pe_area" name="area" placeholder="Área o cargo">
+      </div>
+      <div class="form-field">
+        <label for="pe_fecha_devol">Fecha estimada de devolución</label>
+        <input type="date" id="pe_fecha_devol" name="fecha_estimada_devolucion">
+      </div>
+      <div class="form-field">
+        <label for="pe_observ">Observaciones</label>
+        <textarea id="pe_observ" name="observaciones" rows="3" placeholder="Observaciones (opcional)" style="width:100%;box-sizing:border-box;padding:10px 12px;border:1px solid #e2e8f0;border-radius:8px;font-size:14px;font-family:inherit;resize:vertical;"></textarea>
+      </div>
+
+      <div class="id-modal-error" id="prestarEquipoError"></div>
+
+      <button type="submit" class="btn-submit" id="prestarEquipoSubmit" style="width:100%;">CONFIRMAR PRÉSTAMO</button>
+    </form>
+  </div>
+</div>
+
+<!-- MODAL: confirmar devolución de equipo -->
+<div class="id-modal-overlay hidden" id="confirmarDevolucionOverlay">
+  <div class="id-modal-box" style="max-width:420px;">
+    <button class="id-modal-close" id="confirmarDevolucionClose" title="Cerrar" aria-label="Cerrar"><i class="fa-solid fa-xmark"></i></button>
+    <div class="id-modal-icon"><i class="fa-solid fa-rotate-left"></i></div>
+    <h3>Confirmar devolución</h3>
+    <p>¿Confirmas la devolución de <strong id="cdEquipoNombre">este equipo</strong>? Quedará disponible nuevamente para préstamo.</p>
+
+    <div class="id-modal-error" id="confirmarDevolucionError"></div>
+
+    <div style="display:flex; gap:10px; margin-top:6px;">
+      <button type="button" class="btn-submit" id="confirmarDevolucionCancelar" style="width:50%; background:#f1f5f9; color:#334155;">CANCELAR</button>
+      <button type="button" class="btn-submit" id="confirmarDevolucionSubmit" style="width:50%;">CONFIRMAR</button>
+    </div>
+  </div>
+</div>
+
+
 
 <!-- MODAL: seguimiento animado tipo Didi/Uber -->
 <div class="trip-modal-overlay hidden" id="tripModalOverlay">
@@ -171,10 +284,6 @@
         </div>
       </div>
       <div class="header-actions">
-        <div class="status-chip">
-          <span class="status-dot"></span>
-          <span class="label">Sistema operativo</span>
-        </div>
         <div class="bell-wrap" style="position:relative;">
           <button class="bell-btn" id="btnBell" title="Notificaciones">
             <i class="fa-solid fa-bell"></i>
@@ -185,6 +294,9 @@
             <div class="bell-panel-list" id="bellPanelList"></div>
           </div>
         </div>
+        <button type="button" class="profile-avatar-btn" id="idChipHeader" style="display:none;" title="Mi perfil">
+          <span class="profile-avatar" id="idChipHeaderAvatar"></span>
+        </button>
       </div>
     </div>
   </header>
@@ -210,6 +322,10 @@
         <button class="nav-btn" data-screen="agregar">
           <i class="fa-solid fa-circle-plus nav-icon"></i>
           <span>Agregar Requerimiento TIC</span>
+        </button>
+        <button class="nav-btn" data-screen="equipos">
+          <i class="fa-solid fa-laptop nav-icon"></i>
+          <span>Préstamo de Equipos</span>
         </button>
         
       </nav>
@@ -294,11 +410,6 @@
             <div class="screen-title">MIS REQUERIMIENTOS</div>
             <div class="screen-desc">Consulta todos tus requerimientos registrados.</div>
           </div>
-          <span class="id-chip" id="idChipMisReq" style="display:none;">
-            <span class="id-chip-icon"><i class="fa-solid fa-id-card"></i></span>
-            <span id="idChipMisReqText"></span>
-            <button title="Cambiar documento"><i class="fa-solid fa-rotate"></i></button>
-          </span>
         </div>
 
         <div class="req-tabs-bar">
@@ -335,6 +446,42 @@
 
       </div>
 
+      <!-- VISTA: equipos -->
+      <div class="screen" id="screen-equipos">
+
+        <div class="screen-header">
+          <div class="screen-icon"><i class="fa-solid fa-laptop"></i></div>
+          <div>
+            <div class="screen-title">PRÉSTAMO DE EQUIPOS</div>
+            <div class="screen-desc">Consulta los equipos disponibles y quién tiene cada uno actualmente.</div>
+          </div>
+        </div>
+
+        <div class="req-toolbar">
+          <div class="req-search-wrap">
+            <i class="fa-solid fa-magnifying-glass"></i>
+            <input type="text" id="equiposSearch" placeholder="Buscar equipo">
+          </div>
+        </div>
+
+        <div class="req-table-wrap">
+          <table class="req-table">
+            <thead>
+              <tr>
+                <th>EQUIPO</th>
+                <th>DESCRIPCIÓN</th>
+                <th>RESPONSABLE</th>
+                <th>ESTADO</th>
+                <th>ACCIÓN</th>
+              </tr>
+            </thead>
+            <tbody id="equiposTableBody"></tbody>
+          </table>
+        </div>
+        <div id="equiposEmpty" class="req-empty" style="display:none;">No hay equipos registrados.</div>
+
+      </div>
+
       <!-- VISTA: agregar -->
       <div class="screen" id="screen-agregar">
 
@@ -344,11 +491,6 @@
             <div class="screen-title">AGREGAR REQUERIMIENTO TIC</div>
             <div class="screen-desc">Completa el formulario para registrar un nuevo requerimiento.</div>
           </div>
-          <span class="id-chip" id="idChipAgregar" style="display:none;">
-            <span class="id-chip-icon"><i class="fa-solid fa-id-card"></i></span>
-            <span id="idChipAgregarText"></span>
-            <button title="Cambiar documento"><i class="fa-solid fa-rotate"></i></button>
-          </span>
         </div>
 
         <form class="req-form" id="formAgregarReq" novalidate>
@@ -445,11 +587,6 @@
             <div class="screen-title">SEGUIMIENTO DE REQUERIMIENTOS</div>
             <div class="screen-desc">Escribe el código de tu requerimiento para ver en qué va.</div>
           </div>
-          <span class="id-chip" id="idChipSeg" style="display:none;">
-            <span class="id-chip-icon"><i class="fa-solid fa-id-card"></i></span>
-            <span id="idChipSegText"></span>
-            <button title="Cambiar documento"><i class="fa-solid fa-rotate"></i></button>
-          </span>
         </div>
 
         <div class="seg-search-hero">

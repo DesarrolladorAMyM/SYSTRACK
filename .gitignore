@@ -10,4 +10,4 @@ env/
 __pycache__/
 
 
-settings.py
+systraker/settings.py

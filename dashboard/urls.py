@@ -4,6 +4,7 @@ Rutas para todas las APIs y la vista principal del dashboard.
 
 from django.urls import path
 from . import views
+from . import views_prestamo_equipos
 
 urlpatterns = [
 
@@ -72,7 +73,11 @@ urlpatterns = [
      path('api/indicadores/resumen/',   views.api_indicadores_resumen,   name='api_indicadores_resumen'),
      path('api/indicadores/tendencia/', views.api_indicadores_tendencia, name='api_indicadores_tendencia'),
      path('api/indicadores/calificacion/', views.api_indicadores_calificacion, name='api_indicadores_calificacion'),
-     
-     
-    
+
+     #  Préstamo de Equipos 
+     path('api/prestamo-equipos/',                views_prestamo_equipos.api_equipos_admin_lista,     name='api_equipos_admin_lista'),
+     path('api/prestamo-equipos/catalogos/',       views_prestamo_equipos.api_equipos_admin_catalogos, name='api_equipos_admin_catalogos'),
+     path('api/prestamo-equipos/guardar/',         views_prestamo_equipos.api_equipo_admin_guardar,    name='api_equipo_admin_guardar'),
+     path('api/prestamo-equipos/<int:pk>/eliminar/', views_prestamo_equipos.api_equipo_admin_eliminar, name='api_equipo_admin_eliminar'),
+
 ]

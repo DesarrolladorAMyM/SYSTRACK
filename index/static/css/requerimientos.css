@@ -1,5 +1,4 @@
-
-  :root{
+:root{
     --primary:       #1B4698;
     --primary-light: #375EAB;
     --primary-dark:  #132f6b;
@@ -455,14 +454,63 @@
   .id-modal-box .btn-submit{width:100%;padding:13px;}
   .id-modal-error{font-size:12.5px;color:var(--danger);margin:-6px 0 14px;display:none;}
   .id-modal-error.show{display:block;}
-  .id-chip{
-    display:inline-flex;align-items:center;gap:8px;background:rgba(27,70,152,0.07);
-    border:1.5px solid rgba(27,70,152,0.15);border-radius:20px;padding:6px 12px 6px 8px;font-size:12.5px;
-    color:var(--primary);font-weight:600;margin-left:auto;
+
+  /* ===== AVATAR DE PERFIL (circulo en el header) Y SU MENU/MODAL ===== */
+  .profile-avatar-btn{
+    width:42px;height:42px;border-radius:50%;padding:0;border:1.5px solid rgba(255,255,255,0.28);
+    background:rgba(255,255,255,0.14);cursor:pointer;
+    display:flex;align-items:center;justify-content:center;transition:background .2s;
   }
-  .id-chip .id-chip-icon{width:22px;height:22px;border-radius:50%;background:var(--primary);color:white;display:flex;align-items:center;justify-content:center;font-size:10px;flex-shrink:0;}
-  .id-chip button{background:none;border:none;color:var(--primary);cursor:pointer;font-size:12px;opacity:.65;padding:2px;display:flex;align-items:center;}
-  .id-chip button:hover{opacity:1;}
+  .profile-avatar-btn:hover{background:rgba(255,255,255,0.26);}
+  .profile-avatar{
+    width:34px;height:34px;border-radius:50%;flex:0 0 auto;
+    background:linear-gradient(135deg,var(--primary) 0%,var(--primary-light) 100%);color:#fff;
+    display:flex;align-items:center;justify-content:center;
+    font-size:13px;font-weight:700;overflow:hidden;letter-spacing:.02em;
+    border:1.5px solid rgba(255,255,255,0.6);
+  }
+  .profile-avatar img{width:100%;height:100%;object-fit:cover;}
+
+  .profile-dropdown-menu{
+    position:absolute;z-index:1000;min-width:180px;
+    background:#fff;border:1.5px solid var(--border);border-radius:var(--radius-md);
+    box-shadow:var(--shadow-lg);padding:6px;font-family:'DM Sans',sans-serif;
+  }
+  .profile-dropdown-menu.hidden{display:none;}
+  .profile-dropdown-item{
+    display:flex;align-items:center;gap:10px;width:100%;
+    padding:10px 12px;border:none;background:none;border-radius:var(--radius-sm);
+    font-size:13.5px;font-weight:600;color:var(--text-primary);cursor:pointer;text-align:left;
+    font-family:'DM Sans',sans-serif;
+  }
+  .profile-dropdown-item:hover{background:rgba(27,70,152,0.06);}
+  .profile-dropdown-item.danger{color:var(--danger);}
+  .profile-dropdown-item.danger:hover{background:#fee2e2;}
+
+  #profileModalOverlay .profile-modal-avatar-wrap{
+    position:relative;width:88px;height:88px;margin:0 auto 16px;
+  }
+  .profile-modal-avatar{
+    width:88px;height:88px;border-radius:50%;overflow:hidden;
+    background:linear-gradient(135deg,var(--primary) 0%,var(--primary-light) 100%);color:#fff;
+    display:flex;align-items:center;justify-content:center;font-size:28px;font-weight:700;
+  }
+  .profile-modal-avatar img{width:100%;height:100%;object-fit:cover;}
+  .profile-modal-avatar-edit{
+    position:absolute;right:-2px;bottom:-2px;width:30px;height:30px;
+    border-radius:50%;border:2px solid #fff;background:var(--secondary);color:#fff;
+    display:flex;align-items:center;justify-content:center;cursor:pointer;font-size:12px;
+  }
+  #profileModalOverlay h3{text-align:center;margin:0 0 2px;}
+  .profile-modal-cargo{text-align:center;color:var(--text-secondary);font-size:13px;margin:0 0 18px;}
+  .profile-modal-doc-label{
+    text-align:center;font-size:12px;font-weight:700;letter-spacing:.04em;
+    text-transform:uppercase;color:var(--text-light);margin-bottom:4px;
+  }
+  .profile-modal-doc-grande{
+    text-align:center;font-size:26px;font-weight:800;color:var(--text-primary);
+    letter-spacing:.03em;margin-bottom:6px;font-family:'DM Mono',monospace;
+  }
 
   /* ===== SEGUIMIENTO: HERO DE BÚSQUEDA ===== */
   .seg-search-hero{
@@ -816,4 +864,28 @@
   }
   #registroModalOverlay #formRegistroUsuario select{
     appearance:auto; background:#fff; cursor:pointer;
+  }
+
+/*MODAL DE PRESTAMO DE EQUIPOS*/
+
+#prestarEquipoOverlay .id-modal-box{
+    max-height:88vh;
+    overflow-y:auto;
+    -webkit-overflow-scrolling:touch;
+  }
+  #prestarEquipoOverlay .id-modal-box::-webkit-scrollbar{ width:6px; }
+  #prestarEquipoOverlay .id-modal-box::-webkit-scrollbar-thumb{
+    background:rgba(0,0,0,0.15); border-radius:999px;
+  }
+  #prestarEquipoOverlay #formPrestarEquipo .form-field{
+    margin-bottom:14px;
+  }
+  #prestarEquipoOverlay #formPrestarEquipo label{
+    display:block; margin-bottom:6px; font-weight:600; font-size:13.5px;
+  }
+  #prestarEquipoOverlay #formPrestarEquipo input,
+  #prestarEquipoOverlay #formPrestarEquipo textarea{
+    width:100%; box-sizing:border-box;
+    padding:10px 12px; border:1px solid #e2e8f0; border-radius:8px;
+    font-size:14px; font-family:inherit;
   }

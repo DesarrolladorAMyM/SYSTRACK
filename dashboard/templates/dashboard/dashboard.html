@@ -443,87 +443,130 @@
         <h3>Menú Principal</h3>
       </div>
 
-      <nav class="nav-menu">
-
-        <!-- ── SYSTRAKER (dashboard) ── -->
+       <nav class="nav-menu">
+ 
+        {# ── SYSTRAKER (dashboard) ── #}
+        {% if 'dashboard' in screens_permitidas %}
         <button class="nav-btn active" data-screen="dashboard" onclick="showScreen('dashboard')">
           <i class="fas fa-chart-line nav-icon"></i>
           <span class="nav-label">Systraker</span>
         </button>
-
-        <!-- ── INVENTARIO ── -->
+        {% endif %}
+ 
+        {# ── INVENTARIO ── #}
+        {% if 'inventario' in screens_permitidas %}
         <button class="nav-btn" data-screen="inventario" onclick="showScreen('inventario')">
           <i class="fas fa-boxes nav-icon"></i>
           <span class="nav-label">Inventario</span>
+          {% if 'inventario' in screens_solo_lectura %}<i class="fas fa-eye" title="Solo lectura" style="margin-left:auto;opacity:.6;"></i>{% endif %}
         </button>
-
-        <!-- ── SEGUIMIENTO ── -->
+        {% endif %}
+ 
+        {# ── SEGUIMIENTO (submenú) — solo se muestra el botón padre si al menos un hijo es visible ── #}
+        {% if 'centro-costo' in screens_permitidas or 'historial-equipo' in screens_permitidas or 'inactivos' in screens_permitidas or 'colaboradores' in screens_permitidas or 'prestamo-equipos' in screens_permitidas %}
         <button class="nav-btn" id="btnSeguimiento" onclick="toggleSubmenu('submenuSeg','btnSeguimiento')">
           <i class="fas fa-route nav-icon"></i>
           <span class="nav-label">Seguimiento</span>
           <i class="fas fa-chevron-down chevron"></i>
         </button>
         <div class="submenu" id="submenuSeg">
+          {% if 'centro-costo' in screens_permitidas %}
           <button class="sub-btn" data-screen="centro-costo" onclick="showScreen('centro-costo')">
             <i class="fas fa-circle"></i> Centro de costo
           </button>
+          {% endif %}
+          {% if 'historial-equipo' in screens_permitidas %}
           <button class="sub-btn" data-screen="historial-equipo" onclick="showScreen('historial-equipo')">
             <i class="fas fa-circle"></i> Historial equipo
           </button>
+          {% endif %}
+          {% if 'inactivos' in screens_permitidas %}
           <button class="sub-btn" data-screen="inactivos" onclick="showScreen('inactivos')">
             <i class="fas fa-circle"></i> Inactivos
           </button>
+          {% endif %}
+          {% if 'colaboradores' in screens_permitidas %}
           <button class="sub-btn" data-screen="colaboradores" onclick="showScreen('colaboradores')">
             <i class="fas fa-circle"></i> Colaboradores
           </button>
+          {% endif %}
+          {% if 'prestamo-equipos' in screens_permitidas %}
+          <button class="sub-btn" data-screen="prestamo-equipos" onclick="showScreen('prestamo-equipos')">
+            <i class="fas fa-circle"></i> Préstamo de Equipos
+          </button>
+          {% endif %}
         </div>
-
-        <!-- ── LABEL REQUERIMIENTOS ── -->
+        {% endif %}
+ 
+        {# ── LABEL REQUERIMIENTOS — solo si al menos una pantalla del bloque es visible ── #}
+        {% if 'gestion-usuarios' in screens_permitidas or 'mis-requerimientos' in screens_permitidas or 'asignar-requerimientos' in screens_permitidas or 'historial-requerimientos' in screens_permitidas or 'indicadores' in screens_permitidas %}
         <div style="margin:10px 0 4px;padding:0 4px;font-size:10.5px;font-weight:700;
                     color:var(--primary);text-transform:uppercase;letter-spacing:0.08em;">
           Requerimientos
         </div>
+        {% endif %}
 
-        
-        <!-- ── Gestión de Usuarios ── -->
-        <button class="nav-btn" data-screen="gestion-usuarios" onclick="showScreen('gestion-usuarios')">
-          <i class="fas fa-user-friends nav-icon"></i>
-          <span class="nav-label">Gestión de Usuarios</span>
-        </button>
-
-        <!-- ── Mis Requerimientos ── -->
+        {% if 'mis-requerimientos' in screens_permitidas %}
         <button class="nav-btn" data-screen="mis-requerimientos" onclick="showScreen('mis-requerimientos')">
           <i class="fas fa-clipboard-list nav-icon"></i>
           <span class="nav-label">Mis Requerimientos</span>
         </button>
-
-        <!-- ── Asignar Requerimientos ── -->
+        {% endif %}
+ 
+        {% if 'gestion-usuarios' in screens_permitidas %}
+        <button class="nav-btn" data-screen="gestion-usuarios" onclick="showScreen('gestion-usuarios')">
+          <i class="fas fa-user-friends nav-icon"></i>
+          <span class="nav-label">Gestión de Usuarios</span>
+        </button>
+        {% endif %}
+ 
+ 
+        {% if 'asignar-requerimientos' in screens_permitidas %}
         <button class="nav-btn" data-screen="asignar-requerimientos" onclick="showScreen('asignar-requerimientos')">
           <i class="fas fa-user-plus nav-icon"></i>
           <span class="nav-label">Asignar Requerimientos</span>
         </button>
-
-          <!-- ── Historial de requeriminetos  ── -->
+        {% endif %}
+ 
+        {% if 'historial-requerimientos' in screens_permitidas %}
         <button class="nav-btn" data-screen="historial-requerimientos" onclick="showScreen('historial-requerimientos')">
           <i class="fas fa-history nav-icon"></i>
           <span class="nav-label">Historial de Requerimientos</span>
         </button>
-          <!-- ── Indicadores ── -->
+        {% endif %}
+ 
+        {% if 'indicadores' in screens_permitidas %}
         <button class="nav-btn" data-screen="indicadores" onclick="showScreen('indicadores')">
           <i class="fas fa-chart-bar nav-icon"></i>
           <span class="nav-label">Indicadores</span>
         </button>
-
-          <!-- ── SEPARADOR ── -->
+        {% endif %}
+ 
         <div style="margin-top:6px;padding-top:10px;border-top:1.5px solid var(--border);"></div>
-
-        <!-- ── Cerrar Sesión ── -->
+ 
         <button class="nav-btn" onclick="cerrarSesion()">
           <i class="fas fa-sign-out-alt nav-icon"></i>
           <span class="nav-label">Cerrar Sesión</span>
         </button>
-
+ 
       </nav>
+        <script>
+          window.SCREENS_PERMITIDAS   = {{ screens_permitidas_json|default:"[]"|safe }};
+          window.SCREENS_SOLO_LECTURA = {{ screens_solo_lectura_json|default:"[]"|safe }};
+
+          // Si el usuario NO tiene acceso a "dashboard" (la pantalla que
+          // viene marcada active por defecto en el HTML), lo mandamos a la
+          // primera pantalla que sí tiene permitida.
+          document.addEventListener('DOMContentLoaded', function () {
+            if (!window.SCREENS_PERMITIDAS.includes('dashboard') && window.SCREENS_PERMITIDAS.length > 0) {
+              // Prioriza "mis-requerimientos" si la tiene; si no, la primera de su lista
+              const preferida = window.SCREENS_PERMITIDAS.includes('mis-requerimientos')
+                ? 'mis-requerimientos'
+                : window.SCREENS_PERMITIDAS[0];
+              showScreen(preferida);
+            }
+          });
+        </script>
 
       <div class="sidebar-footer">
         <div class="date-info">
@@ -853,7 +896,85 @@
           </div>
         </div>
       </section>
-      <!-- ══════════ GESTIÓN DE USUARIOS ══════════ -->
+
+      <!-- ══════════ PRÉSTAMO DE EQUIPOS ══════════ -->
+      <section class="screen" id="screen-prestamo-equipos">
+        <div class="screen-header">
+          <div class="screen-icon"><i class="fas fa-laptop"></i></div>
+          <div>
+            <h2 class="screen-title">Préstamo de Equipos</h2>
+            <p class="screen-desc">Equipos disponibles para los colaboradores — responsable y estado actual</p>
+          </div>
+          <div class="screen-actions">
+            <button class="btn-create" onclick="openEquipoModal()">
+              <i class="fas fa-plus"></i> Equipo
+            </button>
+          </div>
+        </div>
+        <div class="colab-toolbar">
+          <span style="font-size:13px;color:var(--text-secondary)">Buscar</span>
+          <input type="text" class="colab-search-input" id="equipo-search" placeholder="Buscar equipo o responsable...">
+        </div>
+        <div class="inv-table-wrap">
+          <table class="data-table">
+            <thead><tr>
+              <th>Equipo</th>
+              <th>Descripción</th>
+              <th>Responsable</th>
+              <th>Estado</th>
+              <th>Acciones</th>
+            </tr></thead>
+            <tbody id="equipo-tbody">
+              <tr><td colspan="5" style="text-align:center;padding:30px;color:var(--text-light)">Cargando...</td></tr>
+            </tbody>
+          </table>
+        </div>
+      </section>
+
+      <!-- MODAL: crear/editar equipo -->
+      <div class="modal-overlay" id="modalEquipo">
+        <div class="modal-form">
+          <div class="modal-form-header">
+            <div class="modal-form-icon"><i class="fas fa-laptop"></i></div>
+            <div>
+              <div class="modal-form-title" id="eq-modal-title">Nuevo equipo</div>
+              <div class="modal-form-sub">Préstamo de Equipos</div>
+            </div>
+            <button class="modal-close-btn" onclick="closeModal('modalEquipo')"><i class="fas fa-times"></i></button>
+          </div>
+          <div class="modal-form-body">
+            <input type="hidden" id="eq-id-equipo">
+            <div class="form-section">
+              <div class="form-group">
+                <label class="form-label">Nombre del equipo <span class="req">*</span></label>
+                <input type="text" class="form-input" id="eq-nombre" placeholder="Ej: Portátil Dell Latitude 5420">
+              </div>
+              <div class="form-group">
+                <label class="form-label">Descripción</label>
+                <input type="text" class="form-input" id="eq-descripcion" placeholder="Ej: Serial ABC123">
+              </div>
+
+              <div class="form-group" style="position:relative;">
+                <label class="form-label">Responsable</label>
+                <input type="text" class="form-input" id="eq-responsable-search" placeholder="Buscar responsable..." autocomplete="off"
+                  oninput="eqFiltrarResponsable()" onfocus="eqAbrirResponsableDropdown()" onblur="setTimeout(()=>eqCerrarResponsableDropdown(),200)">
+                <input type="hidden" id="eq-responsable">
+                <div id="eq-responsable-dropdown" class="usr-dropdown" style="display:none;"></div>
+              </div>
+
+
+              <div class="form-group">
+                <label class="form-label">Estado <span class="req">*</span></label>
+                <select class="form-select" id="eq-estado"></select>
+              </div>
+            </div>
+          </div>
+          <div class="modal-form-footer">
+            <button class="btn-cancel" onclick="closeModal('modalEquipo')"><i class="fas fa-arrow-left"></i> Cerrar</button>
+            <button class="btn-save" onclick="guardarEquipo()"><i class="fas fa-save"></i> Guardar</button>
+          </div>
+        </div>
+      </div>
       <section class="screen" id="screen-gestion-usuarios">
         <div class="screen-header">
           <div class="screen-icon"><i class="fas fa-user-friends"></i></div>
@@ -1419,30 +1540,23 @@
   <div class="inv-table-wrap" style="margin-top:12px">
     <table class="data-table" id="hreq-table">
       <thead><tr>
-        <th onclick="sortHReq('consecutivo')">
-          <div class="sort-wrap">Consecutivo <i class="fas fa-sort sort-ico"></i></div>
-        </th>
-        <th onclick="sortHReq('fecha_requerimiento')">
-          <div class="sort-wrap">Fecha requerimiento <i class="fas fa-sort sort-ico"></i></div>
-        </th>
-        <th onclick="sortHReq('remitente')">
-          <div class="sort-wrap">Colaborador remitente <i class="fas fa-sort sort-ico"></i></div>
-        </th>
-        
-        <th onclick="sortHReq('prioridad')">
-          <div class="sort-wrap">Prioridad <i class="fas fa-sort sort-ico"></i></div>
-        </th>
-        <th onclick="sortHReq('asignado')">
-          <div class="sort-wrap">Colaborador asignado <i class="fas fa-sort sort-ico"></i></div>
-        </th>
-        <th onclick="sortHReq('clasificacion')">
-          <div class="sort-wrap">Clasificación <i class="fas fa-sort sort-ico"></i></div>
-        </th>
-        <th onclick="sortHReq('plan_accion')">
-          <div class="sort-wrap">Plan de acción <i class="fas fa-sort sort-ico"></i></div>
-        </th>
-        <th>Acciones</th> 
-      </tr></thead>
+          <th onclick="sortHReq('consecutivo')">
+            <div class="sort-wrap">Consecutivo <i class="fas fa-sort sort-ico"></i></div>
+          </th>
+          <th onclick="sortHReq('fecha_requerimiento')">
+            <div class="sort-wrap">Fecha requerimiento <i class="fas fa-sort sort-ico"></i></div>
+          </th>
+          <th onclick="sortHReq('remitente')">
+            <div class="sort-wrap">Colaborador remitente <i class="fas fa-sort sort-ico"></i></div>
+          </th>
+          <th onclick="sortHReq('prioridad')">
+            <div class="sort-wrap">Prioridad <i class="fas fa-sort sort-ico"></i></div>
+          </th>
+          <th onclick="sortHReq('clasificacion')">
+            <div class="sort-wrap">Clasificación <i class="fas fa-sort sort-ico"></i></div>
+          </th>
+          <th>Acciones</th> 
+        </tr></thead>
       <tbody id="hreq-tbody">
         <tr><td colspan="8" style="text-align:center;padding:40px;color:var(--text-light)">
           <i class="fas fa-history" style="font-size:28px;display:block;margin-bottom:10px;opacity:.3"></i>

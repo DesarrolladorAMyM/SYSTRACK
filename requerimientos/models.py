@@ -205,4 +205,49 @@ class Notificacion(models.Model):
     class Meta:
         managed  = False
         db_table = 'mv_Notificaciones'
-        ordering = ['-FechaCreacion']
+
+
+class EstadoGeneral(models.Model):
+    """Tabla de estados compartida (capa común), usada por varios módulos
+    del sistema — no exclusiva de requerimientos. Para Préstamo de Equipos
+    se usan IdEstado=3 (Disponible) e IdEstado=4 (No disponible)."""
+    IdEstado    = models.AutoField(db_column='f100_id', primary_key=True)
+    Descripcion = models.CharField(db_column='f100_descripcion', max_length=100)
+
+    class Meta:
+        managed  = False
+        db_table = 't100_mm_estados'
+
+class Equipo(models.Model):
+    """Equipos que se pueden prestar (Préstamo de Equipos). El estado viene
+    de la tabla compartida EstadoGeneral, no de mm_EstadoRequerimiento."""
+    IdEquipo      = models.AutoField(primary_key=True)
+    NombreEquipo  = models.CharField(max_length=150)
+    Descripcion   = models.CharField(max_length=300, null=True, blank=True)
+    IdResponsable = models.IntegerField(null=True, blank=True)
+    IdEstado      = models.IntegerField()
+
+    class Meta:
+        managed  = False
+        db_table = 'mv_Equipos'
+        
+
+
+class HistorialPrestamo(models.Model):
+    """Historial de préstamos de equipos (Préstamo de Equipos). Cada fila es
+    un préstamo; FechaDevolucionReal NULL = préstamo todavía activo."""
+    IdPrestamo              = models.AutoField(primary_key=True)
+    IdEquipo                = models.ForeignKey(
+        Equipo, db_column='IdEquipo', on_delete=models.DO_NOTHING
+    )
+    Cedula                  = models.CharField(max_length=20)
+    NombreSolicitante       = models.CharField(max_length=150)
+    Area                    = models.CharField(max_length=150, null=True, blank=True)
+    FechaPrestamo           = models.DateTimeField(auto_now_add=True)
+    FechaEstimadaDevolucion = models.DateField(null=True, blank=True)
+    FechaDevolucionReal     = models.DateTimeField(null=True, blank=True)
+    Observaciones           = models.CharField(max_length=500, null=True, blank=True)
+
+    class Meta:
+        managed  = False
+        db_table = 'mv_HistorialPrestamos'

@@ -189,6 +189,7 @@ function showNotif(title, msg, type = 'success', duration = 3500) {
   }
 
   function abrirBellPanel(){
+    cerrarDropdown();
     const btn   = document.getElementById('btnBell');
     const panel = document.getElementById('bellPanel');
     const rect  = btn.getBoundingClientRect();
@@ -322,7 +323,7 @@ function showNotif(title, msg, type = 'success', duration = 3500) {
   document.getElementById('reqSearch').addEventListener('input',e=>{q=e.target.value.toLowerCase().trim();page=1;renderMisReq();});
   document.getElementById('pagSize').addEventListener('change',e=>{size=+e.target.value;page=1;renderMisReq();});
 
-  const VISTAS_QUE_PIDEN_DOC = ['mis-req','agregar','seguimiento'];
+  const VISTAS_QUE_PIDEN_DOC = ['mis-req','agregar','seguimiento','equipos'];
 
   function irAVista(nombre){
     if(nombre === 'agregar'){
@@ -348,6 +349,7 @@ function showNotif(title, msg, type = 'success', duration = 3500) {
     if(nombre === 'mis-req'){ page=1; renderMisReq(); }
     if(nombre === 'agregar'){ precargarDocumentoEnFormulario(); cargarCatalogos(); }
     if(nombre === 'seguimiento'){ resetSegBuscador(); }
+    if(nombre === 'equipos'){ cargarEquipos(); }
   }
 
   document.querySelectorAll('.nav-btn').forEach(btn => {
@@ -600,22 +602,114 @@ function showNotif(title, msg, type = 'success', duration = 3500) {
     });
   }
 
-  function actualizarChipsDocumento(){
-    const doc = getDocumento();
-    [['idChipMisReq','idChipMisReqText'], ['idChipAgregar','idChipAgregarText'], ['idChipSeg','idChipSegText']].forEach(([wrapId,textId])=>{
-      const wrap = document.getElementById(wrapId);
-      const text = document.getElementById(textId);
-      if(!wrap) return;
-      if(doc){ wrap.style.display='inline-flex'; text.textContent = 'Doc. ' + doc; }
-      else { wrap.style.display='none'; }
-    });
+  /* ===== AVATAR DE PERFIL (solo local, no viaja al backend) =====
+     No existe un campo de foto en mv_Usuarios (modelo no administrado
+     por Django), asi que la foto se guarda en sessionStorage, ligada
+     al numero de documento, igual que el resto del perfil. */
+  function avatarKey(doc){ return 'amm_avatar_' + doc; }
+  function getAvatar(doc){ return doc ? (sessionStorage.getItem(avatarKey(doc)) || '') : ''; }
+  function setAvatar(doc, dataUrl){ if(doc) sessionStorage.setItem(avatarKey(doc), dataUrl); }
+
+  function iniciales(nombre){
+    if(!nombre) return '?';
+    const partes = nombre.trim().split(/\s+/).filter(Boolean);
+    const ini = (partes[0]?.[0] || '') + (partes[1]?.[0] || '');
+    return (ini || partes[0]?.[0] || '?').toUpperCase();
   }
 
-  document.querySelectorAll('.id-chip button').forEach(btn=>{
-    btn.addEventListener('click', () => {
-      clearDocumento();
-      pedirDocumento(() => irAVista(document.querySelector('.nav-btn.active').dataset.screen));
+  function actualizarChipsDocumento(){
+    const doc       = getDocumento();
+    const perfil    = getPerfil();
+    const avatarUrl = getAvatar(doc);
+    const wrap   = document.getElementById('idChipHeader');
+    const avatar = document.getElementById('idChipHeaderAvatar');
+    if(!wrap) return;
+    if(doc){
+      wrap.style.display = 'flex';
+      if(avatar){
+        avatar.innerHTML = avatarUrl ? ('<img src="' + avatarUrl + '" alt="">') : iniciales(perfil.nombre);
+      }
+    } else {
+      wrap.style.display = 'none';
+    }
+  }
+
+  /* ===== MENU DESPLEGABLE DEL AVATAR (Perfil / Cerrar sesion) ===== */
+  const profileDropdown = document.getElementById('profileDropdownMenu');
+  let chipActivo = null;
+
+  function abrirDropdown(chip){
+    cerrarBellPanel();
+    chipActivo = chip;
+    const r = chip.getBoundingClientRect();
+    profileDropdown.classList.remove('hidden');
+    profileDropdown.style.top  = (r.bottom + window.scrollY + 8) + 'px';
+    profileDropdown.style.left = Math.max(8, r.right + window.scrollX - profileDropdown.offsetWidth) + 'px';
+  }
+  function cerrarDropdown(){
+    profileDropdown.classList.add('hidden');
+    chipActivo = null;
+  }
+  function cerrarSesionDesdeMenu(){
+    cerrarDropdown();
+    cerrarModalPerfil();
+    clearDocumento();
+    pedirDocumento(() => irAVista(document.querySelector('.nav-btn.active').dataset.screen));
+  }
+
+  document.querySelectorAll('.profile-avatar-btn').forEach(chip=>{
+    chip.addEventListener('click', (e) => {
+      e.stopPropagation();
+      if(chipActivo === chip && !profileDropdown.classList.contains('hidden')){
+        cerrarDropdown();
+      } else {
+        abrirDropdown(chip);
+      }
     });
+  });
+  document.addEventListener('click', (e) => {
+    if(!profileDropdown.classList.contains('hidden') && !profileDropdown.contains(e.target)) cerrarDropdown();
+  });
+  document.getElementById('btnCerrarSesion').addEventListener('click', cerrarSesionDesdeMenu);
+  document.getElementById('btnAbrirPerfil').addEventListener('click', () => {
+    cerrarDropdown();
+    abrirModalPerfil();
+  });
+
+  /* ===== MODAL DE PERFIL ===== */
+  const profileModalOverlay = document.getElementById('profileModalOverlay');
+  const profileModalAvatar  = document.getElementById('profileModalAvatar');
+  const profileModalInput   = document.getElementById('profileModalAvatarInput');
+
+  function abrirModalPerfil(){
+    const doc       = getDocumento();
+    const perfil    = getPerfil();
+    const avatarUrl = getAvatar(doc);
+    profileModalAvatar.innerHTML = avatarUrl ? ('<img src="' + avatarUrl + '" alt="">') : iniciales(perfil.nombre);
+    document.getElementById('profileModalNombre').textContent    = perfil.nombre    || '—';
+    document.getElementById('profileModalCargo').textContent     = perfil.cargo_txt || '';
+    document.getElementById('profileModalDocGrande').textContent = doc || '—';
+    profileModalOverlay.classList.remove('hidden');
+  }
+  function cerrarModalPerfil(){
+    profileModalOverlay.classList.add('hidden');
+  }
+
+  document.getElementById('profileModalClose').addEventListener('click', cerrarModalPerfil);
+  profileModalOverlay.addEventListener('click', (e) => { if(e.target === profileModalOverlay) cerrarModalPerfil(); });
+  document.getElementById('profileModalAvatarBtn').addEventListener('click', () => profileModalInput.click());
+  document.getElementById('profileModalCerrarSesion').addEventListener('click', cerrarSesionDesdeMenu);
+
+  profileModalInput.addEventListener('change', (e) => {
+    const file = e.target.files && e.target.files[0];
+    if(!file || !file.type.startsWith('image/')) return;
+    const reader = new FileReader();
+    reader.onload = () => {
+      setAvatar(getDocumento(), reader.result);
+      profileModalAvatar.innerHTML = '<img src="' + reader.result + '" alt="">';
+      actualizarChipsDocumento();
+    };
+    reader.readAsDataURL(file);
   });
 
   /* ===== SEGUIMIENTO ===== */
@@ -1130,5 +1224,221 @@ function showNotif(title, msg, type = 'success', duration = 3500) {
       abrirSeguimientoConCodigo();
     } else {
       pedirDocumento(abrirSeguimientoConCodigo);
+    }
+  })();
+
+  /* ===== PRÉSTAMO DE EQUIPOS ===== */
+  let EQUIPOS = [];
+  let equiposQ = '';
+
+  async function cargarEquipos(){
+    try {
+      const r    = await fetch('/SYSTRACK/requerimiento/api/equipos/');
+      const resp = await r.json();
+      if(resp.ok){
+        EQUIPOS = resp.equipos;
+        renderEquiposTable();
+      }
+    } catch(e){
+      console.error('Error cargando equipos:', e);
+    }
+  }
+
+  function renderEquiposTable(){
+  const q = equiposQ.toLowerCase().trim();
+  const data = EQUIPOS.filter(eq =>
+    !q || Object.values(eq).some(v => String(v ?? '').toLowerCase().includes(q))
+  );
+
+  const tbody = document.getElementById('equiposTableBody');
+  const empty = document.getElementById('equiposEmpty');
+
+  if(!data.length){
+    tbody.innerHTML = '';
+    empty.style.display = 'flex';
+    return;
+  }
+  empty.style.display = 'none';
+
+  tbody.innerHTML = data.map(eq => `
+    <tr>
+      <td>${eq.nombre}</td>
+      <td>${eq.descripcion || '—'}</td>
+      <td>${eq.responsable}</td>
+      <td>
+        <span class="equipo-badge ${eq.disponible ? 'disponible' : 'no-disponible'}">
+          ${eq.estado}
+        </span>
+      </td>
+      <td>
+        ${eq.disponible
+          ? `<button class="req-action-btn btn-prestar-equipo" data-id="${eq.id_equipo}" data-nombre="${eq.nombre}" title="Prestar equipo"><i class="fa-solid fa-right-left"></i></button>`
+          : `<button class="req-action-btn btn-devolver-equipo" data-id="${eq.id_equipo}" data-nombre="${eq.nombre}" title="Registrar devolución"><i class="fa-solid fa-rotate-left"></i></button>`
+        }
+      </td>
+    </tr>
+  `).join('');
+}
+
+  const equiposSearchInput = document.getElementById('equiposSearch');
+  if(equiposSearchInput){
+    equiposSearchInput.addEventListener('input', (e) => {
+      equiposQ = e.target.value;
+      renderEquiposTable();
+    });
+  }
+
+  /* ===== MODAL DE PRÉSTAMO DE EQUIPOS ===== */
+  (function(){
+    const overlay   = document.getElementById('prestarEquipoOverlay');
+    const closeBtn  = document.getElementById('prestarEquipoClose');
+    const form      = document.getElementById('formPrestarEquipo');
+    const errorBox  = document.getElementById('prestarEquipoError');
+    const submitBtn = document.getElementById('prestarEquipoSubmit');
+    const cedulaInp = document.getElementById('pe_cedula');
+    const nombreInp = document.getElementById('pe_nombre');
+    const areaInp   = document.getElementById('pe_area');
+
+    // ── Modal de devolución ──
+    const cdOverlay  = document.getElementById('confirmarDevolucionOverlay');
+    const cdClose    = document.getElementById('confirmarDevolucionClose');
+    const cdCancelar = document.getElementById('confirmarDevolucionCancelar');
+    const cdSubmit   = document.getElementById('confirmarDevolucionSubmit');
+    const cdNombre   = document.getElementById('cdEquipoNombre');
+    const cdError    = document.getElementById('confirmarDevolucionError');
+    let idEquipoADevolver = null;
+
+    function abrirModalPrestar(idEquipo, nombreEquipo){
+      form.reset();
+      errorBox.style.display = 'none';
+      document.getElementById('pe_id_equipo').value = idEquipo;
+      document.getElementById('peEquipoNombre').textContent = nombreEquipo;
+
+      const doc    = getDocumento();
+      const perfil = getPerfil();
+      if(doc)              cedulaInp.value = doc;
+      if(perfil.nombre)    nombreInp.value = perfil.nombre;
+      if(perfil.cargo_txt) areaInp.value   = perfil.cargo_txt;
+
+      overlay.classList.remove('hidden');
+    }
+    function cerrarModalPrestar(){ overlay.classList.add('hidden'); }
+
+    function abrirModalDevolucion(idEquipo, nombreEquipo){
+      idEquipoADevolver = idEquipo;
+      cdNombre.textContent = nombreEquipo || 'este equipo';
+      cdError.style.display = 'none';
+      cdError.textContent = '';
+      cdSubmit.disabled = false;
+      cdSubmit.textContent = 'CONFIRMAR';
+      cdOverlay.classList.remove('hidden');
+    }
+    function cerrarModalDevolucion(){
+      cdOverlay.classList.add('hidden');
+      idEquipoADevolver = null;
+    }
+    cdClose.addEventListener('click', cerrarModalDevolucion);
+    cdCancelar.addEventListener('click', cerrarModalDevolucion);
+    cdOverlay.addEventListener('click', function(e){ if(e.target === cdOverlay) cerrarModalDevolucion(); });
+    cdSubmit.addEventListener('click', function(){
+      if(!idEquipoADevolver) return;
+      cdSubmit.disabled = true;
+      cdSubmit.textContent = 'Procesando...';
+      devolverEquipo(idEquipoADevolver);
+    });
+
+    document.addEventListener('click', function(e){
+      const btn = e.target.closest('.btn-prestar-equipo');
+      if (btn) abrirModalPrestar(btn.dataset.id, btn.dataset.nombre);
+
+      const btnDevolver = e.target.closest('.btn-devolver-equipo');
+      if (btnDevolver) abrirModalDevolucion(btnDevolver.dataset.id, btnDevolver.dataset.nombre);
+    });
+
+    closeBtn.addEventListener('click', cerrarModalPrestar);
+    overlay.addEventListener('click', function(e){ if (e.target === overlay) cerrarModalPrestar(); });
+
+    let debounce;
+    cedulaInp.addEventListener('input', function(){
+      clearTimeout(debounce);
+      const cedula = cedulaInp.value.trim();
+      if (cedula.length < 5) return;
+      debounce = setTimeout(function(){
+        fetch('/SYSTRACK/requerimiento/api/validar-cedula/', {
+          method: 'POST',
+          headers: {'Content-Type': 'application/json'},
+          body: JSON.stringify({cedula: cedula})
+        })
+        .then(r => r.json())
+        .then(data => {
+          if (data.ok) {
+            nombreInp.value = data.nombre || '';
+            areaInp.value   = data.cargo_txt || '';
+          }
+        });
+      }, 400);
+    });
+
+    form.addEventListener('submit', function(e){
+      e.preventDefault();
+      submitBtn.disabled = true;
+
+      fetch('/SYSTRACK/requerimiento/api/equipos/prestar/', {
+        method: 'POST',
+        headers: {'Content-Type': 'application/json'},
+        body: JSON.stringify({
+          id_equipo: document.getElementById('pe_id_equipo').value,
+          cedula: cedulaInp.value.trim(),
+          nombre: nombreInp.value.trim(),
+          area: areaInp.value.trim(),
+          fecha_estimada_devolucion: document.getElementById('pe_fecha_devol').value || null,
+          observaciones: document.getElementById('pe_observ').value.trim(),
+        })
+      })
+      .then(r => r.json())
+      .then(data => {
+        submitBtn.disabled = false;
+        if (!data.ok) {
+          cerrarModalPrestar();
+          showNotif('No se pudo prestar el equipo', data.error || 'Intenta de nuevo.', 'error');
+          cargarEquipos();
+          return;
+        }
+        cerrarModalPrestar();
+        showNotif('Préstamo registrado', 'El equipo quedó asignado correctamente.', 'success');
+        cargarEquipos();
+      })
+      .catch(() => {
+        submitBtn.disabled = false;
+        cerrarModalPrestar();
+        showNotif('Error de conexión', 'Intenta de nuevo.', 'error');
+      });
+    });
+
+    function devolverEquipo(idEquipo){
+      fetch('/SYSTRACK/requerimiento/api/equipos/devolver/', {
+        method: 'POST',
+        headers: {'Content-Type': 'application/json'},
+        body: JSON.stringify({id_equipo: idEquipo})
+      })
+      .then(r => r.json())
+      .then(data => {
+        cdSubmit.disabled = false;
+        cdSubmit.textContent = 'CONFIRMAR';
+        if (data.ok) {
+          cerrarModalDevolucion();
+          showNotif('Devolución registrada', 'El equipo vuelve a estar disponible.', 'success');
+          cargarEquipos();
+        } else {
+          cdError.textContent = data.error || 'No se pudo registrar la devolución.';
+          cdError.style.display = 'block';
+        }
+      })
+      .catch(() => {
+        cdSubmit.disabled = false;
+        cdSubmit.textContent = 'CONFIRMAR';
+        cdError.textContent = 'Error de conexión. Intenta de nuevo.';
+        cdError.style.display = 'block';
+      });
     }
   })();

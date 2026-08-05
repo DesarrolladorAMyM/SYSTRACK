@@ -741,3 +741,68 @@ class CentroCosto(models.Model):
 
     def __str__(self):
         return self.g228_nombre
+    
+    
+    
+    # ══════════════════════════════════════════════════════════════════
+# PERMISOS DE MENÚ — pegar al FINAL de dashboard/models.py
+# (después de la clase CentroCosto que ya tienes)
+# ══════════════════════════════════════════════════════════════════
+
+from django.contrib.auth.models import Group
+
+
+class Modulo(models.Model):
+    """Agrupador visual del menú. Ej: 'Inventario', 'Requerimientos'."""
+    nombre = models.CharField(max_length=60)
+    orden  = models.PositiveIntegerField(default=0)
+
+    class Meta:
+        db_table = 'core_modulo'
+        ordering = ['orden']
+
+    def __str__(self):
+        return self.nombre
+
+
+class OpcionMenu(models.Model):
+    """
+    Representa UNA pantalla del sidebar (un botón data-screen).
+    screen_key debe coincidir EXACTO con el data-screen del HTML.
+    """
+    modulo     = models.ForeignKey(Modulo, on_delete=models.PROTECT, related_name='opciones')
+    nombre     = models.CharField(max_length=80)
+    screen_key = models.SlugField(max_length=60, unique=True,
+                                   help_text="Debe coincidir con el data-screen del HTML")
+    orden      = models.PositiveIntegerField(default=0)
+
+    grupos = models.ManyToManyField(
+        Group,
+        through='OpcionMenuGrupo',
+        related_name='opciones_menu',
+        blank=True,
+    )
+
+    class Meta:
+        db_table = 'core_opcionmenu'
+        ordering = ['modulo__orden', 'orden']
+
+    def __str__(self):
+        return f"{self.nombre} ({self.screen_key})"
+
+
+class OpcionMenuGrupo(models.Model):
+    """Permite marcar, por grupo, si el acceso a una pantalla es solo lectura."""
+    opcion       = models.ForeignKey(OpcionMenu, on_delete=models.CASCADE)
+    grupo        = models.ForeignKey(Group, on_delete=models.CASCADE)
+    solo_lectura = models.BooleanField(default=False)
+
+    class Meta:
+        db_table = 'core_opcionmenugrupo'
+        unique_together = ('opcion', 'grupo')
+        verbose_name = 'Acceso de grupo a opción de menú'
+        verbose_name_plural = 'Accesos de grupo a opciones de menú'
+
+    def __str__(self):
+        ro = ' (solo lectura)' if self.solo_lectura else ''
+        return f"{self.grupo.name} → {self.opcion.nombre}{ro}"

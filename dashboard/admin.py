@@ -17,6 +17,10 @@ from .models import (
     Colaborador, AsignacionColaborador, Acta, TipoDocumento, CentroCosto, TipoImpresora, CaracteristicasVideoBeam
 )
 
+from django.contrib.auth.models import Group
+from django.contrib.auth.admin import GroupAdmin as BaseGroupAdmin
+from .models import Modulo, OpcionMenu, OpcionMenuGrupo
+
 
 # ══════════════════════════════════════════════════════
 # CATÁLOGOS SIMPLES
@@ -733,3 +737,68 @@ class ActaAdmin(admin.ModelAdmin):
     list_display  = ['g217_id', 'g217_colaborador', 'g217_tipo', 'g217_proceso', 'g217_fecha']
     list_filter   = ['g217_tipo', 'g217_proceso']
     search_fields = ['g217_colaborador__g215_nombre']
+    
+    
+    
+    
+# ── MODULO ──────────────────────────────────────────────
+@admin.register(Modulo)
+class ModuloAdmin(admin.ModelAdmin):
+    list_display = ('nombre', 'orden', 'total_opciones')
+    list_editable = ('orden',)
+
+    def total_opciones(self, obj):
+        return obj.opciones.count()
+    total_opciones.short_description = 'Nº pantallas'
+
+
+# ── Inline: grupos con acceso, dentro de cada OpcionMenu ─
+class OpcionMenuGrupoInline(admin.TabularInline):
+    model = OpcionMenuGrupo
+    extra = 0
+    verbose_name = "Grupo con acceso"
+    verbose_name_plural = "Grupos con acceso a esta pantalla"
+
+
+# ── OPCIONMENU ──────────────────────────────────────────
+@admin.register(OpcionMenu)
+class OpcionMenuAdmin(admin.ModelAdmin):
+    list_display  = ('nombre', 'screen_key', 'modulo', 'orden', 'grupos_resumen')
+    list_filter   = ('modulo',)
+    search_fields = ('nombre', 'screen_key')
+    list_editable = ('orden',)
+    inlines       = [OpcionMenuGrupoInline]
+
+    def grupos_resumen(self, obj):
+        items = obj.opcionmenugrupo_set.select_related('grupo')
+        if not items:
+            return "— nadie —"
+        return ", ".join(
+            f"{i.grupo.name}{' (RO)' if i.solo_lectura else ''}" for i in items
+        )
+    grupos_resumen.short_description = 'Grupos con acceso'
+
+
+# ── Inline: pantallas asignadas, dentro de cada Group ────
+class OpcionMenuInlineParaGrupo(admin.TabularInline):
+    model = OpcionMenuGrupo
+    extra = 0
+    verbose_name = "Pantalla"
+    verbose_name_plural = "Pantallas asignadas a este grupo"
+
+
+# ── Reemplaza el admin por defecto de Group para agregarle el inline ──
+admin.site.unregister(Group)
+
+@admin.register(Group)
+class GroupAdmin(BaseGroupAdmin):
+    inlines = [OpcionMenuInlineParaGrupo]
+    list_display = ('name', 'total_usuarios', 'total_pantallas')
+
+    def total_usuarios(self, obj):
+        return obj.user_set.count()
+    total_usuarios.short_description = 'Usuarios'
+
+    def total_pantallas(self, obj):
+        return obj.opciones_menu.count()
+    total_pantallas.short_description = 'Pantallas'

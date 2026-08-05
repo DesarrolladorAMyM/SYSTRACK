@@ -31,6 +31,12 @@ const API = {
   categoriasReq:     `${BASE}/inventario/api/categorias-req/`,
   subcategoriasReq:  (categoriaId) => `${BASE}/inventario/api/subcategorias-req/?categoria_id=${categoriaId}`,
   reqTicAccion:      (id) => `${BASE}/inventario/api/req-tic/${id}/accion/`,
+
+  // ── Préstamo de Equipos ──
+  equiposAdmin:        `${BASE}/inventario/api/prestamo-equipos/`,
+  equiposAdminCat:     `${BASE}/inventario/api/prestamo-equipos/catalogos/`,
+  equipoAdminGuardar:  `${BASE}/inventario/api/prestamo-equipos/guardar/`,
+  equipoAdminEliminar: (pk) => `${BASE}/inventario/api/prestamo-equipos/${pk}/eliminar/`,
 };
 let CAT = {};
 
@@ -164,6 +170,7 @@ function showScreen(id) {
   if (id === 'mis-requerimientos')      cargarRequerimientos();
   if (id === 'asignar-requerimientos')  cargarAsignar();
   if (id === 'historial-requerimientos') cargarHistorialReq();
+  if (id === 'prestamo-equipos')        loadEquiposAdmin();
 }
 
 function toggleSubmenu(smId, btnId) {
@@ -2137,6 +2144,169 @@ function updateSigSize(id, val) {
 }
 
 // ============================================================
+// PRÉSTAMO DE EQUIPOS
+// ============================================================
+let equiposAdminData = [];
+let equiposAdminCatalogos = { estados: [], usuarios: [] };
+
+let _eqRespData = [];
+
+function eqAbrirResponsableDropdown() {
+  const dd = document.getElementById('eq-responsable-dropdown');
+  if (dd) { dd.style.display = 'block'; eqFiltrarResponsable(); }
+}
+function eqCerrarResponsableDropdown() {
+  const dd = document.getElementById('eq-responsable-dropdown');
+  if (dd) dd.style.display = 'none';
+}
+function eqFiltrarResponsable() {
+  const q  = (document.getElementById('eq-responsable-search')?.value || '').toLowerCase();
+  const dd = document.getElementById('eq-responsable-dropdown');
+  if (!dd) return;
+  const filtrado = _eqRespData.filter(u => u.NombreCompleto.toLowerCase().includes(q));
+  if (!filtrado.length) {
+    dd.innerHTML = `<div class="usr-dropdown-empty">Sin resultados</div>`;
+    return;
+  }
+  dd.innerHTML = filtrado.map(u =>
+    `<div class="usr-dropdown-item" onmousedown="eqSeleccionarResponsable(${u.IdUsuario},'${u.NombreCompleto.replace(/'/g,"\\'")}')">${u.NombreCompleto}</div>`
+  ).join('');
+}
+function eqSeleccionarResponsable(id, nombre) {
+  document.getElementById('eq-responsable').value        = id;
+  document.getElementById('eq-responsable-search').value = nombre;
+  eqCerrarResponsableDropdown();
+}
+function eqLimpiarResponsable() {
+  document.getElementById('eq-responsable').value        = '';
+  document.getElementById('eq-responsable-search').value = '';
+}
+
+async function loadEquiposAdmin() {
+  const tbody = document.getElementById('equipo-tbody');
+  if (tbody) tbody.innerHTML = `<tr><td colspan="5" style="text-align:center;padding:30px;color:var(--text-light)">Cargando...</td></tr>`;
+
+  const res = await apiFetch(API.equiposAdmin);
+  if (!res.ok) { showNotif('Error', 'No se pudieron cargar los equipos', 'warning'); return; }
+  equiposAdminData = res.equipos || [];
+  _renderEquiposAdmin();
+}
+
+function _eqEstadoBadge(estado) {
+  const e = (estado || '').trim().toUpperCase();
+  const esDisponible = e.includes('DISPONIBLE') && !e.includes('NO DISPONIBLE');
+  const bg    = esDisponible ? 'rgba(34,197,94,0.12)'  : 'rgba(239,68,68,0.12)';
+  const color = esDisponible ? '#16a34a'               : '#dc2626';
+  return `<span style="display:inline-block;padding:5px 14px;border-radius:20px;
+           font-size:12px;font-weight:600;background:${bg};color:${color}">
+           ${estado || '—'}
+         </span>`;
+}
+function _renderEquiposAdmin() {
+  const q = (document.getElementById('equipo-search')?.value || '').toLowerCase();
+  const data = equiposAdminData.filter(e =>
+    !q ||
+    (e.nombre || '').toLowerCase().includes(q) ||
+    (e.responsable || '').toLowerCase().includes(q)
+  );
+  const tbody = document.getElementById('equipo-tbody');
+  if (!tbody) return;
+  
+  tbody.innerHTML = data.length === 0
+    ? `<tr><td colspan="5"><div class="empty-state"><i class="fas fa-laptop"></i><p>No se encontraron equipos</p></div></td></tr>`
+    : data.map(e => `
+      <tr>
+        <td><strong>${e.nombre}</strong></td>
+        <td>${e.descripcion || '—'}</td>
+        <td>${e.responsable}</td>
+        <td>${_eqEstadoBadge(e.estado)}</td>
+        <td>
+          <div class="tbl-actions">
+            <button class="tbl-btn edit" onclick="openEquipoModal(${e.id_equipo})"><i class="fas fa-edit"></i></button>
+            <button class="tbl-btn del"  onclick="eliminarEquipoAdmin(${e.id_equipo})"><i class="fas fa-trash-alt"></i></button>
+          </div>
+        </td>
+      </tr>`).join('');
+}
+
+async function openEquipoModal(id = null) {
+  // Poblar catálogos (estados / responsables) — se recarga siempre para
+  // reflejar cambios recientes en la BD (nuevos estados, usuarios, etc.)
+  const res = await apiFetch(API.equiposAdminCat);
+  if (res.ok) {
+    equiposAdminCatalogos = { estados: res.estados || [], usuarios: res.usuarios || [] };
+  } else {
+    showNotif('Error', 'No se pudieron cargar los catálogos de estado/responsable', 'warning');
+  }
+
+ const selEstado = document.getElementById('eq-estado');
+  selEstado.innerHTML = equiposAdminCatalogos.estados
+    .filter(e => [3, 4].includes(e.IdEstado))
+    .map(e => `<option value="${e.IdEstado}">${e.Descripcion}</option>`).join('');
+
+  _eqRespData = equiposAdminCatalogos.usuarios || [];
+
+  document.getElementById('eq-id-equipo').value = '';
+  document.getElementById('eq-nombre').value = '';
+  document.getElementById('eq-descripcion').value = '';
+  eqLimpiarResponsable();
+  selEstado.value = '';
+
+  if (id) {
+    const eq = equiposAdminData.find(e => e.id_equipo === id);
+    if (eq) {
+      document.getElementById('eq-modal-title').textContent = 'Editar equipo';
+      document.getElementById('eq-id-equipo').value = eq.id_equipo;
+      document.getElementById('eq-nombre').value = eq.nombre;
+      document.getElementById('eq-descripcion').value = eq.descripcion || '';
+      const respItem = _eqRespData.find(u => String(u.IdUsuario) === String(eq.id_responsable));
+      document.getElementById('eq-responsable').value        = eq.id_responsable || '';
+      document.getElementById('eq-responsable-search').value = respItem ? respItem.NombreCompleto : '';
+      selEstado.value = eq.id_estado || '';
+    }
+  } else {
+    document.getElementById('eq-modal-title').textContent = 'Nuevo equipo';
+  }
+
+  document.getElementById('modalEquipo').classList.add('active');
+}
+
+async function guardarEquipo() {
+  const id_equipo   = document.getElementById('eq-id-equipo').value || null;
+  const nombre      = document.getElementById('eq-nombre').value.trim();
+  const descripcion = document.getElementById('eq-descripcion').value.trim();
+  const id_responsable = document.getElementById('eq-responsable').value || null;
+  const id_estado   = document.getElementById('eq-estado').value || null;
+
+  if (!nombre)    { showNotif('Campo requerido', 'El nombre del equipo es obligatorio', 'warning'); return; }
+  if (!id_estado) { showNotif('Campo requerido', 'Debes seleccionar un estado', 'warning'); return; }
+
+  const res = await apiFetch(API.equipoAdminGuardar, 'POST', {
+    id_equipo, nombre, descripcion, id_responsable, id_estado,
+  });
+  if (!res.ok) { showNotif('Error', res.error || 'No se pudo guardar el equipo', 'warning'); return; }
+
+  showNotif(id_equipo ? 'Actualizado' : 'Equipo creado', `"${nombre}" guardado correctamente`, 'success');
+  closeModal('modalEquipo');
+  loadEquiposAdmin();
+}
+
+function eliminarEquipoAdmin(id) {
+  const eq = equiposAdminData.find(e => e.id_equipo === id);
+  if (!eq) return;
+  document.getElementById('confirmSub').textContent = eq.nombre;
+  document.getElementById('confirmBody').innerHTML = `Eliminarás permanentemente el equipo <strong>${eq.nombre}</strong>.`;
+  document.getElementById('btnConfirmDel').onclick = async () => {
+    const res = await apiFetch(API.equipoAdminEliminar(id), 'DELETE');
+    if (!res.ok) { showNotif('Error', res.error || 'No se pudo eliminar', 'warning'); return; }
+    showNotif('Eliminado', `"${eq.nombre}" fue eliminado`, 'success');
+    closeModal('modalConfirm');
+    loadEquiposAdmin();
+  };
+  document.getElementById('modalConfirm').classList.add('active');
+}
+
+// ============================================================
 // CSV UTIL
 // ============================================================
 function downloadCSV(rows, filename) {
@@ -2223,6 +2393,21 @@ document.getElementById('colab-search')?.addEventListener('input', () => {
       _renderColabTable();
     }
   });
+
+  // ── Préstamo de Equipos — búsqueda ──
+  document.getElementById('equipo-search')?.addEventListener('input', () => {
+    if (!_suppressChange) _renderEquiposAdmin();
+  });
+
+  // ── Historial Requerimientos — búsqueda ──
+  ddocument.getElementById('req-search')?.addEventListener('input', () => {
+  if (!_suppressChange) { reqActPage = 1; reqCerPage = 1; reqLoadPage(1); }
+});
+
+document.getElementById('asig-search')?.addEventListener('input', () => {
+  if (!_suppressChange) { asigPage = 1; renderAsignar(); }
+});
+
 });
 
 
@@ -2838,12 +3023,12 @@ function renderReqActivos() {
   } else {
     tbody.innerHTML = page.map(r => `
       <tr>
-        <td><span class="serial-mono">${r.fecha_creacion || '—'}</span></td>
+        <td><span class="serial-mono">${_soloFecha(r.fecha_creacion)}</span></td>
         <td><span class="serial-mono" style="color:var(--primary)">${r.codigo || '—'}</span></td>
         
         <td>${r.solicitante || '—'}</td>
         <td>${_reqPrioridadBadge(r.prioridad)}</td>
-        <td>${r.fecha_vencimiento || '—'}</td>
+        <td>${_soloFecha(r.fecha_vencimiento)}</td>
         <td>${_reqEstadoBadge(r.estado)}</td>
         <td>
           <div class="tbl-actions">
@@ -2998,13 +3183,15 @@ function renderReqCerrados() {
   } else {
     tbody.innerHTML = page.map(r => `
   <tr>
-    <td><span class="serial-mono">${r.fecha_creacion || '—'}</span></td>
+    <td><span class="serial-mono">${_soloFecha(r.fecha_creacion)}</span></td>
     <td><span class="serial-mono" style="color:var(--primary)">${r.codigo || '—'}</span></td>
     <td>${r.solicitante  || '—'}</td>
     <td>${r.responsable  || '—'}</td>
     
    
-    <td>${r.fecha_solucion || '—'}</td>
+    <td>${_soloFecha(r.fecha_solucion)}</td>
+
+
     <td>${_reqEstadoBadge(r.estado)}</td>
     <td>
       <div class="tbl-actions">
@@ -3033,6 +3220,11 @@ function _reqPrioridadBadge(p) {
   };
   const [cls, ico] = m[(p || '').toUpperCase()] || ['req-prioridad req-prior-media', 'fa-minus'];
   return `<span class="${cls}"><i class="fas ${ico}"></i>${p || '—'}</span>`;
+}
+
+function _soloFecha(f) {
+  if (!f) return '—';
+  return String(f).split(' ')[0].split('T')[0];
 }
 
 function _reqEstadoBadge(e) {
@@ -3531,20 +3723,8 @@ function renderHReq() {
     <td>${r.remitente || '—'}</td>
     <td>${_reqPrioridadBadge(r.prioridad)}</td>
     <td>
-      ${r.asignado
-        ? `<span class="asig-asignado"><i class="fas fa-user-check"></i>${r.asignado}</span>`
-        : `<span class="asig-sin-asignar"><i class="fas fa-user-clock"></i>Sin asignar</span>`
-      }
-    </td>
-    <td>
       ${r.clasificacion
         ? `<span class="hreq-sin-info" style="background:#dce9ff;color:#1B4698">${r.clasificacion}</span>`
-        : `<span class="hreq-sin-info">Sin información</span>`
-      }
-    </td>
-    <td>
-      ${r.plan_accion
-        ? `<span class="hreq-sin-info" style="background:#dce9ff;color:#1B4698">${r.plan_accion}</span>`
         : `<span class="hreq-sin-info">Sin información</span>`
       }
     </td>
@@ -4100,3 +4280,5 @@ function exportarHistorialReq() {
   XLSX.writeFile(wb, 'historial_requerimientos.xlsx');
   showNotification('success', 'Exportado', 'Archivo descargado correctamente');
 }
+
+
