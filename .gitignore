@@ -8,3 +8,6 @@ env/
 
 # Caché de Python
 __pycache__/
+
+
+settings.py
