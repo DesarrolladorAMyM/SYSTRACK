@@ -388,8 +388,8 @@ class CaracteristicaPC(models.Model):
     )
     g222_correo_office  = models.EmailField(blank=True, null=True)
     g222_key_office     = models.CharField(max_length=150, blank=True, null=True)
-    # RAM como FK al catálogo propio j230_ram (4GB, 8GB, 16GB…)
-    g222_ram = models.IntegerField(blank=True, null=True, db_column='g222_ram')
+    # RAM como texto libre normalizado (ej. "8GB", "16GB") — ver _normalizar_ram en views.py
+    g222_ram = models.CharField(max_length=20, blank=True, null=True, db_column='g222_ram')
     # Tipo disco como FK al catálogo propio j231_tipo_disco (HDD, SSD, SSD NVME…)
     g222_tipo_disco  = models.ForeignKey(
         TipoDisco, on_delete=models.SET_NULL,
@@ -549,6 +549,10 @@ class CaracteristicaLicencia(models.Model):
     g227_key         = models.CharField(max_length=150, blank=True, null=True)
     g227_correo      = models.EmailField(blank=True, null=True)
     g227_fecha_vencimiento = models.DateField(blank=True, null=True)
+    g227_almacenamiento = models.ForeignKey(
+        'Almacenamiento', on_delete=models.SET_NULL,
+        null=True, blank=True, db_column='g227_almacenamiento_id'
+    )
 
     class Meta:
         db_table = 'j227_caract_licencia'
@@ -615,7 +619,22 @@ class CaracteristicasVideoBeam(models.Model):
         
         return f"ViedeoBeam -> {selft.g232_dispositivo.g212_serial}"
     
-    
+    # ══════════════════════════════════════════════
+# j233 — TIPO DE ACTA  (ENTREGA, DEVOLUCIÓN, TRASLADO...)
+# Catálogo dinámico para el select "Tipo Acta" del modal de Generar Acta
+# ══════════════════════════════════════════════
+class TipoActa(models.Model):
+    g233_id        = models.AutoField(primary_key=True)
+    g233_tipo_acta = models.CharField(max_length=100)
+    g233_estado    = models.BooleanField(default=True)
+
+    class Meta:
+        db_table = 'j233_tipo_acta'
+        verbose_name = 'Tipo de Acta'
+        verbose_name_plural = 'Tipos de Acta'
+
+    def __str__(self):
+        return self.g233_tipo_acta
 
 
 # j214 HISTORIAL EQUIPO
@@ -682,9 +701,9 @@ class Colaborador(models.Model):
         return f"{self.g215_documento} — {self.g215_nombre}"
 
 
-# ══════════════════════════════════════════════
+
 # j216 — ASIGNACIÓN COLABORADOR ↔ DISPOSITIVO
-# ══════════════════════════════════════════════
+
 class AsignacionColaborador(models.Model):
     g216_id          = models.AutoField(primary_key=True)
     g216_colaborador = models.ForeignKey(
@@ -705,9 +724,9 @@ class AsignacionColaborador(models.Model):
         return f"{self.g216_colaborador.g215_nombre} ← {self.g216_dispositivo.g212_serial}"
 
 
-# ══════════════════════════════════════════════
+
 # j217 — ACTA
-# ══════════════════════════════════════════════
+
 class Acta(models.Model):
     g217_id           = models.AutoField(primary_key=True)
     g217_colaborador  = models.ForeignKey(
@@ -744,10 +763,10 @@ class CentroCosto(models.Model):
     
     
     
-    # ══════════════════════════════════════════════════════════════════
+
 # PERMISOS DE MENÚ — pegar al FINAL de dashboard/models.py
 # (después de la clase CentroCosto que ya tienes)
-# ══════════════════════════════════════════════════════════════════
+
 
 from django.contrib.auth.models import Group
 

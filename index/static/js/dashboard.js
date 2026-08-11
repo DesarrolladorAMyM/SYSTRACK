@@ -18,6 +18,8 @@ const API = {
   inactivos:         `${BASE}/inventario/api/inactivos/`,
   editarInactivo:    (pk) => `${BASE}/inventario/api/inactivos/${pk}/editar/`,
   colaboradores:     `${BASE}/inventario/api/colaboradores/`,
+  crearColab:        `${BASE}/inventario/api/colaboradores/crear/`,
+  cargosColab:       `${BASE}/inventario/api/colaboradores/cargos/`,
   asignar:           (id) => `${BASE}/inventario/api/colaboradores/${id}/asignar/`,
   eliminarAsignacion: (colabId, devId) => `${BASE}/inventario/api/colaboradores/${colabId}/asignar/${devId}/eliminar/`,
   acta:              (id) => `${BASE}/inventario/api/colaboradores/${id}/acta/`,
@@ -253,6 +255,11 @@ function poblarSelects() {
     ccCoEl.innerHTML = '<option value="">Todos los centros</option>' +
       coOpts.map(c => `<option value="${c.id}">${c.label}</option>`).join('');
   }
+  const colabAreaEl = document.getElementById('colab-f-area');
+  if (colabAreaEl) {
+    colabAreaEl.innerHTML = '<option value="">Seleccione</option>' +
+      coOpts.map(c => `<option value="${c.id}">${c.label}</option>`).join('');
+  }
   // Proceso / Área (Acta) → misma fuente que Centros de Costo (tabla j228_Area)
  const actaProcesoEl = document.getElementById('acta-proceso');
   if (actaProcesoEl) {
@@ -262,13 +269,15 @@ function poblarSelects() {
     if (current) actaProcesoEl.value = current;
   }
 
-
-  const ccPropEl = document.getElementById('cc-prop');
-  if (ccPropEl) {
-    ccPropEl.innerHTML = '<option value="">Todos los propietarios</option>' +
-      propOpts.map(p =>
-        `<option value="${p.g203_id}">${p.g203_propietario}</option>`
+  // Tipo Acta (ENTREGA, DEVOLUCIÓN, TRASLADO...) → catálogo dinámico j233_tipo_acta
+  const actaTipoEl = document.getElementById('acta-tipo');
+  if (actaTipoEl) {
+    const current = actaTipoEl.value;
+    actaTipoEl.innerHTML = '<option value="">Seleccione una opción</option>' +
+      (CAT.tipos_acta || []).map(t =>
+        `<option value="${t.g233_tipo_acta}">${t.g233_tipo_acta}</option>`
       ).join('');
+    if (current) actaTipoEl.value = current;
   }
 
   _fillSilent('hf-novedad', CAT.tipos_novedad || [], 'g220_id', 'g220_novedad');
@@ -288,6 +297,7 @@ function poblarSelects() {
 
   _fillSilent('f-estado',      estOpts, 'g201_id', 'g201_descripcion');
   _fillSilent('inac-f-estado', estOpts, 'g201_id', 'g201_descripcion');
+  _fillSilent('colab-f-estado', estOpts, 'g201_id', 'g201_descripcion');
   _fillSilent('hf-resp', propOpts, 'g203_id', 'g203_propietario');
 
   // ── Desactivar flag DESPUÉS de poblar todos los selects ──
@@ -677,6 +687,8 @@ function clearForm() {
   const ids = ['f-tipo', 'f-serial', 'f-marca', 'f-prop', 'f-co',
              'f-estado', 'f-nombre-equipo', 'f-valor-promedio', 'f-valor-arrendamiento'];
   ids.forEach(id => { const el = document.getElementById(id); if (el) el.value = ''; });
+  const serialEl = document.getElementById('f-serial');
+  if (serialEl) { serialEl.readOnly = false; serialEl.placeholder = ''; }
   const mun = document.getElementById('f-municipio');
   if (mun) mun.innerHTML = '<option value="">Seleccione</option>';
   const obs = document.getElementById('f-obs');
@@ -746,23 +758,36 @@ async function openDetail(id) {
   document.getElementById('det-serial').textContent = 'Serial: ' + d.serial;
   document.getElementById('det-name').textContent   = `${d.tipo} — ${d.marca}`;
   document.getElementById('det-badge').innerHTML    = badgeHTML(d.estado);
-  document.getElementById('det-general').innerHTML = [
+  const fmtMoneda = (v) => (v ? `$${Number(v).toLocaleString('es-CO')}` : '');
+  const camposGeneral = [
     { l: 'Serial',      v: d.serial,      mono: true },
     { l: 'Tipo',        v: d.tipo },
     { l: 'Marca',       v: d.marca },
     { l: 'Propietario', v: d.propietario },
     { l: 'Estado',      v: d.estado },
     { l: 'CO',          v: d.co },
-  ].map(f => `
+  ];
+  document.getElementById('det-general').innerHTML = camposGeneral.map(f => `
     <div class="detail-field">
       <div class="detail-field-label">${f.l}</div>
       <div class="detail-field-value ${f.mono ? 'mono' : ''}">${f.v || '—'}</div>
     </div>`).join('');
  // ── Características (dict plano clave→valor desde el servidor) ──
+  // Nombre del Equipo / Valor Promedio / Valor Arrendamiento van aquí (no en
+  // Info General) — vienen del dispositivo (no del tipo), por eso se agregan
+  // aparte antes que el resto. Se excluyen de 'caract': 'grupo' (uso interno),
+  // *_id (IDs crudos — ya se muestra el nombre resuelto), la contraseña Gmail
+  // (no se expone en el detalle) y nombre/valor (ya agregados arriba, para no
+  // duplicarlos si el tipo también los trae dentro de "caracteristicas").
   const caract = d.caracteristicas || {};
-  const camposCaract = Object.entries(caract)
-    .filter(([k, v]) => v && v !== '—')
-    .map(([k, v]) => ({ l: k, v }));
+  const CARACT_EXCLUIR = new Set(['grupo', 'contrasena_gmail', 'nombre_equipo', 'valor_promedio', 'valor_arrendamiento']);
+  const camposCaract = [];
+  if (d.nombre_equipo)      camposCaract.push({ l: 'Nombre del Equipo', v: d.nombre_equipo });
+  if (d.valor_promedio)     camposCaract.push({ l: 'Valor Promedio', v: fmtMoneda(d.valor_promedio) });
+  if (d.valor_arrendamiento) camposCaract.push({ l: 'Valor Arrendamiento', v: fmtMoneda(d.valor_arrendamiento) });
+  camposCaract.push(...Object.entries(caract)
+    .filter(([k, v]) => !CARACT_EXCLUIR.has(k) && !k.endsWith('_id') && v && v !== '—')
+    .map(([k, v]) => ({ l: CARACT_LABELS[k] || k, v })));
 
   document.getElementById('det-caract').innerHTML = camposCaract.length > 0
     ? camposCaract.map(f => `
@@ -969,7 +994,7 @@ const CHAR_FIELDS_MAP = {
       _selFromCat('SO', true, 'sistemas_operativos', 'g210_id', 'g210_so', 'tc-so')
     )}
     ${_fRow('cols4',
-      _fInp('RAM (GB)', true, 'Ej: 8', 'tc-ram', 'number'),
+      _fInp('RAM', true, 'Ej: 8 u 8GB', 'tc-ram', 'text'),
      _selFromCat('Tipo Disco', true, 'tipos_disco', 'g231_id', 'g231_tipo_disco', 'tc-disco'),
       _selFromCat('Almacenamiento', true, 'almacenamientos', 'g219_id', 'g219_almacenamiento', 'tc-alm'),
       _selFromCat('Office', true, 'licencias_office', 'g211_id', 'g211_office', 'tc-office')
@@ -987,7 +1012,7 @@ const CHAR_FIELDS_MAP = {
       _selFromCat('SO', true, 'sistemas_operativos', 'g210_id', 'g210_so', 'pc-so')
     )}
     ${_fRow('cols4',
-      _fInp('RAM (GB)', true, 'Ej: 8', 'pc-ram', 'number'),
+      _fInp('RAM', true, 'Ej: 8 u 8GB', 'pc-ram', 'text'),
       _selFromCat('Tipo Disco', true, 'tipos_disco', 'g231_id', 'g231_tipo_disco', 'pc-disco'),
       _selFromCat('Almacenamiento', true, 'almacenamientos', 'g219_id', 'g219_almacenamiento', 'pc-alm'),
       _selFromCat('Office', false, 'licencias_office', 'g211_id', 'g211_office', 'pc-office')
@@ -1090,6 +1115,40 @@ const CHAR_FIELDS_MAP = {
     )}`,
 };
 
+// Etiquetas en español para las claves internas de "características" que
+// devuelve el backend (_get_caracteristicas), usadas en el modal de Detalle.
+const CARACT_LABELS = {
+  procesador: 'Procesador', so: 'Sistema Operativo', antivirus: 'Antivirus',
+  licencia: 'Licencia Office', correo_office: 'Correo / Key Office', key_office: 'Key Office',
+  ram: 'RAM', tipo_disco: 'Tipo de Disco', almacenamiento: 'Almacenamiento',
+  activo: 'Activo', pulgadas: 'Pulgadas',
+  numero_linea: 'Número de Línea', operador: 'Operador', plan_datos: 'Plan de Datos',
+  imei1: 'IMEI 1', imei2: 'IMEI 2', cuenta_gmail: 'Cuenta Gmail',
+  resolucion: 'Resolución', tipo_impresora: 'Tipo de Impresora', funcion: 'Función',
+  incluye_base: 'Base', incluye_teclado: 'Teclado', incluye_mouse: 'Mouse',
+  incluye_auriculares: 'Auriculares', incluye_cargador: 'Cargador',
+  descripcion_adicional: 'Descripción Adicional', software: 'Software', version: 'Versión',
+  key: 'Key / Licencia', correo: 'Correo', fecha_vencimiento: 'Fecha de Vencimiento',
+  lumenes: 'Lúmenes',
+};
+
+// Normaliza el nombre del tipo (sin tildes, mayúsculas, espacios colapsados)
+// para que el cruce contra CHAR_FIELDS_MAP no falle por diferencias de
+// formato en el catálogo de la base de datos (mismo criterio que el
+// backend usa en carga masiva — ver _normalizar en views.py).
+function _normTipoKey(s) {
+  if (!s) return '';
+  return s.normalize('NFD').replace(/\p{Diacritic}/gu, '')
+    .replace(/\s+/g, ' ').trim().toUpperCase();
+}
+
+function _buscarBuilderTipo(tipo) {
+  const key = _normTipoKey(tipo);
+  if (Object.prototype.hasOwnProperty.call(CHAR_FIELDS_MAP, key)) return CHAR_FIELDS_MAP[key];
+  const encontrada = Object.keys(CHAR_FIELDS_MAP).find(k => _normTipoKey(k) === key);
+  return encontrada !== undefined ? CHAR_FIELDS_MAP[encontrada] : undefined;
+}
+
 function renderCaracteristicas(tipo) {
   const section = document.getElementById('charSection');
   if (!section) return;
@@ -1106,7 +1165,7 @@ function renderCaracteristicas(tipo) {
       </div>`;
     return;
   }
-  const builder = CHAR_FIELDS_MAP[tipo];
+  const builder = _buscarBuilderTipo(tipo);
   if (builder === null) {
     section.innerHTML = `
       <div class="form-section">
@@ -1152,6 +1211,9 @@ function fillCaracteristicas(tipoNombre, caract) {
         'tc-alm': caract.almacenamiento_id,    'pc-alm': caract.almacenamiento_id,
         'tc-correo': caract.correo_office,     'pc-correo': caract.correo_office,
         'pc-activo': caract.activo,
+        'tc-nombre': caract.nombre_equipo,     'pc-nombre': caract.nombre_equipo,
+        'tc-valor': caract.valor_promedio,     'pc-valor': caract.valor_promedio,
+        'tc-arrend': caract.valor_arrendamiento, 'pc-arrend': caract.valor_arrendamiento,
       },
       movil: {
         'cel-num': caract.numero_linea,  'mw-num': caract.numero_linea,
@@ -1163,10 +1225,24 @@ function fillCaracteristicas(tipoNombre, caract) {
         'cel-imei2': caract.imei2,       'mw-imei2': caract.imei2, 'tab-imei2': caract.imei2,
         'cel-plan': caract.plan_datos,   'mw-plan': caract.plan_datos, 'tab-plan': caract.plan_datos,
         'cel-gmail': caract.cuenta_gmail, 'tab-gmail': caract.cuenta_gmail,
+        'cel-pass': caract.contrasena_gmail, 'tab-pass': caract.contrasena_gmail,
       },
       pantalla:  { 'pan-tam': caract.pulgadas, 'pan-res': caract.resolucion },
       impresora: { 'imp-tipo': caract.tipo_impresora_id, 'imp-funcion': caract.funcion },
       videobeam: { 'vb-lumenes': caract.lumenes },
+      periferico: {
+        'per-base':        caract.incluye_base ? 'SÍ' : 'NO',
+        'per-teclado':     caract.incluye_teclado ? 'SÍ' : 'NO',
+        'per-mouse':       caract.incluye_mouse ? 'SÍ' : 'NO',
+        'per-auriculares': caract.incluye_auriculares ? 'SÍ' : 'NO',
+        'per-cargpc':      caract.incluye_cargador ? 'SÍ' : 'NO',
+        'per-cargmov':     caract.incluye_cargador ? 'SÍ' : 'NO',
+      },
+      licencia: {
+        'lic-tipo': (CAT.licencias_office || []).find(l => l.g211_office === caract.software)?.g211_id || '',
+        'lic-alm':  caract.almacenamiento_id,
+        'lic-arrend': caract.valor_arrendamiento,
+      },
     };
     const map = mappings[caract.grupo] || {};
     Object.entries(map).forEach(([id, val]) => {
@@ -1193,8 +1269,12 @@ function buildCaracteristicasBody() {
   if (tipo === 'TELEFONO FIJO')       return { grupo: 'movil', imei1: g('tf-imei1') };
   if (tipo === 'PANTALLA')            return { grupo: 'pantalla', pulgadas: g('pan-tam'), resolucion: g('pan-res'), valor_promedio: g('pan-valor'), valor_arrendamiento: g('pan-arrend') };
   if (tipo === 'IMPRESORA')           return { grupo: 'impresora', tipo_impresora_id: g('imp-tipo') };
-  if (tipo === 'PERIFERICO')          return { grupo: 'periferico', incluye_base: g('per-base') === 'SÍ', incluye_teclado: g('per-teclado') === 'SÍ', incluye_mouse: g('per-mouse') === 'SÍ', incluye_auriculares: g('per-auriculares') === 'SÍ', incluye_cargador: g('per-cargpc') === 'SÍ' };
-  if (tipo === 'LICENCIA OFFICE')     return { grupo: 'licencia', software: g('lic-tipo'), almacenamiento_id: g('lic-alm'), valor_arrendamiento: g('lic-arrend') };
+  if (tipo === 'PERIFERICO')          return { grupo: 'periferico', incluye_base: g('per-base') === 'SÍ', incluye_teclado: g('per-teclado') === 'SÍ', incluye_mouse: g('per-mouse') === 'SÍ', incluye_auriculares: g('per-auriculares') === 'SÍ', incluye_cargador: (g('per-cargpc') === 'SÍ') || (g('per-cargmov') === 'SÍ') };
+  if (tipo === 'LICENCIA OFFICE') {
+    const licId = g('lic-tipo');
+    const licNombre = (CAT.licencias_office || []).find(l => String(l.g211_id) === String(licId))?.g211_office || '';
+    return { grupo: 'licencia', software: licNombre, almacenamiento_id: g('lic-alm'), valor_arrendamiento: g('lic-arrend') };
+  }
   if (tipo === 'VIDEO BEAM') return {grupo: 'videobeam',lumenes: g('vb-lumenes')};
   return {};
 
@@ -1603,6 +1683,126 @@ function exportarInactivos() {
 // ============================================================
 let colabTotal = 0, colabTotalPages = 1;
 
+// ── Colaborador: buscador (dropdown) de Cargo y Centro de Operación ──
+let _colabCargoData = [];
+
+function colabAbrirDropdown(tipo) {
+  const dd = document.getElementById(`colab-${tipo}-dropdown`);
+  if (dd) { dd.style.display = 'block'; colabFiltrarDropdown(tipo); }
+}
+function colabCerrarDropdown(tipo) {
+  const dd = document.getElementById(`colab-${tipo}-dropdown`);
+  if (dd) dd.style.display = 'none';
+}
+function colabFiltrarDropdown(tipo) {
+  const dd = document.getElementById(`colab-${tipo}-dropdown`);
+  if (!dd) return;
+
+  if (tipo === 'co') {
+    const q = (document.getElementById('colab-f-co-search')?.value || '').toLowerCase();
+    const coOpts = (CAT.centros_operaciones || []).map(c => ({
+      id: c.g207_id, nombre: `${c.g207_co} — ${c.g207_descripcion_co}`,
+    }));
+    const filtrado = coOpts.filter(c => c.nombre.toLowerCase().includes(q));
+    dd.innerHTML = filtrado.length
+      ? filtrado.map(c =>
+          `<div class="usr-dropdown-item" onmousedown="colabSeleccionarCo(${c.id},'${c.nombre.replace(/'/g, "\\'")}')">${c.nombre}</div>`
+        ).join('')
+      : `<div class="usr-dropdown-empty">Sin resultados</div>`;
+  } else {
+    const q = (document.getElementById('colab-f-cargo')?.value || '').toLowerCase();
+    const filtrado = _colabCargoData.filter(c => c.nombre.toLowerCase().includes(q));
+    dd.innerHTML = filtrado.length
+      ? filtrado.map(c =>
+          `<div class="usr-dropdown-item" onmousedown="colabSeleccionarCargo('${c.nombre.replace(/'/g, "\\'")}')">${c.nombre}</div>`
+        ).join('')
+      : `<div class="usr-dropdown-empty">Sin resultados — se usará el texto escrito</div>`;
+  }
+}
+function colabSeleccionarCo(id, nombre) {
+  document.getElementById('colab-f-co').value        = id;
+  document.getElementById('colab-f-co-search').value = nombre;
+  colabCerrarDropdown('co');
+}
+// Si el usuario escribió el texto exacto de un Centro de Operación pero
+// nunca hizo clic en el dropdown (colabSeleccionarCo no se disparó),
+// intenta resolverlo aquí mismo antes de guardar.
+function colabResolverCo() {
+  const coIdField = document.getElementById('colab-f-co');
+  if (coIdField.value) return; // ya viene resuelto desde el dropdown
+
+  const search = document.getElementById('colab-f-co-search').value.trim().toLowerCase();
+  if (!search) return;
+
+  const match = (CAT.centros_operaciones || []).find(c =>
+    `${c.g207_co} — ${c.g207_descripcion_co}`.toLowerCase() === search
+  );
+  if (match) coIdField.value = match.g207_id;
+}
+function colabSeleccionarCargo(nombre) {
+  document.getElementById('colab-f-cargo').value = nombre;
+  colabCerrarDropdown('cargo');
+}
+async function colabCargarCargos() {
+  if (_colabCargoData.length) return;
+  const res = await apiFetch(API.cargosColab);
+  if (res.ok) _colabCargoData = res.data || [];
+}
+
+function openColabModal() {
+  document.getElementById('colab-f-documento').value = '';
+  document.getElementById('colab-f-nombre').value    = '';
+  document.getElementById('colab-f-correo').value    = '';
+  document.getElementById('colab-f-cargo').value     = '';
+  document.getElementById('colab-f-co').value        = '';
+  document.getElementById('colab-f-co-search').value = '';
+  document.getElementById('colab-f-area').value      = '';
+  document.getElementById('colab-f-estado').value    = '';
+  colabCargarCargos();
+  document.getElementById('modalColaborador').classList.add('active');
+}
+
+async function saveColaborador() {
+  const documento = document.getElementById('colab-f-documento').value.trim();
+  const nombre    = document.getElementById('colab-f-nombre').value.trim();
+  const cargo     = document.getElementById('colab-f-cargo').value.trim();
+  const estado    = document.getElementById('colab-f-estado').value;
+
+  
+  colabResolverCo();
+  const coSearch = document.getElementById('colab-f-co-search').value.trim();
+  const coId     = document.getElementById('colab-f-co').value;
+  if (coSearch && !coId) {
+    showNotif(
+      'Centro de Operación no válido',
+      'El texto no coincide con ningún centro registrado. Bórralo o selecciona uno de la lista.',
+      'warning'
+    );
+    document.getElementById('colab-f-co-search').focus();
+    return;
+  }
+
+  if (!documento || !nombre || !cargo || !estado) {
+    showNotif('Campos requeridos', 'Completa documento, nombre, cargo y estado', 'warning');
+    return;
+  }
+
+  const body = {
+    documento, nombre,
+    correo: document.getElementById('colab-f-correo').value.trim(),
+    cargo,
+    co_id:     coId || null,
+    area_id:   document.getElementById('colab-f-area').value || null,
+    estado_id: estado,
+  };
+
+  const res = await apiFetch(API.crearColab, 'POST', body);
+  if (!res.ok) { showNotif('Error', res.error || 'No se pudo crear el colaborador', 'warning'); return; }
+  showNotif('Colaborador creado', `${nombre} fue registrado correctamente`, 'success');
+  closeModal('modalColaborador');
+  colabPage = 1;
+  loadColaboradores();
+}
 async function loadColaboradores() {
   if (colabLoading || _suppressChange) return;
   colabLoading = true;
@@ -2329,11 +2529,52 @@ window.addEventListener('DOMContentLoaded', async () => {
   await loadDashboard();
 
   // ── Tipo dispositivo → características dinámicas ──
-  document.getElementById('f-tipo')?.addEventListener('change', function () {
+  document.getElementById('f-tipo')?.addEventListener('change', async function () {
     const tipoNombre = (CAT.tipos_dispositivo || [])
       .find(t => String(t.g200_id) === this.value)
       ?.g200_tipo_dispositivo || '';
     renderCaracteristicas(tipoNombre);
+
+    // ── Al cambiar de tipo (solo creando, no editando), limpiar TODOS
+    //    los campos generales que no deberían arrastrarse de un tipo a otro ──
+    if (!editingId) {
+      ['f-marca', 'f-nombre-equipo', 'f-valor-promedio', 'f-valor-arrendamiento',
+       'f-prop', 'f-co', 'f-estado', 'f-obs']
+        .forEach(id => { const el = document.getElementById(id); if (el) el.value = ''; });
+
+      const dptoEl = document.getElementById('f-dpto');
+      if (dptoEl) dptoEl.value = '';
+      const munEl = document.getElementById('f-municipio');
+      if (munEl) munEl.innerHTML = '<option value="">Seleccione</option>';
+    }
+
+    // ── Tipos con serial autogenerado (Licencia Office, Periférico...):
+    //    mostrar de una vez el siguiente serial mientras llenas el resto ──
+    const serialInput = document.getElementById('f-serial');
+    const tipoId = this.value;
+    if (serialInput) {
+      if (tipoId && !editingId) {
+        serialInput.value = 'Calculando...';
+        serialInput.readOnly = true;
+        try {
+          const res = await apiFetch(`${BASE}/inventario/api/dispositivos/siguiente-serial/?tipo_id=${encodeURIComponent(tipoId)}`);
+          if (res.ok && res.data.aplica) {
+            serialInput.value = res.data.serial || '';
+          } else {
+            serialInput.readOnly = false;
+            serialInput.value = '';
+            serialInput.placeholder = '';
+          }
+        } catch (e) {
+          serialInput.readOnly = false;
+          serialInput.value = '';
+        }
+      } else if (!editingId) {
+        serialInput.readOnly = false;
+        serialInput.value = '';
+        serialInput.placeholder = '';
+      }
+    }
   });
 
   // ── Modal asignar → cargar seriales por tipo ──
@@ -2506,8 +2747,8 @@ const CM_EXTRA_COLS = {
   'TELEFONO FIJO':       [['imei1','IMEI 1',true]],
   'IMPRESORA':           [['tipo_impresora','Tipo de impresora',true],['funcion','Funcion (Ej: MULTIFUNCIONAL)',false]],
   'PERIFERICO':          [['base','Base (SI/NO/NO APLICA)',true],['teclado','Teclado',true],['mouse','Mouse',true],['auriculares','Auriculares',true],['cargador_pc','Cargador PC',true],['cargador_movil','Cargador movil',true]],
-  'LICENCIA OFFICE':     [['tipo_licencia','Tipo de licencia',true],['valor_arrendamiento','Valor arrendamiento (solo numero)', false],['almacenamiento','Almacenamiento',true]],
-  'VIDEO BEAM':          [],
+  'LICENCIA OFFICE':     [['tipo_licencia','Tipo de licencia',true],['valor_arrendamiento','Valor arrendamiento (solo numero)', false],['almacenamiento','Almacenamiento',true],['version','Version (Ej: 365, 2021)',false]],
+  'VIDEO BEAM':          [['lumenes','Lumenes (Ej: 3500)',true]],
 };
 
 function cmOnTipoChange() {
@@ -4280,5 +4521,3 @@ function exportarHistorialReq() {
   XLSX.writeFile(wb, 'historial_requerimientos.xlsx');
   showNotification('success', 'Exportado', 'Archivo descargado correctamente');
 }
-
-

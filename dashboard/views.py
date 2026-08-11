@@ -5,6 +5,7 @@ Todas las respuestas son JSON para consumo del frontend.
 """
 
 import json
+import re
 from django.http import JsonResponse
 from requerimientos.models import Usuario,CentroOperacion,Cargo,TipoUsuario,Requerimiento
 
@@ -25,7 +26,7 @@ from .models import (
     CaracteristicaPeriferico, CaracteristicaLicencia,
     DispositivoInactivo, HistorialEquipo, Colaborador,
     AsignacionColaborador, Acta, CentroCosto, TipoImpresora,
-    RAM, TipoDisco ,CaracteristicasVideoBeam
+    RAM, TipoDisco ,CaracteristicasVideoBeam,TipoActa
 )
 import base64
 import os
@@ -51,9 +52,9 @@ def dashboard(request):
     return render(request, 'dashboard/dashboard.html')
 
 
-# ─────────────────────────────────────────────────────
+
 # UTILIDADES
-# ─────────────────────────────────────────────────────
+
 def _json_ok(data):
     return JsonResponse({'ok': True, 'data': data})
 
@@ -66,7 +67,7 @@ def _json_err(msg, status=400):
 # ═══════════════════════════════════════════════════
 @login_required(login_url='login')
 @require_http_methods(['GET'])
-def api_catalogos(request):
+def api_catalogos(request): 
     """
     Retorna todos los catálogos necesarios para poblar los
     <select> del formulario de inventario y demás modales.
@@ -154,13 +155,15 @@ def api_catalogos(request):
             TipoDisco.objects.filter(g231_estado=True)
             .values('g231_id', 'g231_tipo_disco')
         ),
-
-
-
+        'tipos_acta': list(
+            TipoActa.objects.filter(g233_estado=True)
+            .values('g233_id', 'g233_tipo_acta')
+        ),
         
     }
+    
+    
     return _json_ok(data)
-
 @login_required(login_url='login')
 @require_http_methods(['GET'])
 def api_municipios_por_dpto(request, dpto_id):
@@ -314,16 +317,25 @@ def _get_caracteristicas(d):
             return {
                 'grupo': 'pc',
                 'procesador_id':    pc.g222_procesador_id,
+                'procesador':       pc.g222_procesador.g209_procesador if pc.g222_procesador else '',
                 'so_id':            pc.g222_so_id,
+                'so':               pc.g222_so.g210_so if pc.g222_so else '',
                 'antivirus_id':     pc.g222_antivirus_id,
+                'antivirus':        pc.g222_antivirus.g208_antivirus if pc.g222_antivirus else '',
                 'licencia_id':      pc.g222_licencia_id,
+                'licencia':         pc.g222_licencia.g211_office if pc.g222_licencia else '',
                 'correo_office':    pc.g222_correo_office or '',
                 'key_office':       pc.g222_key_office or '',
                 'ram':              pc.g222_ram,
                 'tipo_disco_id':    pc.g222_tipo_disco_id,
+                'tipo_disco':       pc.g222_tipo_disco.g231_tipo_disco if pc.g222_tipo_disco else '',
                 'almacenamiento_id': pc.g222_almacenamiento_id,
+                'almacenamiento':   pc.g222_almacenamiento.g219_almacenamiento if pc.g222_almacenamiento else '',
                 'activo':           pc.g222_activo or '',
                 'pulgadas':         str(pc.g222_pulgadas) if pc.g222_pulgadas else '',
+                'nombre_equipo':      d.g212_nombre_equipo or '',
+                'valor_promedio':     str(d.g212_valor_promedio) if d.g212_valor_promedio else '',
+                'valor_arrendamiento': str(d.g212_valor_arrendamiento) if d.g212_valor_arrendamiento else '',
             }
         except Exception:
             return {'grupo': 'pc'}
@@ -367,6 +379,7 @@ def _get_caracteristicas(d):
             return {
                 'grupo':            'impresora',
                 'tipo_impresora_id': imp.g225_tipo_impresora_id,
+                'tipo_impresora':   imp.g225_tipo_impresora.g229_tipo_impresora if imp.g225_tipo_impresora else '',
                 'funcion':          imp.g225_funcion or '',
             }
         except Exception:
@@ -397,6 +410,9 @@ def _get_caracteristicas(d):
                 'key':      lic.g227_key or '',
                 'correo':   lic.g227_correo or '',
                 'fecha_vencimiento': str(lic.g227_fecha_vencimiento) if lic.g227_fecha_vencimiento else '',
+                'almacenamiento_id': lic.g227_almacenamiento_id,
+                'almacenamiento':    lic.g227_almacenamiento.g219_almacenamiento if lic.g227_almacenamiento else '',
+                'valor_arrendamiento': str(d.g212_valor_arrendamiento) if d.g212_valor_arrendamiento else '',
             }
         except Exception:
             return {'grupo': 'licencia'}
@@ -434,6 +450,98 @@ def api_verificar_serial(request):
         'colaborador_id': asig.g216_colaborador.g215_id if asig else None,
     })
 
+SERIAL_PREFIJO_REGEX_CACHE = {}
+
+
+def _regex_para_prefijo(prefijo):
+    """Cachea el regex compilado por prefijo para no recompilar en cada llamada."""
+    if prefijo not in SERIAL_PREFIJO_REGEX_CACHE:
+        SERIAL_PREFIJO_REGEX_CACHE[prefijo] = re.compile(
+            rf'^{re.escape(prefijo)}(\d+)$', re.IGNORECASE
+        )
+    return SERIAL_PREFIJO_REGEX_CACHE[prefijo]
+
+
+# Tipos de dispositivo con serial autogenerado: nombre EXACTO del tipo
+# (tal como está en g200_tipo_dispositivo) -> (prefijo, cantidad de dígitos).
+# padding=0 -> sin ceros a la izquierda (L186). padding=3 -> P001, P002...
+SERIES_AUTOMATICAS = {
+    'LICENCIA OFFICE': ('L', 0),
+    'PERIFERICO':       ('P', 3),
+}
+
+
+def _calcular_siguiente_num(prefijo, seriales):
+    """Dado un iterable de seriales y un prefijo, devuelve el próximo número."""
+    regex = _regex_para_prefijo(prefijo)
+    max_num = 0
+    for s in seriales:
+        m = regex.match(s.strip())
+        if m:
+            max_num = max(max_num, int(m.group(1)))
+    return max_num + 1
+
+
+def _formatear_serial(prefijo, numero, padding):
+    numero_str = str(numero).zfill(padding) if padding else str(numero)
+    return f'{prefijo}{numero_str}'
+
+
+def _generar_siguiente_serial(prefijo, padding):
+    """
+    Calcula el siguiente serial secuencial para el prefijo dado
+    (ej. LICENCIA OFFICE -> 'L', 0  =>  L185 -> L186)
+    (ej. PERIFERICO      -> 'P', 3  =>  (nada) -> P001, P001 -> P002)
+
+    IMPORTANTE: debe llamarse dentro de un transaction.atomic() activo,
+    ya que bloquea (select_for_update) las filas con ese prefijo para
+    evitar que dos creaciones simultáneas generen el mismo serial.
+    """
+    seriales = (
+        Dispositivo.objects
+        .select_for_update()
+        .filter(g212_serial__istartswith=prefijo)
+        .values_list('g212_serial', flat=True)
+    )
+    siguiente = _calcular_siguiente_num(prefijo, seriales)
+    return _formatear_serial(prefijo, siguiente, padding)
+
+
+@login_required(login_url='login')
+@require_http_methods(['GET'])
+def api_siguiente_serial(request):
+    """
+    Devuelve, SOLO como vista previa (sin bloquear filas), cuál sería el
+    próximo serial automático para el tipo de dispositivo indicado
+    (?tipo_id=<id>), para mostrarlo en el formulario mientras el usuario
+    llena los demás datos.
+
+    Si el tipo no tiene serie automática configurada (SERIES_AUTOMATICAS),
+    responde {'aplica': false} y el frontend deja el campo editable normal.
+
+    El valor DEFINITIVO se recalcula con lock justo al crear el
+    dispositivo (api_dispositivo_crear), así que si hay una carrera entre
+    dos usuarios el serial final puede diferir del que se mostró aquí —
+    por eso el campo en el formulario queda de solo lectura pero el valor
+    real se re-verifica en el servidor al guardar.
+    """
+    tipo_id = request.GET.get('tipo_id')
+    tipo_obj = TipoDispositivo.objects.filter(pk=tipo_id).first() if tipo_id else None
+    tipo_nombre = tipo_obj.g200_tipo_dispositivo.strip().upper() if tipo_obj else ''
+
+    config = SERIES_AUTOMATICAS.get(tipo_nombre)
+    if not config:
+        return _json_ok({'aplica': False})
+
+    prefijo, padding = config
+    seriales = Dispositivo.objects.filter(
+        g212_serial__istartswith=prefijo
+    ).values_list('g212_serial', flat=True)
+
+    siguiente = _calcular_siguiente_num(prefijo, seriales)
+    serial = _formatear_serial(prefijo, siguiente, padding)
+    return _json_ok({'aplica': True, 'serial': serial})
+
 
 @login_required(login_url='login')
 @require_http_methods(['POST'])
@@ -452,12 +560,20 @@ def api_dispositivo_crear(request):
 
     try:
         with transaction.atomic():
+            tipo_obj = TipoDispositivo.objects.filter(pk=body['tipo_id']).first()
+            tipo_nombre = tipo_obj.g200_tipo_dispositivo.strip().upper() if tipo_obj else ''
+            config_serie = SERIES_AUTOMATICAS.get(tipo_nombre)
+
             # Generar serial automático si no viene
             serial = body.get('serial', '').strip()
             if not serial:
-                ultimo = Dispositivo.objects.order_by('-g212_id').first()
-                siguiente_id = (ultimo.g212_id + 1) if ultimo else 1
-                serial = str(siguiente_id).zfill(5)
+                if config_serie:
+                    prefijo, padding = config_serie
+                    serial = _generar_siguiente_serial(prefijo, padding)
+                else:
+                    ultimo = Dispositivo.objects.order_by('-g212_id').first()
+                    siguiente_id = (ultimo.g212_id + 1) if ultimo else 1
+                    serial = str(siguiente_id).zfill(5)
 
             d = Dispositivo.objects.create(
                 g212_serial=serial,
@@ -498,9 +614,16 @@ def api_dispositivo_editar(request, pk):
             d.g212_propietario_id = body.get('propietario_id', d.g212_propietario_id)
             d.g212_estado_id = body.get('estado_id', d.g212_estado_id)
             d.g212_co_id = body.get('co_id') or None
-            d.g212_nombre_equipo = body.get('nombre_equipo', d.g212_nombre_equipo)
-            d.g212_valor_promedio = body.get('valor_promedio') or None
-            d.g212_valor_arrendamiento = body.get('valor_arrendamiento') or None
+            # Nombre/valor solo se actualizan si llega un valor real: estos campos
+            # se envían desde la sección "Características" (según tipo), así que
+            # un cuerpo sin ese dato NO debe borrar lo que ya estaba guardado
+            # (ej. cargado por Excel) en dispositivos sin esa sección.
+            if body.get('nombre_equipo'):
+                d.g212_nombre_equipo = body['nombre_equipo']
+            if body.get('valor_promedio') not in (None, ''):
+                d.g212_valor_promedio = body['valor_promedio']
+            if body.get('valor_arrendamiento') not in (None, ''):
+                d.g212_valor_arrendamiento = body['valor_arrendamiento']
             d.g212_departamento_id = body.get('departamento_id') or None
             d.g212_municipio_id = body.get('municipio_id') or None
             d.g212_observaciones = body.get('observaciones', d.g212_observaciones)
@@ -530,13 +653,26 @@ def _save_caracteristicas(d, body):
                 'g222_licencia_id':      caract.get('licencia_id') or None,
                 'g222_correo_office':    caract.get('correo_office', ''),
                 'g222_key_office':       caract.get('key_office', ''),
-                'g222_ram': caract.get('ram') or None,
+                'g222_ram':              _normalizar_ram(caract.get('ram')),
                 'g222_tipo_disco_id':    caract.get('tipo_disco_id') or None,
                 'g222_almacenamiento_id': caract.get('almacenamiento_id') or None,
                 'g222_activo':           caract.get('activo', ''),
                 'g222_pulgadas':         caract.get('pulgadas') or None,
             }
         )
+        # Guardar nombre_equipo, valor_promedio y valor_arrendamiento (campos de Dispositivo)
+        # que vienen dentro de la sección Características de TORRE/PORTÁTIL
+        nombre = caract.get('nombre_equipo')
+        vp = caract.get('valor_promedio') or None
+        va = caract.get('valor_arrendamiento') or None
+        if nombre or vp is not None or va is not None:
+            if nombre:
+                d.g212_nombre_equipo = nombre
+            if vp is not None:
+                d.g212_valor_promedio = vp
+            if va is not None:
+                d.g212_valor_arrendamiento = va
+            d.save()
 
     elif grupo == 'movil':
         CaracteristicaMovil.objects.update_or_create(
@@ -582,15 +718,24 @@ def _save_caracteristicas(d, body):
             d.save()
 
     elif grupo == 'impresora':
+        # 'funcion' no tiene campo en el formulario manual (solo llega por
+        # carga masiva) — si no viene en el body, se preserva lo existente
+        # en vez de sobreescribir con vacío.
+        existente = CaracteristicaImpresora.objects.filter(g225_dispositivo=d).first()
+        funcion = caract.get('funcion') or (existente.g225_funcion if existente else '')
         CaracteristicaImpresora.objects.update_or_create(
             g225_dispositivo=d,
             defaults={
                 'g225_tipo_impresora_id': caract.get('tipo_impresora_id') or None,
-                'g225_funcion':           caract.get('funcion', ''),
+                'g225_funcion':           funcion,
             }
         )
 
     elif grupo == 'periferico':
+        # 'descripcion_adicional' no tiene campo en el formulario manual
+        # (solo llega por carga masiva) — se preserva si no viene en el body.
+        existente = CaracteristicaPeriferico.objects.filter(g226_dispositivo=d).first()
+        descripcion = caract.get('descripcion_adicional') or (existente.g226_descripcion_adicional if existente else '')
         CaracteristicaPeriferico.objects.update_or_create(
             g226_dispositivo=d,
             defaults={
@@ -599,7 +744,7 @@ def _save_caracteristicas(d, body):
                 'g226_incluye_mouse':        caract.get('incluye_mouse', False),
                 'g226_incluye_auriculares':  caract.get('incluye_auriculares', False),
                 'g226_incluye_cargador':     caract.get('incluye_cargador', False),
-                'g226_descripcion_adicional': caract.get('descripcion_adicional', ''),
+                'g226_descripcion_adicional': descripcion,
             }
         )
 
@@ -612,9 +757,14 @@ def _save_caracteristicas(d, body):
                 'g227_key':      caract.get('key', ''),
                 'g227_correo':   caract.get('correo', ''),
                 'g227_fecha_vencimiento': caract.get('fecha_vencimiento') or None,
+                'g227_almacenamiento_id': caract.get('almacenamiento_id') or None,
             }
         )
-        
+        va = caract.get('valor_arrendamiento') or None
+        if va is not None:
+            d.g212_valor_arrendamiento = va
+            d.save()
+
     elif grupo== 'videobeam':
         
         
@@ -1090,6 +1240,88 @@ def api_colaboradores(request):
         'page_size':     page_size,
         'total_pages':   (total + page_size - 1) // page_size,
     })
+
+
+@login_required(login_url='login')
+@require_http_methods(['GET'])
+def api_colaboradores_cargos(request):
+    """Cargos distintos ya registrados en Colaborador, para el buscador del modal de creación."""
+    cargos = (
+        Colaborador.objects
+        .exclude(g215_cargo__isnull=True)
+        .exclude(g215_cargo__exact='')
+        .order_by('g215_cargo')
+        .values_list('g215_cargo', flat=True)
+        .distinct()
+    )
+    data = [{'id': c, 'nombre': c} for c in cargos]
+    return _json_ok(data)
+
+
+@login_required(login_url='login')
+@require_http_methods(['POST'])
+def api_colaborador_crear(request):
+    """Crea un nuevo colaborador desde la plataforma (fuera del panel de admin)."""
+    try:
+        body = json.loads(request.body)
+    except json.JSONDecodeError:
+        return _json_err('JSON inválido')
+
+    documento = (body.get('documento') or '').strip()
+    nombre    = (body.get('nombre') or '').strip()
+    cargo     = (body.get('cargo') or '').strip()
+    correo    = (body.get('correo') or '').strip()
+    co_id     = body.get('co_id') or None
+    estado_id = body.get('estado_id') or None
+    area_id   = body.get('area_id') or None
+
+    if not documento or not nombre or not cargo or not estado_id:
+        return _json_err('Completa los campos requeridos: documento, nombre, cargo y estado')
+
+    if Colaborador.objects.filter(g215_documento=documento).exists():
+        return _json_err(f'Ya existe un colaborador con el documento "{documento}"')
+
+    
+    # Validamos que las FK realmente existan en ESTA base de datos.
+    # Evita guardar un ID "huérfano" (p.ej. de otra base/entorno) que luego
+    # se muestra vacío en la tabla sin ningún error visible.
+    if co_id and not CentroOperaciones.objects.filter(pk=co_id).exists():
+        return _json_err(
+            'El Centro de Operación seleccionado no existe en esta base de datos. '
+            'Recarga la página (Ctrl+Shift+R) para actualizar el catálogo e inténtalo de nuevo.'
+        )
+    if area_id and not CentroCosto.objects.filter(pk=area_id).exists():
+        return _json_err(
+            'El Área/Centro de Costo seleccionado no existe en esta base de datos. '
+            'Recarga la página (Ctrl+Shift+R) para actualizar el catálogo e inténtalo de nuevo.'
+        )
+    if not Estado.objects.filter(pk=estado_id).exists():
+        return _json_err(
+            'El Estado seleccionado no existe en esta base de datos. '
+            'Recarga la página (Ctrl+Shift+R) para actualizar el catálogo e inténtalo de nuevo.'
+        )
+     
+
+    try:
+        with transaction.atomic():
+            c = Colaborador.objects.create(
+                g215_documento = documento,
+                g215_nombre    = nombre,
+                g215_cargo     = cargo,
+                g215_correo    = correo or None,
+                g215_co_id     = co_id,
+                g215_estado_id = estado_id,
+                g215_Area_id   = area_id,
+            )
+    except Exception as e:
+        return _json_err(str(e))
+
+    return _json_ok({
+        'id':        c.g215_id,
+        'documento': c.g215_documento,
+        'nombre':    c.g215_nombre,
+    })
+
 
 @login_required(login_url='login')
 @require_http_methods(['POST'])
@@ -1635,8 +1867,40 @@ def api_acta_guardar(request, colaborador_id):
             'tipo':            d.g212_tipo.g200_tipo_dispositivo if d.g212_tipo else '—',
             'serial':          d.g212_serial,
             'nombre':          d.g212_nombre_equipo or '—',
-            'caracteristicas': _get_caracteristicas(d),
+            'caracteristicas': _get_caracteristicas_acta(d),
         })
+
+    # 2b. Si el acta es de DEVOLUCIÓN → liberar dispositivos y actualizar colaborador
+    #     (mismo patrón que api_asignacion_eliminar)
+    ESTADO_DISP_LIBRE     = 1   # HABILITADO  (dispositivo libre)
+    ESTADO_COLAB_CON_DISP = 6   # DISPOSITIVOS OTORGADOS
+    ESTADO_COLAB_SIN_DISP = 10  # SIN ASIGNACIONES
+
+    if 'DEVOLU' in body['tipo'].upper():
+        with transaction.atomic():
+            asignaciones = AsignacionColaborador.objects.filter(g216_colaborador=c)
+            dispositivos_devueltos = list(asignaciones.values_list('g216_dispositivo_id', flat=True))
+            asignaciones.delete()
+
+            for dispositivo_id in dispositivos_devueltos:
+                dev = Dispositivo.objects.filter(pk=dispositivo_id).first()
+                if not dev:
+                    continue
+                otras = AsignacionColaborador.objects.filter(g216_dispositivo_id=dispositivo_id).exists()
+                if not otras:
+                    dev.g212_estado_id = ESTADO_DISP_LIBRE
+                    dev.save(update_fields=['g212_estado_id'])
+                _registrar_historial_auto(
+                    dispositivo    = dev,
+                    nombre_novedad = 'DEVOLUCIÓN',
+                    responsable    = request.user.get_full_name() or request.user.username,
+                    observaciones  = f'Devuelto por: {c.g215_nombre} — Acta #{acta.g217_id}',
+                    co             = dev.g212_co,
+                )
+
+            total = AsignacionColaborador.objects.filter(g216_colaborador=c).count()
+            c.g215_estado_id = ESTADO_COLAB_CON_DISP if total > 0 else ESTADO_COLAB_SIN_DISP
+            c.save(update_fields=['g215_estado_id'])
 
     # 3. Logo
     logo_b64   = ''
@@ -1665,8 +1929,19 @@ def api_acta_guardar(request, colaborador_id):
 
 
 
-def _get_caracteristicas(d):
-    """Retorna dict de características según el tipo de dispositivo."""
+def _get_caracteristicas_acta(d):
+    """
+    Retorna dict de características YA FORMATEADO PARA MOSTRAR (claves en
+    MAYÚSCULAS, valores resueltos a texto, sin IDs) — uso exclusivo del PDF
+    del Acta (_construir_html_acta) y la vista de Acta guardada.
+
+    NO USAR para el formulario de Editar ni el modal de Detalle: para eso
+    existe _get_caracteristicas(d) (más arriba en este archivo), que
+    devuelve claves técnicas con sufijo _id que el formulario necesita
+    para precargar los <select>. Antes ambas funciones se llamaban igual
+    y esta (definida después) sobrescribía silenciosamente a la otra,
+    rompiendo el precargado de Editar, el Detalle y la exportación a Excel.
+    """
     tipo = d.g212_tipo.g200_tipo_dispositivo.upper() if d.g212_tipo else ''
     chars = {}
 
@@ -1677,7 +1952,7 @@ def _get_caracteristicas(d):
                 'NOMBRE':        d.g212_nombre_equipo or '—',
                 'PROCESADOR':    pc.g222_procesador.g209_procesador if pc.g222_procesador else '—',
                 'SO':            pc.g222_so.g210_so if pc.g222_so else '—',
-                'RAM':           f"{pc.g222_ram} GB" if pc.g222_ram else '—',
+                'RAM':           pc.g222_ram or '—',
                 'TIPO DISCO':    pc.g222_tipo_disco.g231_tipo_disco if pc.g222_tipo_disco else '—',
                 'ALMACENAMIENTO': pc.g222_almacenamiento.g219_almacenamiento if pc.g222_almacenamiento else '—',
                 'ANTIVIRUS':     pc.g222_antivirus.g208_antivirus if pc.g222_antivirus else '—',
@@ -1780,7 +2055,7 @@ def api_acta_detalle(request, acta_id):
             'tipo':            d.g212_tipo.g200_tipo_dispositivo if d.g212_tipo else '—',
             'serial':          d.g212_serial,
             'nombre':          d.g212_nombre_equipo or '—',
-            'caracteristicas': _get_caracteristicas(d),
+            'caracteristicas': _get_caracteristicas_acta(d),
         })
 
     #  Logo 
@@ -2202,6 +2477,24 @@ def _normalizar(texto):
     return s.upper()
 
 
+def _normalizar_ram(valor):
+    """
+    Normaliza el campo RAM (texto libre) a un formato consistente.
+    Acepta que el usuario escriba solo el número ('8') o con unidad
+    ('8GB', '8 gb', '8Gb') y siempre devuelve 'NÚMEROGB'.
+    Si el valor ya trae otra unidad (ej. '1TB') se respeta tal cual.
+    Ej: '8' -> '8GB'   |   '8gb' -> '8GB'   |   '16 GB' -> '16GB'
+    """
+    if not valor:
+        return None
+    v = str(valor).strip().upper().replace(' ', '')
+    if not v:
+        return None
+    if v.isdigit():
+        v = f'{v}GB'
+    return v
+
+
 def _texto_excel_seguro(valor):
     """
     Convierte un valor de celda de Excel a texto de forma segura,
@@ -2328,6 +2621,8 @@ def api_carga_masiva(request):
             'auriculares':         ['auriculares'],
             'cargador_pc':         ['cargador_pc'],
             'cargador_movil':      ['cargador_movil', 'cargador_móvil'],
+            'version':             ['version', 'versión', 'version_office'],
+            'lumenes':             ['lumenes', 'lúmenes'],
         }
 
         def _idx(campo):
@@ -2356,6 +2651,13 @@ def api_carga_masiva(request):
             except InvalidOperation:
                 return None
 
+        def _entero(fila, campo):
+            s = _val(fila, campo).replace(' ', '')
+            try:
+                return int(float(s)) if s else None
+            except ValueError:
+                return None
+
         # ── 5. Validar columna serial obligatoria ──────────────────────
         if idx['serial'] is None:
             return _json_err(
@@ -2377,7 +2679,6 @@ def api_carga_masiva(request):
         so_cache          = {_normalizar(s.g210_so): s          for s in SistemaOperativo.objects.all() if s.g210_so}
         antivirus_cache   = {_normalizar(a.g208_antivirus): a   for a in Antivirus.objects.all() if a.g208_antivirus}
         licencia_cache    = {_normalizar(l.g211_office): l      for l in LicenciaOffice.objects.all() if l.g211_office}
-        ram_cache         = {_normalizar(r.g230_ram): r         for r in RAM.objects.all() if r.g230_ram}
         disco_cache       = {_normalizar(d.g231_tipo_disco): d  for d in TipoDisco.objects.all() if d.g231_tipo_disco}
         alm_cache         = {_normalizar(a.g219_almacenamiento): a for a in Almacenamiento.objects.all() if a.g219_almacenamiento}
         operador_cache    = {_normalizar(o.g221_operador): o    for o in Operador.objects.all() if o.g221_operador}
@@ -2417,6 +2718,7 @@ def api_carga_masiva(request):
         FAMILIA_IMPRESORA  = {'IMPRESORA'}
         FAMILIA_PERIFERICO = {'PERIFERICO'}
         FAMILIA_LICENCIA   = {'LICENCIA OFFICE', 'LICENCIA'}
+        FAMILIA_VIDEOBEAM  = {'VIDEO BEAM'}
 
         tipo_upper = tipo_nombre_norm
 
@@ -2488,7 +2790,6 @@ def api_carga_masiva(request):
                         so_n  = _normalizar(_val(fila, 'so'))
                         ant_n = _normalizar(_val(fila, 'antivirus'))
                         lic_n = _normalizar(_val(fila, 'licencia_office'))
-                        ram_n = _normalizar(_val(fila, 'ram'))
                         dis_n = _normalizar(_val(fila, 'disco'))
                         alm_n = _normalizar(_val(fila, 'almacenamiento'))
                         CaracteristicaPC.objects.create(
@@ -2497,7 +2798,7 @@ def api_carga_masiva(request):
                             g222_so             = so_cache.get(so_n) if so_n else None,
                             g222_antivirus      = antivirus_cache.get(ant_n) if ant_n else None,
                             g222_licencia       = licencia_cache.get(lic_n) if lic_n else None,
-                            g222_ram            = ram_cache.get(ram_n) if ram_n else None,
+                            g222_ram            = _normalizar_ram(_val(fila, 'ram')),
                             g222_tipo_disco     = disco_cache.get(dis_n) if dis_n else None,
                             g222_almacenamiento = alm_cache.get(alm_n) if alm_n else None,
                             g222_correo_office  = _val(fila, 'correo_office') or None,
@@ -2532,15 +2833,23 @@ def api_carga_masiva(request):
                         )
 
                     elif tipo_upper in FAMILIA_LICENCIA:
+                        alm_n_lic = _normalizar(_val(fila, 'almacenamiento'))
                         CaracteristicaLicencia.objects.create(
                             g227_dispositivo = disp,
                             g227_software    = _val(fila, 'tipo_licencia') or None,
-                            g227_version     = _val(fila, 'modelo') or None,
+                            g227_version     = _val(fila, 'version') or None,
                             g227_key         = None,
                             g227_correo      = None,
                             g227_fecha_vencimiento = None,
+                            g227_almacenamiento = alm_cache.get(alm_n_lic) if alm_n_lic else None,
                         )
-                    # VIDEO BEAM y otros: solo j212, no se crea tabla de características
+
+                    elif tipo_upper in FAMILIA_VIDEOBEAM:
+                        CaracteristicasVideoBeam.objects.create(
+                            g232_dispositivo = disp,
+                            g232_lumenes      = _entero(fila, 'lumenes'),
+                        )
+                    # Otros tipos sin tabla de características propia: solo j212
 
                 creados += 1
 

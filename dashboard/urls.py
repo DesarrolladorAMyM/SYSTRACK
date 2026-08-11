@@ -35,6 +35,8 @@ urlpatterns = [
 
     #  Colaboradores 
     path('api/colaboradores/',                views.api_colaboradores,           name='api_colaboradores'),
+    path('api/colaboradores/crear/',           views.api_colaborador_crear,       name='api_colaborador_crear'),
+    path('api/colaboradores/cargos/',          views.api_colaboradores_cargos,    name='api_colaboradores_cargos'),
     path('api/colaboradores/<int:colaborador_id>/asignar/',
          views.api_asignacion_guardar,                                           name='api_asignacion'),
     path('api/colaboradores/<int:colaborador_id>/asignar/<int:dispositivo_id>/eliminar/',
@@ -55,6 +57,8 @@ urlpatterns = [
     path('api/dashboard/stats/',              views.api_dashboard_stats,         name='api_dashboard_stats'),
     
     path('api/dispositivos/verificar-serial/', views.api_verificar_serial, name='api_verificar_serial'),
+    
+    path('api/dispositivos/siguiente-serial/', views.api_siguiente_serial, name='api_siguiente_serial'),
     
 
     path('api/req/centros-operacion/',                    views.api_req_centros_operacion, name='req_centros_operacion'),

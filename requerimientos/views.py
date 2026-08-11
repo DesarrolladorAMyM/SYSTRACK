@@ -218,9 +218,36 @@ def crear_requerimiento(request):
     try:
         data   = json.loads(request.body)
         cedula = str(data.get('cedula', '')).strip()
-
         if not cedula:
-            return JsonResponse({'ok': False, 'error': 'Cédula requerida.'}, status=400)
+                    return JsonResponse({'ok': False, 'error': 'Cédula requerida.'}, status=400)
+
+        # ── Validación de campos obligatorios del formulario ──────────────
+        nombre_completo     = str(data.get('nombre_completo', '')).strip()
+        correo_electronico  = str(data.get('correo_electronico', '')).strip()
+        descripcion         = str(data.get('descripcion', '')).strip()
+        id_categoria_check  = data.get('id_categoria')
+        id_subcategoria_ck  = data.get('id_subcategoria')
+        centro_texto        = str(data.get('co_texto', '')).strip()
+
+        faltantes = []
+        if not nombre_completo:
+            faltantes.append('Nombre completo')
+        if not centro_texto:
+            faltantes.append('Centro de operación')
+        if not id_categoria_check:
+            faltantes.append('Categoría')
+        if not id_subcategoria_ck:
+            faltantes.append('Subcategoría')
+        if not correo_electronico:
+            faltantes.append('Correo electrónico')
+        if not descripcion:
+            faltantes.append('Descripción')
+
+        if faltantes:
+            return JsonResponse({
+                'ok': False,
+                'error': 'Faltan campos obligatorios: ' + ', '.join(faltantes) + '.'
+            }, status=400)
 
         try:
             usuario = Usuario.objects.using(DB).get(Cedula=cedula, Estado=1)

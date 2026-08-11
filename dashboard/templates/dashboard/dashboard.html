@@ -263,6 +263,73 @@
   </div>
 </div>
 
+<!-- ═══════════════════════════ MODAL CREAR COLABORADOR ═══════════════════════════ -->
+<div class="modal-overlay" id="modalColaborador">
+  <div class="modal-form">
+    <div class="modal-form-header">
+      <div class="modal-form-icon"><i class="fas fa-user-plus"></i></div>
+      <div>
+        <div class="modal-form-title">Colaboradores — Crear</div>
+        <div class="modal-form-sub">Registra un nuevo colaborador sin salir de la plataforma</div>
+      </div>
+      <button class="modal-close-btn" onclick="closeModal('modalColaborador')"><i class="fas fa-times"></i></button>
+    </div>
+    <div class="modal-form-body">
+      <div class="form-section">
+        <div class="form-section-title"><i class="fas fa-id-card"></i> Datos del colaborador</div>
+        <div class="form-row cols2">
+          <div class="form-group">
+            <label class="form-label">Documento <span class="req">*</span></label>
+            <input class="form-input" id="colab-f-documento" type="text" placeholder="Ej: 1017123456">
+          </div>
+          <div class="form-group">
+            <label class="form-label">Nombre completo <span class="req">*</span></label>
+            <input class="form-input" id="colab-f-nombre" type="text" placeholder="Nombre y apellidos">
+          </div>
+        </div>
+        <div class="form-row cols2">
+          <div class="form-group" style="position:relative;">
+            <label class="form-label">Cargo <span class="req">*</span></label>
+            <input class="form-input" id="colab-f-cargo" type="text" placeholder="Buscar o escribir cargo..." autocomplete="off"
+              oninput="colabFiltrarDropdown('cargo')" onfocus="colabAbrirDropdown('cargo')" onblur="setTimeout(()=>colabCerrarDropdown('cargo'),200)">
+            <div id="colab-cargo-dropdown" class="usr-dropdown" style="display:none;"></div>
+          </div>
+          <div class="form-group">
+            <label class="form-label">Correo</label>
+            <input class="form-input" id="colab-f-correo" type="email" placeholder="correo@empresa.com">
+          </div>
+        </div>
+      </div>
+      <div class="form-section" style="margin-bottom:0">
+        <div class="form-section-title"><i class="fas fa-sitemap"></i> Ubicación organizacional</div>
+        <div class="form-row cols2">
+          <div class="form-group" style="position:relative;">
+            <label class="form-label">Centro de Operaciones</label>
+            <input class="form-input" id="colab-f-co-search" type="text" placeholder="Buscar centro..." autocomplete="off"
+              oninput="colabFiltrarDropdown('co')" onfocus="colabAbrirDropdown('co')" onblur="setTimeout(()=>colabCerrarDropdown('co'),200)">
+            <input type="hidden" id="colab-f-co">
+            <div id="colab-co-dropdown" class="usr-dropdown" style="display:none;"></div>
+          </div>
+          <div class="form-group">
+            <label class="form-label">Área / Centro de Costo</label>
+            <select class="form-select" id="colab-f-area"><option value="">Seleccione</option></select>
+          </div>
+        </div>
+        <div class="form-row cols2">
+          <div class="form-group">
+            <label class="form-label">Estado <span class="req">*</span></label>
+            <select class="form-select" id="colab-f-estado"><option value="">Seleccione</option></select>
+          </div>
+        </div>
+      </div>
+    </div>
+    <div class="modal-form-footer">
+      <button class="btn-cancel" onclick="closeModal('modalColaborador')"><i class="fas fa-arrow-left"></i> Regresar</button>
+      <button class="btn-save" onclick="saveColaborador()"><i class="fas fa-save"></i> Crear colaborador</button>
+    </div>
+  </div>
+</div>
+
 <!-- ═══════════════════════════ MODAL ASIGNAR COLABORADOR ═══════════════════════════ -->
 <div class="modal-overlay" id="modalAsignar">
   <div class="modal-asignar-box">
@@ -337,16 +404,13 @@
           <label class="acta-label">Correo <span class="req">*</span></label>
           <input class="acta-input" id="acta-correo" type="email" placeholder="correo@empresa.com">
         </div>
-        <div class="acta-field">
-          <label class="acta-label">Tipo Acta <span class="req">*</span></label>
-          <select class="acta-select" id="acta-tipo">
-            <option value="">Seleccione una opción</option>
-            <option value="ENTREGA">ENTREGA</option>
-            <option value="DEVOLUCIÓN">DEVOLUCIÓN</option>
-            <option value="TRASLADO">TRASLADO</option>
-          </select>
-        </div>
-      </div>
+         <div class="acta-field">
+            <label class="acta-label">Tipo Acta <span class="req">*</span></label>
+            <select class="acta-select" id="acta-tipo">
+              <option value="">Seleccione una opción</option>
+            </select>
+          </div>
+       </div>
       <div style="margin-bottom:20px">
         <div class="acta-field">
           <label class="acta-label">Proceso / Área <span class="req">*</span></label>
@@ -861,6 +925,11 @@
           <div>
             <h2 class="screen-title">Colaboradores</h2>
             <p class="screen-desc">Gestión de colaboradores — asignación de dispositivos y generación de actas</p>
+          </div>
+          <div class="screen-actions">
+            <button class="btn-create" onclick="openColabModal()">
+              <i class="fas fa-plus"></i> Colaborador
+            </button>
           </div>
         </div>
         <div class="colab-toolbar">
