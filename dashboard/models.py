@@ -388,8 +388,8 @@ class CaracteristicaPC(models.Model):
     )
     g222_correo_office  = models.EmailField(blank=True, null=True)
     g222_key_office     = models.CharField(max_length=150, blank=True, null=True)
-    # RAM como texto libre normalizado (ej. "8GB", "16GB") — ver _normalizar_ram en views.py
-    g222_ram = models.CharField(max_length=20, blank=True, null=True, db_column='g222_ram')
+    # RAM en GB, solo número entero (ej. 8, 16) — ver _normalizar_ram en views.py
+    g222_ram = models.IntegerField(blank=True, null=True, db_column='g222_ram')
     # Tipo disco como FK al catálogo propio j231_tipo_disco (HDD, SSD, SSD NVME…)
     g222_tipo_disco  = models.ForeignKey(
         TipoDisco, on_delete=models.SET_NULL,

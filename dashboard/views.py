@@ -1952,7 +1952,7 @@ def _get_caracteristicas_acta(d):
                 'NOMBRE':        d.g212_nombre_equipo or '—',
                 'PROCESADOR':    pc.g222_procesador.g209_procesador if pc.g222_procesador else '—',
                 'SO':            pc.g222_so.g210_so if pc.g222_so else '—',
-                'RAM':           pc.g222_ram or '—',
+                'RAM':           f"{pc.g222_ram} GB" if pc.g222_ram else '—',
                 'TIPO DISCO':    pc.g222_tipo_disco.g231_tipo_disco if pc.g222_tipo_disco else '—',
                 'ALMACENAMIENTO': pc.g222_almacenamiento.g219_almacenamiento if pc.g222_almacenamiento else '—',
                 'ANTIVIRUS':     pc.g222_antivirus.g208_antivirus if pc.g222_antivirus else '—',
@@ -2479,20 +2479,14 @@ def _normalizar(texto):
 
 def _normalizar_ram(valor):
     """
-    Normaliza el campo RAM (texto libre) a un formato consistente.
-    Acepta que el usuario escriba solo el número ('8') o con unidad
-    ('8GB', '8 gb', '8Gb') y siempre devuelve 'NÚMEROGB'.
-    Si el valor ya trae otra unidad (ej. '1TB') se respeta tal cual.
-    Ej: '8' -> '8GB'   |   '8gb' -> '8GB'   |   '16 GB' -> '16GB'
+    Extrae el valor numérico (GB) del campo RAM, descartando cualquier
+    letra o unidad que el usuario haya escrito.
+    Ej: '16' -> 16   |   '16GB' -> 16   |   '16 gb' -> 16
     """
     if not valor:
         return None
-    v = str(valor).strip().upper().replace(' ', '')
-    if not v:
-        return None
-    if v.isdigit():
-        v = f'{v}GB'
-    return v
+    match = re.search(r'\d+', str(valor))
+    return int(match.group()) if match else None
 
 
 def _texto_excel_seguro(valor):

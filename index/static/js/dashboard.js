@@ -994,7 +994,7 @@ const CHAR_FIELDS_MAP = {
       _selFromCat('SO', true, 'sistemas_operativos', 'g210_id', 'g210_so', 'tc-so')
     )}
     ${_fRow('cols4',
-      _fInp('RAM', true, 'Ej: 8 u 8GB', 'tc-ram', 'text'),
+      _fInp('RAM (GB)', true, 'Ej: 8', 'tc-ram', 'number'),
      _selFromCat('Tipo Disco', true, 'tipos_disco', 'g231_id', 'g231_tipo_disco', 'tc-disco'),
       _selFromCat('Almacenamiento', true, 'almacenamientos', 'g219_id', 'g219_almacenamiento', 'tc-alm'),
       _selFromCat('Office', true, 'licencias_office', 'g211_id', 'g211_office', 'tc-office')
@@ -1012,7 +1012,7 @@ const CHAR_FIELDS_MAP = {
       _selFromCat('SO', true, 'sistemas_operativos', 'g210_id', 'g210_so', 'pc-so')
     )}
     ${_fRow('cols4',
-      _fInp('RAM', true, 'Ej: 8 u 8GB', 'pc-ram', 'text'),
+      _fInp('RAM (GB)', true, 'Ej: 8', 'pc-ram', 'number'),
       _selFromCat('Tipo Disco', true, 'tipos_disco', 'g231_id', 'g231_tipo_disco', 'pc-disco'),
       _selFromCat('Almacenamiento', true, 'almacenamientos', 'g219_id', 'g219_almacenamiento', 'pc-alm'),
       _selFromCat('Office', false, 'licencias_office', 'g211_id', 'g211_office', 'pc-office')
@@ -2739,7 +2739,7 @@ const CM_BASE_COLS = [
 const CM_EXTRA_COLS = {
   'CELULAR':             [['numero_linea','Numero de linea',true],['operador','Nombre del operador',true],['imei1','IMEI 1',true],['valor_promedio','Valor del equipo (solo numero)',false],['valor_arrendamiento','Valor arrendamiento (solo numero)', false],['imei2','IMEI 2 dual SIM',false],['plan_datos','Plan de datos',false],['cuenta_email','Cuenta Gmail',false],['contrasena','Contrasena Gmail',false]],
   'TABLET':              [['numero_linea','Numero de linea',false],['valor_promedio','Valor del equipo (solo numero)',false],['valor_arrendamiento','Valor arrendamiento (solo numero)', false],['operador','Operador',false],['imei1','IMEI 1',false],['imei2','IMEI 2',false],['plan_datos','Plan de datos',false],['cuenta_email','Cuenta Gmail',true],['contrasena','Contrasena Gmail',true]],
-  'PORTATIL':            [['procesador','Procesador (Ej: CORE I5)',true],['nombre','Nombre del equipo (Ej: LAPTOP-02)',false],['valor_promedio','Valor del equipo (solo numero)',false],['valor_arrendamiento','Valor arrendamiento (solo numero)', false],['activo','Activo',false],['ram','RAM (Ej: 8GB)',true],['disco','Tipo de disco SSD o HDD',true],['almacenamiento','Capacidad del disco',true],['so','Sistema operativo',true],['antivirus','Antivirus',false],['licencia_office','Licencia Office',false],['correo_office','Correo Office',false]],
+  'PORTATIL':            [['procesador','Procesador (Ej: CORE I5)',true],['nombre','Nombre del equipo (Ej: LAPTOP-02)',false],['valor_promedio','Valor del equipo (solo numero)',false],['valor_arrendamiento','Valor arrendamiento (solo numero)', false],['activo','Activo',false],['ram','RAM (Ej: 8, solo numero)',true],['disco','Tipo de disco SSD o HDD',true],['almacenamiento','Capacidad del disco',true],['so','Sistema operativo',true],['antivirus','Antivirus',false],['licencia_office','Licencia Office',false],['correo_office','Correo Office',false]],
   'TORRE DE ESCRITORIO': [['procesador','Procesador',true],['valor_promedio',     'Valor del equipo (solo numero)',false],['valor_arrendamiento','Valor arrendamiento (solo numero)', false],['nombre','Nombre del equipo',false],['ram','RAM',true],['disco','Tipo de disco',true],['almacenamiento','Capacidad',true],['so','Sistema operativo',true],['antivirus','Antivirus',false],['licencia_office','Licencia Office',false],['correo_office','Correo Office',false]],
   'MODEM WIFI':          [['numero_linea','Numero de linea',true],['valor_promedio','Valor del equipo (solo numero)',false],['valor_arrendamiento','Valor arrendamiento (solo numero)', false],['operador','Operador',true],['imei1','IMEI 1',true],['imei2','IMEI 2',false],['plan_datos','Plan de datos',false]],
   'SIMCARD':             [['numero_linea','Numero de linea',true],['valor_arrendamiento','Valor arrendamiento (solo numero)', false],['operador','Operador',true],['plan_datos','Plan de datos',false]],
