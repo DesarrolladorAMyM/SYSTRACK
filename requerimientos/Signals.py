@@ -1,4 +1,5 @@
 import logging
+import datetime
 from django.db.models.signals import pre_save, post_save
 from django.dispatch import receiver
 
@@ -13,7 +14,12 @@ ESTADO_CERRADO  = 4
 
 def _crear_notificacion(req, tipo, titulo, mensaje):
     """Inserta la fila en mv_Notificaciones. Nunca debe tumbar el flujo
-    principal (guardado del requerimiento / envío de correo) si falla."""
+    principal (guardado del requerimiento / envío de correo) si falla.
+
+    FechaCreacion NO admite NULL en la BD (tiene default getdate()), pero
+    Django manda NULL explícito si no se le pasa el valor — hay que
+    fijarlo a mano o el INSERT siempre falla.
+    """
     try:
         Notificacion.objects.using(DB).create(
             CedulaUsuario = req.CedulaUsuario,
@@ -21,6 +27,7 @@ def _crear_notificacion(req, tipo, titulo, mensaje):
             Codigo        = req.Codigo,
             Titulo        = titulo,
             Mensaje       = mensaje,
+            FechaCreacion = datetime.datetime.now(),
         )
     except Exception:
         logger.exception(

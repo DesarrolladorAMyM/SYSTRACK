@@ -3013,7 +3013,10 @@ from requerimientos.models import Requerimiento, Categoria, SubCategoria,Priorid
 @require_http_methods(['GET'])
 def api_mis_req_tic(request):
     """Requerimientos asignados al técnico que inició sesión."""
-    from requerimientos.models import Cargo as CargoReq, TipoRequerimiento, Clasificacion as ClasificacionReq
+    from requerimientos.models import (
+        Cargo as CargoReq, TipoRequerimiento, Clasificacion as ClasificacionReq,
+        ImagenAdjunta, CentroOperacion as CentroOperacionReq,
+    )
 
     user_id = request.session.get('req_user_id')
     if not user_id:
@@ -3026,6 +3029,8 @@ def api_mis_req_tic(request):
     TIPOS         = {t.IdTipoReque: t.Descripcion for t in TipoRequerimiento.objects.using('requerimientos').all()}
     CARGOS        = {c.IdCargo: c.Descripcion for c in CargoReq.objects.using('requerimientos').all()}
     CLASIFICAC    = {c.IdClasificacion: c.Clasificacion for c in ClasificacionReq.objects.using('requerimientos').all()}
+    # CO guarda el código corto (ej. "AM1"), se resuelve al nombre completo.
+    CENTROS       = {c.IdCo: c.Descripcion for c in CentroOperacionReq.objects.using('requerimientos').all()}
 
     qs = (Requerimiento.objects
           .using('requerimientos')
@@ -3033,8 +3038,22 @@ def api_mis_req_tic(request):
           .exclude(IdEstado=5)
           .order_by('-Fecha'))
 
+    # Adjuntos: mismo criterio que api_todos_req_tic — solo se resuelven los
+    # que subió este proyecto (ver ADJUNTO_CARPETA en requerimientos/views.py).
+    codigos_pagina = [r.Codigo for r in qs]
+    ADJUNTOS = {}
+    for img in (ImagenAdjunta.objects.using('requerimientos')
+                .filter(CodReq__in=codigos_pagina).order_by('IdImagen')):
+        nombre_disco = f'{img.IdImagen}_{img.NombreImagen}'
+        ADJUNTOS[img.CodReq] = {
+            'nombre': img.NombreImagen,
+            'url':    f'{settings.MEDIA_URL}requerimientos_adjuntos/{nombre_disco}',
+        }
+
     data = []
     for r in qs:
+        adjunto = ADJUNTOS.get(r.Codigo)
+        centro_nombre = CENTROS.get(r.CO, r.CO or '—')
         data.append({
             'codigo':             r.codigo(),
             'id':                 r.Codigo,
@@ -3043,8 +3062,11 @@ def api_mis_req_tic(request):
             'documento':          r.CedulaUsuario or '',
             'correo':             r.Email or '',
             'cargo':              CARGOS.get(r.Cargo, '—'),
-            'co':                 r.CO or '—',
-            'centro_operacion':   r.CO or '—',
+            'co':                 centro_nombre,
+            'centro_operacion':   centro_nombre,
+            'tiene_adjunto':      bool(adjunto),
+            'nombre_adjunto':     adjunto['nombre'] if adjunto else '',
+            'url_adjunto':        adjunto['url'] if adjunto else '',
             'requerimiento':      r.Requerimiento or '',
             'tipo_requerimiento': TIPOS.get(r.IdTipoReq, '—'),
             'categoria':          CATEGORIAS.get(r.IdCategoria, '—'),
@@ -3157,7 +3179,10 @@ def api_req_tic_accion(request, req_id):
 @require_http_methods(['GET'])
 def api_todos_req_tic(request):
     """Todos los requerimientos pendientes/en curso, para la pantalla de Asignar/Plan/Solución."""
-    from requerimientos.models import Cargo as CargoReq, TipoRequerimiento, Clasificacion as ClasificacionReq
+    from requerimientos.models import (
+        Cargo as CargoReq, TipoRequerimiento, Clasificacion as ClasificacionReq,
+        ImagenAdjunta, CentroOperacion as CentroOperacionReq,
+    )
 
     ESTADOS       = {1:'Abierto', 2:'Asignado', 3:'En Proceso', 4:'Cerrado', 5:'Eliminado', 6:'Calificado'}
     PRIORIDADES   = {p.IdPrioridad: p.Descripcion for p in Prioridad.objects.using('requerimientos').all()}
@@ -3166,14 +3191,31 @@ def api_todos_req_tic(request):
     TIPOS         = {t.IdTipoReque: t.Descripcion for t in TipoRequerimiento.objects.using('requerimientos').all()}
     CARGOS        = {c.IdCargo: c.Descripcion for c in CargoReq.objects.using('requerimientos').all()}
     CLASIFICAC    = {c.IdClasificacion: c.Clasificacion  for c in ClasificacionReq.objects.using('requerimientos').all()}
+    # CO en mv_Requerimientos guarda el CÓDIGO corto (ej. "AM1"), no el
+    # nombre — se resuelve aquí para que la tabla del técnico sea legible.
+    CENTROS       = {c.IdCo: c.Descripcion for c in CentroOperacionReq.objects.using('requerimientos').all()}
 
     qs = (Requerimiento.objects
           .using('requerimientos')
           .exclude(IdEstado__in=[4, 5, 6])
           .order_by('-Fecha'))
 
+    # Adjuntos: solo se guardan los que suba este proyecto (ver ADJUNTO_CARPETA
+    # en requerimientos/views.py) — se arma el nombre de archivo en disco
+    # igual que en api_adjuntar_archivo: '{IdImagen}_{NombreImagen}'.
+    codigos_pagina = [r.Codigo for r in qs]
+    ADJUNTOS = {}
+    for img in (ImagenAdjunta.objects.using('requerimientos')
+                .filter(CodReq__in=codigos_pagina).order_by('IdImagen')):
+        nombre_disco = f'{img.IdImagen}_{img.NombreImagen}'
+        ADJUNTOS[img.CodReq] = {
+            'nombre': img.NombreImagen,
+            'url':    f'{settings.MEDIA_URL}requerimientos_adjuntos/{nombre_disco}',
+        }
+
     data = []
     for r in qs:
+        adjunto = ADJUNTOS.get(r.Codigo)
         data.append({
             'id':                 r.Codigo,
             'codigo':             r.codigo(),
@@ -3183,7 +3225,7 @@ def api_todos_req_tic(request):
             'documento':          r.CedulaUsuario or '',
             'correo':             r.Email or '',
             'cargo':              CARGOS.get(r.Cargo, '—'),
-            'centro_operacion':   r.CO or '—',
+            'centro_operacion':   CENTROS.get(r.CO, r.CO or '—'),
             'tipo_requerimiento': TIPOS.get(r.IdTipoReq, '—'),
             'categoria':          CATEGORIAS.get(r.IdCategoria, '—'),
             'subcategoria':       SUBCATEGORIAS.get(r.IdSubCategoria, '—'),
@@ -3199,6 +3241,9 @@ def api_todos_req_tic(request):
             'plan_accion':        r.PlanAccion or '',
             'costo':              str(r.Costo) if r.Costo else '',
             'archivo_acciones':   '',
+            'tiene_adjunto':      bool(adjunto),
+            'nombre_adjunto':     adjunto['nombre'] if adjunto else '',
+            'url_adjunto':        adjunto['url'] if adjunto else '',
         })
     return _json_ok({'requerimientos': data, 'total': len(data)})
 

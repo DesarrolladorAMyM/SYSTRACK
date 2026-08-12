@@ -376,9 +376,189 @@ function showNotif(title, msg, type = 'success', duration = 3500) {
     }
   });
 
+  /* ===== Chat de soporte embebido (Microsoft Teams vía Graph, backend) =====
+     Muestra la presencia real de la persona de soporte y, dentro de la
+     misma página, un chat real: el mensaje se manda a nuestro backend, que
+     lo entrega en Microsoft Teams en nombre del usuario (requiere que el
+     usuario haya vinculado su cuenta Microsoft una vez). Sin esa
+     vinculación se muestra un botón "Conectar con Microsoft Teams" en vez
+     del chat. */
+  let teamsCorreoSoporte = '';
+  let chatPollTimer = null;
+  let chatUltimoId  = 0;
+
+  function _pintarPresenciaTeams(estado, color){
+    const dotModal   = document.getElementById('teamsPresenceDot');
+    const dotSidebar = document.getElementById('helpBoxPresenceDot');
+    const label = document.getElementById('teamsPresenceLabel');
+    [dotModal, dotSidebar].forEach(dot => {
+      if(!dot) return;
+      dot.classList.remove('green', 'red', 'yellow', 'gray');
+      dot.classList.add(color || 'gray');
+    });
+    if(label) label.textContent = estado || 'Desconocido';
+  }
+
+  async function actualizarPresenciaTeams(){
+    try {
+      const r = await fetch('/SYSTRACK/requerimiento/api/teams-presence/');
+      const resp = await r.json();
+      if(resp.ok){
+        teamsCorreoSoporte = resp.correo || '';
+        _pintarPresenciaTeams(resp.estado, resp.color);
+
+        const nombreEl = document.getElementById('chatAgenteNombre');
+        if(nombreEl) nombreEl.textContent = resp.nombre || 'Soporte técnico';
+
+        const fotoEl = document.getElementById('teamsAgenteFoto');
+        if(fotoEl && teamsCorreoSoporte && !fotoEl.dataset.cargada){
+          fotoEl.dataset.cargada = '1';
+          fotoEl.style.display = '';
+          fotoEl.src = '/SYSTRACK/requerimiento/api/teams-agente-foto/';
+        }
+      }
+    } catch(e){
+      console.error('Error consultando presencia de Teams:', e);
+    }
+  }
+
+  function chatAgregarBurbuja(m){
+    const lista = document.getElementById('chatMensajesLista');
+    const vacio = document.getElementById('chatMensajesVacio');
+    if(vacio) vacio.remove();
+
+    const burbuja = document.createElement('div');
+    burbuja.className = 'chat-bubble ' + (m.direccion === 'SALIENTE' ? 'saliente' : 'entrante') + (m.estado === 'error' ? ' error' : '');
+    burbuja.textContent = m.texto; // textContent, nunca innerHTML: el texto viene de Teams/del usuario, no es de confiar como HTML
+
+    const hora = document.createElement('span');
+    hora.className = 'chat-bubble-hora';
+    try {
+      hora.textContent = new Date(m.fecha).toLocaleTimeString([], {hour:'2-digit', minute:'2-digit'});
+    } catch(e){ hora.textContent = ''; }
+    burbuja.appendChild(hora);
+
+    lista.appendChild(burbuja);
+    lista.scrollTop = lista.scrollHeight;
+    if(m.id) chatUltimoId = Math.max(chatUltimoId, m.id);
+  }
+
+  function chatDetenerPolling(){
+    if(chatPollTimer){ clearInterval(chatPollTimer); chatPollTimer = null; }
+  }
+
+  async function chatPollMensajes(){
+    try {
+      const url = '/SYSTRACK/requerimiento/api/chat/mensajes/?cedula=' + encodeURIComponent(getDocumento()) + '&despues_de=' + chatUltimoId;
+      const r = await fetch(url);
+      const resp = await r.json();
+      if(!resp.ok) return;
+      if(resp.requiere_vinculacion){ chatMostrarNoVinculado(); return; }
+      (resp.mensajes || []).forEach(chatAgregarBurbuja);
+    } catch(e){
+      console.error('Error consultando mensajes del chat:', e);
+    }
+  }
+
+  function chatMostrarNoVinculado(){
+    chatDetenerPolling();
+    document.getElementById('chatNoVinculado').classList.remove('hidden');
+    document.getElementById('chatVinculado').classList.add('hidden');
+  }
+
+  function chatMostrarVinculado(){
+    document.getElementById('chatNoVinculado').classList.add('hidden');
+    document.getElementById('chatVinculado').classList.remove('hidden');
+    document.getElementById('chatMensajesLista').innerHTML = '<div class="chat-widget-vacio" id="chatMensajesVacio">Cargando conversación...</div>';
+    chatUltimoId = 0;
+    chatPollMensajes(); // primera carga inmediata
+    chatDetenerPolling();
+    chatPollTimer = setInterval(chatPollMensajes, 4000);
+  }
+
+  async function chatCargarEstado(){
+    try {
+      const r = await fetch('/SYSTRACK/requerimiento/api/chat/estado/?cedula=' + encodeURIComponent(getDocumento()));
+      const resp = await r.json();
+      if(resp.ok && resp.vinculado) chatMostrarVinculado();
+      else chatMostrarNoVinculado();
+    } catch(e){
+      console.error('Error consultando estado del chat:', e);
+      chatMostrarNoVinculado();
+    }
+  }
+
+  async function chatEnviarMensaje(){
+    const input = document.getElementById('chatInputTexto');
+    const texto = input.value.trim();
+    if(!texto) return;
+    input.value = '';
+    input.disabled = true;
+    try {
+      const r = await fetch('/SYSTRACK/requerimiento/api/chat/enviar/', {
+        method: 'POST',
+        headers: {'Content-Type': 'application/json'},
+        body: JSON.stringify({cedula: getDocumento(), texto}),
+      });
+      const resp = await r.json();
+      if(resp.requiere_vinculacion){ chatMostrarNoVinculado(); return; }
+      if(resp.mensaje) chatAgregarBurbuja(resp.mensaje);
+      if(!resp.ok && resp.error) showNotif('Chat de soporte', resp.error, 'error');
+    } catch(e){
+      console.error('Error enviando mensaje del chat:', e);
+      showNotif('Chat de soporte', 'No se pudo enviar el mensaje. Intenta de nuevo.', 'error');
+    } finally {
+      input.disabled = false;
+      input.focus();
+    }
+  }
+
+  const teamsChatOverlay = document.getElementById('teamsChatOverlay');
+  function abrirChatTeams(){
+    teamsChatOverlay.classList.remove('hidden');
+    actualizarPresenciaTeams(); // refresca al abrir, no solo cada minuto
+    chatCargarEstado();
+  }
+  function cerrarChatTeams(){
+    teamsChatOverlay.classList.add('hidden');
+    chatDetenerPolling();
+  }
+
   document.getElementById('btnContact').addEventListener('click', () => {
-    showNotif('Contacto', 'Redirigir a la sección de contacto.', 'success');
+    if(!getDocumento()){ pedirDocumento(abrirChatTeams); } else { abrirChatTeams(); }
   });
+  document.getElementById('teamsChatClose').addEventListener('click', cerrarChatTeams);
+  teamsChatOverlay.addEventListener('click', (e) => { if(e.target === teamsChatOverlay) cerrarChatTeams(); });
+
+  document.getElementById('btnChatVincular').addEventListener('click', () => {
+    window.location.href = '/SYSTRACK/requerimiento/api/chat/vincular/?cedula=' + encodeURIComponent(getDocumento());
+  });
+
+  document.getElementById('btnChatEnviar').addEventListener('click', chatEnviarMensaje);
+  document.getElementById('chatInputTexto').addEventListener('keydown', (e) => {
+    if(e.key === 'Enter' && !e.shiftKey){ e.preventDefault(); chatEnviarMensaje(); }
+  });
+
+  // El callback de vinculación con Microsoft redirige de vuelta con
+  // ?chat_link=ok|error — mostramos el resultado y reabrimos el chat.
+  (function chatRevisarRetornoVinculacion(){
+    const params = new URLSearchParams(window.location.search);
+    const resultado = params.get('chat_link');
+    if(!resultado) return;
+    params.delete('chat_link');
+    const nuevaUrl = window.location.pathname + (params.toString() ? '?' + params.toString() : '');
+    window.history.replaceState({}, '', nuevaUrl);
+    if(resultado === 'ok'){
+      showNotif('Microsoft Teams', 'Tu cuenta quedó conectada. Ya puedes chatear con soporte.', 'success');
+      abrirChatTeams();
+    } else {
+      showNotif('Microsoft Teams', 'No se pudo completar la conexión con tu cuenta. Intenta de nuevo.', 'error');
+    }
+  })();
+
+  // Presencia inicial (para el puntito del panel lateral) + refresco cada minuto
+  actualizarPresenciaTeams();
+  setInterval(actualizarPresenciaTeams, 60000);
 
   function precargarDocumentoEnFormulario(){
     const doc    = getDocumento();
@@ -604,11 +784,14 @@ function showNotif(title, msg, type = 'success', duration = 3500) {
 
   /* ===== AVATAR DE PERFIL (solo local, no viaja al backend) =====
      No existe un campo de foto en mv_Usuarios (modelo no administrado
-     por Django), asi que la foto se guarda en sessionStorage, ligada
-     al numero de documento, igual que el resto del perfil. */
+     por Django), asi que la foto se guarda en localStorage (no en
+     sessionStorage: localStorage persiste entre sesiones/dias en el mismo
+     navegador, hasta que el usuario la quite o borre datos del sitio),
+     ligada al numero de documento, igual que el resto del perfil. */
   function avatarKey(doc){ return 'amm_avatar_' + doc; }
-  function getAvatar(doc){ return doc ? (sessionStorage.getItem(avatarKey(doc)) || '') : ''; }
-  function setAvatar(doc, dataUrl){ if(doc) sessionStorage.setItem(avatarKey(doc), dataUrl); }
+  function getAvatar(doc){ return doc ? (localStorage.getItem(avatarKey(doc)) || '') : ''; }
+  function setAvatar(doc, dataUrl){ if(doc) localStorage.setItem(avatarKey(doc), dataUrl); }
+  function removeAvatar(doc){ if(doc) localStorage.removeItem(avatarKey(doc)); }
 
   function iniciales(nombre){
     if(!nombre) return '?';
@@ -681,11 +864,14 @@ function showNotif(title, msg, type = 'success', duration = 3500) {
   const profileModalAvatar  = document.getElementById('profileModalAvatar');
   const profileModalInput   = document.getElementById('profileModalAvatarInput');
 
+  const profileModalAvatarQuitar = document.getElementById('profileModalAvatarQuitar');
+
   function abrirModalPerfil(){
     const doc       = getDocumento();
     const perfil    = getPerfil();
     const avatarUrl = getAvatar(doc);
     profileModalAvatar.innerHTML = avatarUrl ? ('<img src="' + avatarUrl + '" alt="">') : iniciales(perfil.nombre);
+    profileModalAvatarQuitar.style.display = avatarUrl ? '' : 'none';
     document.getElementById('profileModalNombre').textContent    = perfil.nombre    || '—';
     document.getElementById('profileModalCargo').textContent     = perfil.cargo_txt || '';
     document.getElementById('profileModalDocGrande').textContent = doc || '—';
@@ -707,9 +893,19 @@ function showNotif(title, msg, type = 'success', duration = 3500) {
     reader.onload = () => {
       setAvatar(getDocumento(), reader.result);
       profileModalAvatar.innerHTML = '<img src="' + reader.result + '" alt="">';
+      profileModalAvatarQuitar.style.display = '';
       actualizarChipsDocumento();
     };
     reader.readAsDataURL(file);
+  });
+
+  profileModalAvatarQuitar.addEventListener('click', () => {
+    const doc = getDocumento();
+    removeAvatar(doc);
+    profileModalAvatar.innerHTML = iniciales(getPerfil().nombre);
+    profileModalAvatarQuitar.style.display = 'none';
+    profileModalInput.value = '';
+    actualizarChipsDocumento();
   });
 
   /* ===== SEGUIMIENTO ===== */
@@ -1154,17 +1350,20 @@ function showNotif(title, msg, type = 'success', duration = 3500) {
       const selCat  = document.getElementById('f_categoria');
       const selSub  = document.getElementById('f_subcategoria');
       const selCO   = document.getElementById('f_centro');
+      const centroInput = document.getElementById('sdr_centro')?.querySelector('.sdr-input');
       const formData = {
         cedula:             document.getElementById('f_documento').value.trim(),
         nombre_completo:    document.getElementById('f_nombre').value.trim(),
         id_cargo:           perfil.id_cargo || null,
         id_co:              selCO ? selCO.value : (perfil.id_co || null),
-        co_texto:           selCO ? '' : '',
+        co_texto:           centroInput ? centroInput.value.trim() : '',
         correo_electronico: document.getElementById('f_correo').value.trim(),
         id_categoria:       selCat ? selCat.value : null,
         id_subcategoria:    selSub ? selSub.value : null,
         descripcion:        document.getElementById('f_descripcion').value.trim(),
       };
+
+      const archivoElegido = inputArchivos && inputArchivos.files.length ? inputArchivos.files[0] : null;
 
       try {
         const r    = await fetch('/SYSTRACK/requerimiento/api/crear/', {
@@ -1181,8 +1380,30 @@ function showNotif(title, msg, type = 'success', duration = 3500) {
           } else {
             showNotif('Requerimiento ' + resp.codigo, 'Creado exitosamente.', 'success');
           }
+          // Subir el adjunto (si se eligió uno) en un segundo paso — crear_requerimiento
+          // recibe JSON puro y no puede llevar el archivo en la misma petición.
+          if (archivoElegido) {
+            const codigoNum = parseInt(String(resp.codigo).replace('REQ-', ''), 10);
+            const fd = new FormData();
+            fd.append('archivo', archivoElegido);
+            try {
+              const ra = await fetch(`/SYSTRACK/requerimiento/api/adjuntar/${codigoNum}/`, { method: 'POST', body: fd });
+              const respA = await ra.json();
+              if (!respA.ok) {
+                showNotif('Adjunto no se pudo subir', respA.error || 'El requerimiento se creó igual, pero el archivo falló.', 'error', 6000);
+              }
+            } catch (eAdj) {
+              showNotif('Adjunto no se pudo subir', 'El requerimiento se creó igual, pero el archivo falló por conexión.', 'error', 6000);
+            }
+          }
           formAgregarReq.reset();
           document.getElementById('fileInputName').textContent = 'Ningún archivo seleccionado';
+          // reset() borra también los campos que se autocompletan del perfil
+          // (documento, nombre, correo, cargo, centro) — se vuelven a llenar
+          // aquí mismo, igual que cuando se entra a la pantalla, para no
+          // tener que cambiar de menú o refrescar la página.
+          precargarDocumentoEnFormulario();
+          await cargarCatalogos();
           await cargarMisRequerimientos(getDocumento());
         } else if(resp.codigo_error === 'PENDIENTE_CALIFICACION'){
           showNotif('Calificación pendiente', resp.error || 'Tienes requerimientos pendientes por calificar.', 'error', 6000);

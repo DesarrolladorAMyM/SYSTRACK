@@ -188,6 +188,22 @@ class EvaluacionReq(models.Model):
         db_table = 'mv_EvaluacionReq'
 
 
+class ImagenAdjunta(models.Model):
+    """Archivo adjunto de un requerimiento (tabla ya existente en la BD,
+    561 registros históricos cuyo archivo físico no sabemos dónde quedó
+    guardado — ver decisión en conversación). Los archivos NUEVOS que se
+    suban desde este proyecto se guardan en MEDIA_ROOT/requerimientos_adjuntos/
+    con el nombre '{IdImagen}_{NombreImagen}' (el IdImagen evita choques
+    entre archivos de distintos requerimientos con el mismo nombre)."""
+    IdImagen     = models.AutoField(primary_key=True)
+    CodReq       = models.IntegerField()
+    NombreImagen = models.CharField(max_length=255)
+
+    class Meta:
+        managed  = False
+        db_table = 'mm_ImagenesAdjuntos'
+
+
 class Notificacion(models.Model):
     """Notificaciones dentro del portal, en paralelo a los correos que ya
     se envían desde Signals.py y desde aprobar/rechazar. Una fila = un
@@ -251,3 +267,67 @@ class HistorialPrestamo(models.Model):
     class Meta:
         managed  = False
         db_table = 'mv_HistorialPrestamos'
+
+
+class ChatMicrosoftToken(models.Model):
+    """Vinculación OAuth delegada de un usuario del portal con su cuenta
+    Microsoft 365, para poder enviar/leer mensajes de Teams en su nombre.
+    Tabla nueva (managed=True), sin FK real hacia Usuario (managed=False)
+    para no tocar mv_Usuarios en la migración."""
+    IdVinculacion    = models.AutoField(primary_key=True)
+    IdUsuario        = models.IntegerField(unique=True, db_index=True)
+    Cedula           = models.CharField(max_length=20, db_index=True)
+    AadObjectId      = models.CharField(max_length=64, null=True, blank=True)
+    Upn              = models.CharField(max_length=200, null=True, blank=True)
+    MsalTokenCache   = models.BinaryField(null=True, blank=True)
+    FechaVinculacion = models.DateTimeField(auto_now_add=True)
+    FechaUltimoUso   = models.DateTimeField(null=True, blank=True)
+    Activo           = models.BooleanField(default=True)
+    UltimoError      = models.CharField(max_length=500, null=True, blank=True)
+
+    class Meta:
+        managed  = True
+        db_table = 'chat_ms_token'
+
+
+class Chat(models.Model):
+    """Mapea un usuario del portal con el chat 1:1 de Teams (Graph chatId)
+    entre ese usuario y el agente de soporte."""
+    IdChat          = models.AutoField(primary_key=True)
+    IdUsuario       = models.IntegerField(unique=True, db_index=True)
+    Cedula          = models.CharField(max_length=20, db_index=True)
+    GraphChatId     = models.CharField(max_length=200)
+    CorreoAgente    = models.EmailField(max_length=200)
+    FechaCreacion   = models.DateTimeField(auto_now_add=True)
+    UltimaActividad = models.DateTimeField(null=True, blank=True)
+
+    class Meta:
+        managed  = True
+        db_table = 'chat_hilo'
+
+
+class Mensaje(models.Model):
+    """Copia local de cada mensaje enviado/recibido en el chat de soporte,
+    para pintar el historial sin llamar a Graph en cada carga y para el
+    flag de no-leído cuando el agente responde."""
+    IdMensaje      = models.AutoField(primary_key=True)
+    IdChat         = models.ForeignKey(
+        Chat, db_column='IdChat', on_delete=models.CASCADE, related_name='mensajes'
+    )
+    GraphMessageId = models.CharField(max_length=100, null=True, blank=True, db_index=True)
+    Direccion      = models.CharField(
+        max_length=10, choices=[('SALIENTE', 'Saliente'), ('ENTRANTE', 'Entrante')]
+    )
+    Texto          = models.TextField()
+    FechaGraph     = models.DateTimeField(null=True, blank=True)
+    FechaLocal     = models.DateTimeField(auto_now_add=True)
+    Leido          = models.BooleanField(default=False)
+    Estado         = models.CharField(
+        max_length=20, default='enviado',
+        choices=[('enviado', 'Enviado'), ('error', 'Error de envío')]
+    )
+
+    class Meta:
+        managed  = True
+        db_table = 'chat_mensaje'
+        indexes  = [models.Index(fields=['IdChat', 'FechaGraph'])]

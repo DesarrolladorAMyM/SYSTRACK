@@ -1,6 +1,7 @@
-import json, uuid, unicodedata, datetime, logging, hashlib
+import json, uuid, unicodedata, datetime, logging, hashlib, os, time
+import requests
 from django.shortcuts import render
-from django.http import JsonResponse
+from django.http import JsonResponse, HttpResponse
 from django.views.decorators.http import require_POST, require_GET
 from django.views.decorators.csrf import csrf_exempt
 from django.core.mail import send_mail
@@ -11,7 +12,7 @@ from django.contrib.auth.hashers import make_password
 from .models import (
     Usuario, Requerimiento, Categoria, SubCategoria, CentroOperacion,
     Cargo, TipoUsuario, Area, Prioridad, Clasificacion, EvaluacionReq, TipoRequerimiento,
-    Notificacion,
+    Notificacion, ImagenAdjunta,
 )
 
 DB = 'requerimientos'
@@ -28,6 +29,10 @@ CATEGORIA_SOPORTE_EXTERNO = 'soporte tecnico externo'
 
 # Subcategorías (dentro de esa categoría) que exigen aprobación del jefe de área.
 SUBCATEGORIAS_REQUIEREN_APROBACION = ['compras']
+
+# Adjuntos de requerimientos (un solo archivo, cualquier tipo, máx 5 MB)
+ADJUNTO_CARPETA    = 'requerimientos_adjuntos'
+ADJUNTO_MAX_BYTES  = 5 * 1024 * 1024
 
 
 def _token_seguimiento(req):
@@ -227,12 +232,15 @@ def crear_requerimiento(request):
         descripcion         = str(data.get('descripcion', '')).strip()
         id_categoria_check  = data.get('id_categoria')
         id_subcategoria_ck  = data.get('id_subcategoria')
-        centro_texto        = str(data.get('co_texto', '')).strip()
+        # CO en mv_Requerimientos es varchar(5): guarda el CÓDIGO del centro
+        # (ej. "AM1"), no el nombre descriptivo — por eso se usa id_co, no
+        # co_texto (que sí sigue viajando en el body, solo para mostrarlo).
+        id_co_dato          = str(data.get('id_co', '')).strip()
 
         faltantes = []
         if not nombre_completo:
             faltantes.append('Nombre completo')
-        if not centro_texto:
+        if not id_co_dato:
             faltantes.append('Centro de operación')
         if not id_categoria_check:
             faltantes.append('Categoría')
@@ -373,7 +381,7 @@ def crear_requerimiento(request):
             IdPrioridad      = id_prioridad,
             Requerimiento    = data.get('descripcion', ''),
             Email            = data.get('correo_electronico', ''),
-            CO               = data.get('co_texto', ''),
+            CO               = id_co_dato,
             Fecha            = fecha_hoy,
             FechaEstiSoluci  = fecha_esti_solucion,
             IdEstado         = estado_inicial,
@@ -653,11 +661,12 @@ def _enviar_correo_asignacion(req, es_reasignacion=False):
 
 def _crear_notificacion_portal(req, tipo, titulo, mensaje):
     """Igual que Signals._crear_notificacion, pero para los eventos que se
-    disparan desde una vista (aprobar/rechazar) en vez de un post_save."""
+    disparan desde una vista (aprobar/rechazar) en vez de un post_save.
+    FechaCreacion no admite NULL en la BD — hay que fijarlo a mano."""
     try:
         Notificacion.objects.using(DB).create(
             CedulaUsuario=req.CedulaUsuario, Tipo=tipo, Codigo=req.Codigo,
-            Titulo=titulo, Mensaje=mensaje,
+            Titulo=titulo, Mensaje=mensaje, FechaCreacion=datetime.datetime.now(),
         )
     except Exception:
         logger.exception("No se pudo crear la notificación '%s' para %s", tipo, req.codigo())
@@ -735,6 +744,58 @@ def calificar_requerimiento(request):
     except Requerimiento.DoesNotExist:
         return JsonResponse({'ok': False, 'error': 'Requerimiento no encontrado.'}, status=404)
     except Exception as e:
+        return JsonResponse({'ok': False, 'error': str(e)}, status=500)
+
+
+# ────────────────────────── ADJUNTOS ──────────────────────────
+
+@csrf_exempt
+@require_POST
+def api_adjuntar_archivo(request, codigo):
+    """
+    Sube UN archivo (cualquier tipo, máx 5 MB) y lo asocia al requerimiento
+    `codigo`. Se llama justo después de crear_requerimiento, en un segundo
+    paso, porque crear_requerimiento recibe JSON puro (no puede llevar
+    binarios). Guarda la fila en la tabla ya existente mm_ImagenesAdjuntos
+    (IdImagen, CodReq, NombreImagen) y el archivo físico en
+    MEDIA_ROOT/requerimientos_adjuntos/{IdImagen}_{nombre_original}.
+    """
+    try:
+        req = Requerimiento.objects.using(DB).get(pk=codigo)
+    except Requerimiento.DoesNotExist:
+        return JsonResponse({'ok': False, 'error': 'Requerimiento no encontrado.'}, status=404)
+
+    archivo = request.FILES.get('archivo')
+    if not archivo:
+        return JsonResponse({'ok': False, 'error': 'No se recibió ningún archivo.'}, status=400)
+
+    if archivo.size > ADJUNTO_MAX_BYTES:
+        return JsonResponse({
+            'ok': False,
+            'error': f'El archivo supera el máximo permitido de {ADJUNTO_MAX_BYTES // (1024*1024)} MB.'
+        }, status=400)
+
+    try:
+        imagen = ImagenAdjunta.objects.using(DB).create(
+            CodReq=req.Codigo, NombreImagen=archivo.name
+        )
+
+        carpeta = os.path.join(settings.MEDIA_ROOT, ADJUNTO_CARPETA)
+        os.makedirs(carpeta, exist_ok=True)
+        nombre_disco = f'{imagen.IdImagen}_{archivo.name}'
+        ruta_disco   = os.path.join(carpeta, nombre_disco)
+        with open(ruta_disco, 'wb+') as destino:
+            for chunk in archivo.chunks():
+                destino.write(chunk)
+
+        url = f'{settings.MEDIA_URL}{ADJUNTO_CARPETA}/{nombre_disco}'
+        logger.info(
+            "Adjunto guardado para Requerimiento %s: %s (IdImagen=%s)",
+            req.codigo(), archivo.name, imagen.IdImagen
+        )
+        return JsonResponse({'ok': True, 'id_imagen': imagen.IdImagen, 'nombre': archivo.name, 'url': url})
+    except Exception as e:
+        logger.exception("Falló la subida del adjunto para el requerimiento %s", codigo)
         return JsonResponse({'ok': False, 'error': str(e)}, status=500)
 
 
@@ -1017,3 +1078,144 @@ def marcar_notificaciones_leidas(request):
         return JsonResponse({'ok': True})
     except Exception as e:
         return JsonResponse({'ok': False, 'error': str(e)}, status=500)
+
+
+# ────────────────────────── MICROSOFT TEAMS — botón de ayuda ──────────────────────────
+# Presencia en vivo (Disponible/Ocupado/Ausente/Desconectado) del contacto
+# de soporte configurado en TEAMS_SUPPORT_EMAIL, para el botón "¿Necesitas
+# ayuda?" del portal. Se autentica contra Microsoft Graph con un token de
+# APLICACIÓN (client_credentials) — no depende de que el visitante inicie
+# sesión con ninguna cuenta. Requiere permiso Presence.Read.All (aplicación,
+# con consentimiento de administrador) en el registro de Azure AD.
+
+_teams_token_cache = {'token': None, 'expira': 0}
+
+# Traducción de los estados de presencia de Teams a español + color, con el
+# mismo lenguaje visual (verde/rojo/amarillo/gris) que usa Teams.
+TEAMS_ESTADOS = {
+    'Available':       ('Disponible',            'green'),
+    'AvailableIdle':    ('Disponible (inactivo)', 'green'),
+    'Busy':             ('Ocupado',               'red'),
+    'BusyIdle':         ('Ocupado (inactivo)',    'red'),
+    'DoNotDisturb':     ('No molestar',           'red'),
+    'BeRightBack':      ('Vuelvo enseguida',      'yellow'),
+    'Away':             ('Ausente',               'yellow'),
+    'Offline':          ('Desconectado',          'gray'),
+    'PresenceUnknown':  ('Desconocido',           'gray'),
+}
+
+
+def _obtener_token_graph():
+    """Token de aplicación para Microsoft Graph, cacheado en memoria del
+    proceso hasta 5 minutos antes de vencer (normalmente dura 1 hora)."""
+    ahora = time.time()
+    if _teams_token_cache['token'] and ahora < _teams_token_cache['expira']:
+        return _teams_token_cache['token']
+
+    if not (settings.TEAMS_TENANT_ID and settings.TEAMS_CLIENT_ID and settings.TEAMS_CLIENT_SECRET):
+        raise RuntimeError('Microsoft Teams no está configurado (faltan TEAMS_TENANT_ID/CLIENT_ID/CLIENT_SECRET).')
+
+    resp = requests.post(
+        f'https://login.microsoftonline.com/{settings.TEAMS_TENANT_ID}/oauth2/v2.0/token',
+        data={
+            'client_id':     settings.TEAMS_CLIENT_ID,
+            'client_secret': settings.TEAMS_CLIENT_SECRET,
+            'scope':         'https://graph.microsoft.com/.default',
+            'grant_type':    'client_credentials',
+        },
+        timeout=10,
+    )
+    resp.raise_for_status()
+    data  = resp.json()
+    token = data['access_token']
+    _teams_token_cache['token']  = token
+    _teams_token_cache['expira'] = ahora + data.get('expires_in', 3600) - 300  # 5 min de margen
+    return token
+
+
+_agente_nombre_cache = {'nombre': None, 'expira': 0}
+
+
+def _obtener_nombre_agente(correo, token):
+    """Nombre para mostrar del agente de soporte, cacheado en memoria del
+    proceso 1 hora (cambia muy rara vez, no vale la pena consultarlo en
+    cada poll de presencia)."""
+    ahora = time.time()
+    if _agente_nombre_cache['nombre'] is not None and ahora < _agente_nombre_cache['expira']:
+        return _agente_nombre_cache['nombre']
+
+    nombre = ''
+    try:
+        resp = requests.get(
+            f'https://graph.microsoft.com/v1.0/users/{correo}',
+            headers={'Authorization': f'Bearer {token}'},
+            params={'$select': 'displayName'},
+            timeout=10,
+        )
+        resp.raise_for_status()
+        nombre = resp.json().get('displayName', '') or ''
+    except Exception:
+        logger.exception('No se pudo consultar el nombre del agente de Teams para %s', correo)
+
+    _agente_nombre_cache['nombre'] = nombre
+    _agente_nombre_cache['expira'] = ahora + 3600
+    return nombre
+
+
+@require_GET
+def api_teams_presence(request):
+    """
+    Presencia en tiempo real del contacto de soporte. Si Teams no está
+    configurado todavía, o falla la consulta (token, permisos, red), NUNCA
+    rompe la página — responde 'Desconocido' y el botón de abrir chat en
+    Teams sigue funcionando igual, solo sin el indicador de estado.
+    """
+    correo = settings.TEAMS_SUPPORT_EMAIL
+    if not correo:
+        return JsonResponse({'ok': True, 'estado': 'Desconocido', 'color': 'gray', 'correo': '', 'nombre': ''})
+
+    try:
+        token = _obtener_token_graph()
+        resp = requests.get(
+            f'https://graph.microsoft.com/v1.0/users/{correo}/presence',
+            headers={'Authorization': f'Bearer {token}'},
+            timeout=10,
+        )
+        resp.raise_for_status()
+        disponibilidad = resp.json().get('availability', 'PresenceUnknown')
+        etiqueta, color = TEAMS_ESTADOS.get(disponibilidad, ('Desconocido', 'gray'))
+        nombre = _obtener_nombre_agente(correo, token)
+        return JsonResponse({'ok': True, 'estado': etiqueta, 'color': color, 'correo': correo, 'nombre': nombre})
+    except Exception:
+        logger.exception('No se pudo consultar la presencia de Teams para %s', correo)
+        return JsonResponse({'ok': True, 'estado': 'Desconocido', 'color': 'gray', 'correo': correo, 'nombre': ''})
+
+
+@require_GET
+def api_teams_agente_foto(request):
+    """
+    Foto de perfil (Microsoft 365) del agente de soporte, servida como
+    proxy — el navegador nunca ve el token de Graph. Si el agente no tiene
+    foto configurada, o falla la consulta, responde 404 y el frontend
+    simplemente no muestra imagen (queda el círculo vacío).
+    """
+    correo = settings.TEAMS_SUPPORT_EMAIL
+    if not correo:
+        return HttpResponse(status=404)
+    try:
+        token = _obtener_token_graph()
+        resp = requests.get(
+            f'https://graph.microsoft.com/v1.0/users/{correo}/photo/$value',
+            headers={'Authorization': f'Bearer {token}'},
+            timeout=10,
+        )
+        if resp.status_code != 200:
+            logger.warning(
+                'Graph rechazó la foto del agente de Teams (%s): status=%s body=%s',
+                correo, resp.status_code, resp.text[:500],
+            )
+            return HttpResponse(status=404)
+        return HttpResponse(resp.content, content_type=resp.headers.get('Content-Type', 'image/jpeg'))
+    except Exception:
+        logger.exception('No se pudo consultar la foto del agente de Teams para %s', correo)
+        return HttpResponse(status=404)

@@ -889,3 +889,13 @@
     padding:10px 12px; border:1px solid #e2e8f0; border-radius:8px;
     font-size:14px; font-family:inherit;
   }
+
+#teamsChatOverlay .id-modal-box{
+    max-height:88vh;
+    overflow-y:auto;
+    -webkit-overflow-scrolling:touch;
+  }
+  #teamsChatOverlay .id-modal-box::-webkit-scrollbar{ width:6px; }
+  #teamsChatOverlay .id-modal-box::-webkit-scrollbar-thumb{
+    background:rgba(0,0,0,0.15); border-radius:999px;
+  }

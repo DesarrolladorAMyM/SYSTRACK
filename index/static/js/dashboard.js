@@ -45,6 +45,8 @@ let CAT = {};
 let invData   = [], invPage = 1, invPageSize = 10, invSort = 'serial', invSortAsc = true;
 let inacData  = [], inacPage = 1, inacPageSize = 10, inacSort = 'serial', inacSortAsc = true;
 let colabData = [], colabPage = 1, colabPageSize = 10, colabSort = 'nombre', colabSortAsc = true;
+let ccColabData = [], ccColabPage = 1, ccColabPageSize = 10, ccColabQuery = '';
+let histData = [], histPage = 1, histPageSize = 10;
 
 let editingId   = null;
 let detailId    = null;
@@ -173,6 +175,30 @@ function showScreen(id) {
   if (id === 'asignar-requerimientos')  cargarAsignar();
   if (id === 'historial-requerimientos') cargarHistorialReq();
   if (id === 'prestamo-equipos')        loadEquiposAdmin();
+  if (id === 'centro-costo')            resetCC();
+}
+
+// Reinicia filtros y resultados de Centro de Costos al entrar a la pantalla,
+// para no arrastrar una consulta vieja de una visita anterior.
+function resetCC() {
+  ['cc-co', 'cc-prop', 'cc-tipo'].forEach(id => {
+    const el = document.getElementById(id);
+    if (el) el.value = '';
+  });
+  ccColabData  = [];
+  ccColabPage  = 1;
+  ccColabQuery = '';
+  const statsRow = document.getElementById('cc-stats-row');
+  if (statsRow) statsRow.style.display = 'none';
+  const wrap = document.getElementById('cc-results-wrap');
+  if (wrap) {
+    wrap.innerHTML = `
+      <div class="cc-empty">
+        <div class="cc-empty-icon"><i class="fas fa-filter"></i></div>
+        <p>Aplica los filtros y presiona <strong>Consultar</strong></p>
+        <small>Se mostrarán los dispositivos agrupados por tipo</small>
+      </div>`;
+  }
 }
 
 function toggleSubmenu(smId, btnId) {
@@ -229,7 +255,7 @@ function poblarSelects() {
   );
 
   const propOpts = CAT.propietarios || [];
-  ['f-prop', 'hf-prop', 'inac-f-prop'].forEach(id =>
+  ['f-prop', 'hf-prop', 'inac-f-prop', 'cc-prop'].forEach(id =>
     _fillSilent(id, propOpts, 'g203_id', 'g203_propietario')
   );
 
@@ -1330,18 +1356,11 @@ async function consultarHistorial() {
     return;
   }
   const primer = registros[0];
- const rows = registros.map((h, i) => `
-  <tr style="animation: fadeIn ${0.05*i+0.1}s ease both">
-    <td>${novedadBadge(h.novedad)}</td>
-    <td class="hist-td-fecha">${h.fecha.split('-').reverse().join('/')}</td>
-    <td class="hist-td-hora">${h.hora}</td>
-    <td>${respAvatar(h.responsable)}</td>
-    <td style="font-size:13px">${h.co}</td>
-    <td style="font-size:13px;color:var(--text-secondary);max-width:220px">${h.observaciones || '—'}</td>
-  </tr>`).join('');
+  histData = registros;
+  histPage = 1;
   const card = document.createElement('div');
   card.className = 'hist-ficha-card';
- 
+
   card.innerHTML = `
     <div class="hist-ficha-header">
       <div class="hist-ficha-title"><i class="fas fa-clipboard-list"></i> Ficha Histórica del Equipo</div>
@@ -1382,13 +1401,66 @@ async function consultarHistorial() {
           <th>Novedad</th><th>Fecha</th><th>Hora</th>
           <th>Responsable</th><th>CO </th><th>Observaciones</th>
         </tr></thead>
-        <tbody>${rows}</tbody>
+        <tbody id="hist-tbody"></tbody>
       </table>
     </div>
-    ...`;
+    <div style="display:flex;align-items:center;justify-content:space-between;padding:14px 20px;flex-wrap:wrap;gap:10px">
+      <div style="font-size:13px;color:var(--text-secondary)">
+        Mostrando <span id="hist-pag-from">—</span>–<span id="hist-pag-to">—</span>
+        de <span id="hist-pag-total">—</span> registros
+      </div>
+      <div class="pag-controls" id="hist-pag-controls"></div>
+    </div>`;
     wrap.appendChild(card);
+    _renderHistTable();
   }
-  
+
+function goHistPage(p) {
+  histPage = p;
+  _renderHistTable();
+}
+
+function _renderHistTable() {
+  const total   = histData.length;
+  const maxPage = Math.max(1, Math.ceil(total / histPageSize));
+  if (histPage > maxPage) histPage = 1;
+  const from  = (histPage - 1) * histPageSize;
+  const slice = histData.slice(from, from + histPageSize);
+
+  const tbody = document.getElementById('hist-tbody');
+  if (tbody) {
+    tbody.innerHTML = slice.map((h, i) => `
+      <tr style="animation: fadeIn ${0.05*i+0.1}s ease both">
+        <td>${novedadBadge(h.novedad)}</td>
+        <td class="hist-td-fecha">${h.fecha.split('-').reverse().join('/')}</td>
+        <td class="hist-td-hora">${h.hora}</td>
+        <td>${respAvatar(h.responsable)}</td>
+        <td style="font-size:13px">${h.co}</td>
+        <td style="font-size:13px;color:var(--text-secondary);max-width:220px">${h.observaciones || '—'}</td>
+      </tr>`).join('');
+  }
+
+  const fromEl  = document.getElementById('hist-pag-from');
+  const toEl    = document.getElementById('hist-pag-to');
+  const totalEl = document.getElementById('hist-pag-total');
+  if (fromEl)  fromEl.textContent  = total === 0 ? 0 : from + 1;
+  if (toEl)    toEl.textContent    = Math.min(from + histPageSize, total);
+  if (totalEl) totalEl.textContent = total;
+
+  const ctrl = document.getElementById('hist-pag-controls');
+  if (ctrl) {
+    let html = `<button class="pag-btn" ${histPage <= 1 ? 'disabled' : ''} onclick="goHistPage(${histPage - 1})">
+      <i class="fas fa-chevron-left"></i></button>`;
+    buildPages(histPage, maxPage).forEach(p => {
+      html += p === '...'
+        ? `<span class="pag-btn" style="border:none;cursor:default">…</span>`
+        : `<button class="pag-btn ${p === histPage ? 'active' : ''}" onclick="goHistPage(${p})">${p}</button>`;
+    });
+    html += `<button class="pag-btn" ${histPage >= maxPage ? 'disabled' : ''} onclick="goHistPage(${histPage + 1})">
+      <i class="fas fa-chevron-right"></i></button>`;
+    ctrl.innerHTML = html;
+  }
+}
 
 function openHistModal() {
   const tipo   = document.getElementById('hist-tipo').value;
@@ -1441,16 +1513,19 @@ async function saveHistorial() {
 }
 
 function exportarHistorial() {
+  if (!histData.length) {
+    showNotif('Sin datos', 'Consulta un historial antes de exportar', 'warning');
+    return;
+  }
+  // Se exporta desde histData (todos los registros de la consulta), no desde
+  // la tabla visible — la tabla ahora está paginada y solo muestra una página.
   const rows = [['Serial', 'Tipo', 'Novedad', 'Fecha', 'Hora', 'Responsable', 'CO', 'Observaciones']];
-  document.querySelectorAll('.hist-table tbody tr').forEach(row => {
-    const cells = row.querySelectorAll('td');
-    if (cells.length >= 6) {
-      rows.push([
-        cells[0].textContent.trim(), cells[1].textContent.trim(),
-        cells[2].textContent.trim(), cells[3].textContent.trim(),
-        cells[4].textContent.trim(), cells[5].textContent.trim(),
-      ]);
-    }
+  histData.forEach(h => {
+    rows.push([
+      h.serial, h.tipo, h.novedad,
+      h.fecha.split('-').reverse().join('/'), h.hora,
+      h.responsable, h.co, h.observaciones || '',
+    ]);
   });
   downloadCSV(rows, 'historial_equipos.csv');
   showNotif(' Exportado', 'El historial fue descargado en CSV', 'success');
@@ -1469,7 +1544,7 @@ async function consultarCC() {
   if (tipoId) params.set('tipo_id', tipoId);
   const res = await apiFetch(`${API.CentroOperaciones}?${params}`);
   if (!res.ok) { showNotif('Error', 'No se pudo consultar', 'warning'); return; }
-  const { total, habilitados, otros, grupos, resumen } = res.data;
+  const { total, habilitados, otros, grupos, colaboradores, resumen } = res.data;
 
   // ── Tarjetas de stats superiores ───────────────────────────
   document.getElementById('cc-stats-row').style.display  = 'grid';
@@ -1526,6 +1601,14 @@ async function consultarCC() {
       <td><strong>$ ${fmt(g.total)}</strong></td>
     </tr>`).join('');
 
+  // ── Desglose por colaborador — de dónde sale el total del área ──
+  // Se pinta como tabla con búsqueda y paginación (igual que Inventario /
+  // Colaboradores), para que no se vuelva interminable cuando el área
+  // tiene muchos colaboradores.
+  ccColabData  = colaboradores || [];
+  ccColabPage  = 1;
+  ccColabQuery = '';
+
   wrap.innerHTML = `
     <div class="cc-cost-cards-wrap">${tarjetas}</div>
     <div class="cc-results-header" style="margin-top:24px">
@@ -1547,7 +1630,111 @@ async function consultarCC() {
         <td><strong>$ ${fmt(resumen.costo_bitdefender)}</strong></td>
         <td><strong>$ ${fmt(resumen.total)}</strong></td>
       </tr></tfoot>
-    </table>`;
+    </table>
+    ${ccColabData.length > 0 ? `
+    <div class="cc-results-header" style="margin-top:24px">
+      <div class="cc-results-title"><i class="fas fa-users"></i> Desglose por colaborador</div>
+      <span class="cc-results-count" id="cc-colab-count">${ccColabData.length} colaborador${ccColabData.length === 1 ? '' : 'es'}</span>
+    </div>
+    <div style="padding:14px 20px;background:white;border-bottom:1px solid var(--border)">
+      <input type="text" class="colab-search-input" id="cc-colab-search"
+             placeholder="Buscar por nombre o documento..."
+             oninput="filtrarCCColab(this.value)">
+    </div>
+    <table class="cc-table">
+      <thead><tr>
+        <th>Colaborador</th><th>Documento</th>
+        <th>Dispositivos</th>
+        <th>Costo arrendamiento</th>
+      </tr></thead>
+      <tbody id="cc-colab-tbody"></tbody>
+      <tfoot id="cc-colab-tfoot"></tfoot>
+    </table>
+    <div style="display:flex;align-items:center;justify-content:space-between;padding:14px 20px;flex-wrap:wrap;gap:10px">
+      <div style="font-size:13px;color:var(--text-secondary)">
+        Mostrando <span id="cc-colab-pag-from">—</span>–<span id="cc-colab-pag-to">—</span>
+        de <span id="cc-colab-pag-total">—</span> colaboradores
+      </div>
+      <div class="pag-controls" id="cc-colab-pag-controls"></div>
+    </div>` : ''}`;
+
+  if (ccColabData.length > 0) _renderCCColabTable();
+}
+
+function filtrarCCColab(q) {
+  ccColabQuery = (q || '').trim().toLowerCase();
+  ccColabPage = 1;
+  _renderCCColabTable();
+}
+
+function goCCColabPage(p) {
+  ccColabPage = p;
+  _renderCCColabTable();
+}
+
+function _renderCCColabTable() {
+  const fmt = n => Number(n).toLocaleString('es-CO', { minimumFractionDigits: 0, maximumFractionDigits: 0 });
+  const filtrados = ccColabQuery
+    ? ccColabData.filter(c =>
+        (c.nombre || '').toLowerCase().includes(ccColabQuery) ||
+        (c.documento || '').toLowerCase().includes(ccColabQuery))
+    : ccColabData;
+
+  const total   = filtrados.length;
+  const maxPage = Math.max(1, Math.ceil(total / ccColabPageSize));
+  if (ccColabPage > maxPage) ccColabPage = 1;
+  const from  = (ccColabPage - 1) * ccColabPageSize;
+  const slice = filtrados.slice(from, from + ccColabPageSize);
+
+  const countEl = document.getElementById('cc-colab-count');
+  if (countEl) countEl.textContent = `${filtrados.length} colaborador${filtrados.length === 1 ? '' : 'es'}`;
+
+  const tbody = document.getElementById('cc-colab-tbody');
+  if (tbody) {
+    tbody.innerHTML = slice.length === 0
+      ? `<tr><td colspan="4" style="text-align:center;padding:24px;color:var(--text-light)">Sin resultados para esa búsqueda</td></tr>`
+      : slice.map(c => `
+        <tr>
+          <td class="td-tipo">${c.nombre}</td>
+          <td>${c.documento}</td>
+          <td class="td-cant">${c.cantidad_dispositivos}</td>
+          <td><strong>$ ${fmt(c.costo_arrendamiento)}</strong></td>
+        </tr>`).join('');
+  }
+
+  const totalArrend = filtrados.reduce((s, c) => s + c.costo_arrendamiento, 0);
+  const totalDisp   = filtrados.reduce((s, c) => s + c.cantidad_dispositivos, 0);
+  const tfoot = document.getElementById('cc-colab-tfoot');
+  if (tfoot) {
+    tfoot.innerHTML = `
+      <tr>
+        <td class="td-total-label">TOTAL${ccColabQuery ? ' (filtrado)' : ''}</td>
+        <td></td>
+        <td class="td-total-val">${totalDisp}</td>
+        <td><strong>$ ${fmt(totalArrend)}</strong></td>
+      </tr>`;
+  }
+
+  const fromEl  = document.getElementById('cc-colab-pag-from');
+  const toEl    = document.getElementById('cc-colab-pag-to');
+  const totalEl = document.getElementById('cc-colab-pag-total');
+  if (fromEl)  fromEl.textContent  = total === 0 ? 0 : from + 1;
+  if (toEl)    toEl.textContent    = Math.min(from + ccColabPageSize, total);
+  if (totalEl) totalEl.textContent = total;
+
+  const ctrl = document.getElementById('cc-colab-pag-controls');
+  if (ctrl) {
+    let html = `<button class="pag-btn" ${ccColabPage <= 1 ? 'disabled' : ''} onclick="goCCColabPage(${ccColabPage - 1})">
+      <i class="fas fa-chevron-left"></i></button>`;
+    buildPages(ccColabPage, maxPage).forEach(p => {
+      html += p === '...'
+        ? `<span class="pag-btn" style="border:none;cursor:default">…</span>`
+        : `<button class="pag-btn ${p === ccColabPage ? 'active' : ''}" onclick="goCCColabPage(${p})">${p}</button>`;
+    });
+    html += `<button class="pag-btn" ${ccColabPage >= maxPage ? 'disabled' : ''} onclick="goCCColabPage(${ccColabPage + 1})">
+      <i class="fas fa-chevron-right"></i></button>`;
+    ctrl.innerHTML = html;
+  }
 }
 
 // ============================================================
@@ -2981,7 +3168,7 @@ async function usrLoadPage(p = 1) {
 
   const tbodyLoad = document.getElementById('usr-tbody');
   if (tbodyLoad) {
-    tbodyLoad.innerHTML = `<tr><td colspan="8">
+    tbodyLoad.innerHTML = `<tr><td colspan="5">
       <div class="empty-state">
         <i class="fas fa-spinner fa-spin"></i>
         <p>Cargando usuarios...</p>
@@ -2996,27 +3183,23 @@ async function usrLoadPage(p = 1) {
   const tbody = document.getElementById('usr-tbody');
 
   if (!results.length) {
-    tbody.innerHTML = `<tr><td colspan="8" style="text-align:center;padding:30px;color:var(--text-light)">Sin resultados</td></tr>`;
+    tbody.innerHTML = `<tr><td colspan="5" style="text-align:center;padding:30px;color:var(--text-light)">Sin resultados</td></tr>`;
   } else {
     tbody.innerHTML = results.map(u => `
       <tr data-id="${u.id}" data-cedula="${u.cedula}" data-nombre="${u.nombre}"
           data-cargo-id="${u.cargo_id || ''}" data-co-id="${u.co_id || ''}"
-          data-correo="${u.correo || ''}" data-tipo="${u.tipo_usuario_id || ''}" data-tipo-nombre="${u.tipo_usuario || ''}">
+          data-correo="${u.correo || ''}" data-tipo="${u.tipo_usuario_id || ''}" data-tipo-nombre="${u.tipo_usuario || ''}"
+          data-cargo-nombre="${u.cargo || ''}" data-co-nombre="${u.co || ''}" data-fecha="${u.fecha || ''}">
         <td>${u.cedula}</td>
         <td>${u.nombre}</td>
         <td>${u.cargo || '—'}</td>
         <td>${u.co || '—'}</td>
-        <td>${u.correo || '—'}</td>
-        <td>${u.fecha}</td>
-        <td>
-          <span style="padding:3px 10px;border-radius:20px;font-size:11px;font-weight:600;
-            background:${u.tipo_usuario==='Superusuario'?'rgba(220,38,38,.1)':u.tipo_usuario==='Administrador'?'rgba(27,70,152,.1)':'rgba(22,163,74,.1)'};
-            color:${u.tipo_usuario==='Superusuario'?'#dc2626':u.tipo_usuario==='Administrador'?'var(--primary)':'#16a34a'}">
-            ${u.tipo_usuario || '—'}
-          </span>
-        </td>
+        <!-- Correo / Fecha de creación / Tipo de usuario: se ocultaron de la
+             tabla — se siguen guardando y cargando igual, solo se ven ahora
+             en el botón "Ver detalle" (ojito). -->
         <td>
           <div style="display:flex;gap:6px;">
+            <button class="tbl-btn info" title="Ver detalle" onclick="verUsuarioDetalle(${u.id})"><i class="fas fa-eye"></i></button>
             <button class="tbl-btn edit" title="Editar" onclick="openUsuarioEdit(${u.id})"><i class="fas fa-edit"></i></button>
             <button class="tbl-btn del"  title="Eliminar" onclick="deleteUsuario(${u.id},'${u.nombre}')"><i class="fas fa-trash-alt"></i></button>
           </div>
@@ -3122,6 +3305,19 @@ async function openUsuarioModal() {
   usrLimpiarDropdowns();
   await usrPoblarSelects();
   document.getElementById('modalUsuario').classList.add('active');
+}
+
+function verUsuarioDetalle(id) {
+  const row = document.querySelector(`#usr-tbody tr[data-id="${id}"]`);
+  if (!row) return;
+  document.getElementById('usr-detalle-nombre').textContent = row.dataset.nombre || '—';
+  document.getElementById('usr-detalle-cedula').textContent = 'Cédula: ' + (row.dataset.cedula || '—');
+  document.getElementById('usr-detalle-cargo').textContent  = row.dataset.cargoNombre || '—';
+  document.getElementById('usr-detalle-co').textContent     = row.dataset.coNombre    || '—';
+  document.getElementById('usr-detalle-correo').textContent = row.dataset.correo      || '—';
+  document.getElementById('usr-detalle-fecha').textContent  = row.dataset.fecha       || '—';
+  document.getElementById('usr-detalle-tipo').textContent   = row.dataset.tipoNombre  || '—';
+  document.getElementById('modalVerUsuario').classList.add('active');
 }
 
 async function openUsuarioEdit(id) {
@@ -3257,20 +3453,28 @@ function renderReqActivos() {
 
   const tbody = document.getElementById('req-activos-tbody');
   if (!page.length) {
-    tbody.innerHTML = `<tr><td colspan="8" style="text-align:center;padding:40px;color:var(--text-light)">
+    tbody.innerHTML = `<tr><td colspan="6" style="text-align:center;padding:40px;color:var(--text-light)">
       <i class="fas fa-clipboard-list" style="font-size:28px;display:block;margin-bottom:10px;opacity:.3"></i>
       No hay requerimientos activos
     </td></tr>`;
   } else {
     tbody.innerHTML = page.map(r => `
       <tr>
-        <td><span class="serial-mono">${_soloFecha(r.fecha_creacion)}</span></td>
+        <!-- Fecha creación / Fecha vencimiento: ya se ven en "Ver detalle",
+             se ocultan aquí. Los datos se siguen guardando y llegando igual. -->
         <td><span class="serial-mono" style="color:var(--primary)">${r.codigo || '—'}</span></td>
-        
         <td>${r.solicitante || '—'}</td>
         <td>${_reqPrioridadBadge(r.prioridad)}</td>
-        <td>${_soloFecha(r.fecha_vencimiento)}</td>
         <td>${_reqEstadoBadge(r.estado)}</td>
+        <td style="text-align:center">
+          ${r.tiene_adjunto
+            ? `<button class="tbl-btn info" title="Ver adjunto: ${r.nombre_adjunto}"
+                onclick='verAdjuntoReq(${JSON.stringify(r.nombre_adjunto)}, ${JSON.stringify(r.url_adjunto)})'>
+                <i class="fas fa-paperclip"></i>
+              </button>`
+            : `<span style="color:var(--text-light)">—</span>`
+          }
+        </td>
         <td>
           <div class="tbl-actions">
             <button class="tbl-btn info"    title="Ver detalle" onclick="verReq(${r.id})"><i class="fas fa-eye"></i></button>
@@ -3307,12 +3511,12 @@ function openPlanReqModal(req) {
   document.getElementById('plan-f-correo').textContent      = req.correo || '—';
   document.getElementById('plan-f-cargo').textContent       = req.cargo || '—';
   document.getElementById('plan-f-co').textContent          = req.centro_operacion || '—';
-  document.getElementById('plan-f-fecha').textContent       = req.fecha || '—';
+  document.getElementById('plan-f-fecha').textContent       = _soloFecha(req.fecha);
   document.getElementById('plan-f-tipo').textContent        = req.tipo_requerimiento || '—';
   document.getElementById('plan-f-categoria').textContent   = req.categoria || '—';
   document.getElementById('plan-f-subcategoria').textContent= req.subcategoria || '—';
   document.getElementById('plan-f-prioridad').textContent   = req.prioridad || '—';
-  document.getElementById('plan-f-vencimiento').textContent = req.fecha_vencimiento || '—';
+  document.getElementById('plan-f-vencimiento').textContent = _soloFecha(req.fecha_vencimiento);
   document.getElementById('plan-f-estado').textContent      = req.estado || '—';
   document.getElementById('plan-f-clasificacion').textContent = req.clasificacion || 'No hay Clasificación';
   document.getElementById('plan-f-descripcion').textContent = req.descripcion || '—';
@@ -3328,8 +3532,8 @@ function openSolucionarReqModal(req) {
   document.getElementById('sol-f-cargo').textContent        = req.cargo || '—';
   document.getElementById('sol-f-co').textContent           = req.centro_operacion || '—';
   document.getElementById('sol-f-correo').textContent       = req.correo || '—';
-  document.getElementById('sol-f-fecha-registro').textContent = req.fecha || '—';
-  document.getElementById('sol-f-fecha-venc').textContent   = req.fecha_vencimiento || '—';
+  document.getElementById('sol-f-fecha-registro').textContent = _soloFecha(req.fecha);
+  document.getElementById('sol-f-fecha-venc').textContent   = _soloFecha(req.fecha_vencimiento);
   document.getElementById('sol-f-tipo').textContent         = req.tipo_requerimiento || '—';
   document.getElementById('sol-f-categoria').textContent    = req.categoria || '—';
   document.getElementById('sol-f-subcategoria').textContent = req.subcategoria || '—';
@@ -3417,23 +3621,29 @@ function renderReqCerrados() {
 
   const tbody = document.getElementById('req-cerrados-tbody');
   if (!page.length) {
-    tbody.innerHTML = `<tr><td colspan="9" style="text-align:center;padding:40px;color:var(--text-light)">
+    tbody.innerHTML = `<tr><td colspan="7" style="text-align:center;padding:40px;color:var(--text-light)">
       <i class="fas fa-archive" style="font-size:28px;display:block;margin-bottom:10px;opacity:.3"></i>
       No hay requerimientos cerrados
     </td></tr>`;
   } else {
     tbody.innerHTML = page.map(r => `
   <tr>
-    <td><span class="serial-mono">${_soloFecha(r.fecha_creacion)}</span></td>
+    <!-- Fecha creación: ya se ve en "Ver detalle", se oculta aquí.
+         El dato se sigue guardando y llegando igual. -->
     <td><span class="serial-mono" style="color:var(--primary)">${r.codigo || '—'}</span></td>
     <td>${r.solicitante  || '—'}</td>
     <td>${r.responsable  || '—'}</td>
-    
-   
     <td>${_soloFecha(r.fecha_solucion)}</td>
-
-
     <td>${_reqEstadoBadge(r.estado)}</td>
+    <td style="text-align:center">
+      ${r.tiene_adjunto
+        ? `<button class="tbl-btn info" title="Ver adjunto: ${r.nombre_adjunto}"
+            onclick='verAdjuntoReq(${JSON.stringify(r.nombre_adjunto)}, ${JSON.stringify(r.url_adjunto)})'>
+            <i class="fas fa-paperclip"></i>
+          </button>`
+        : `<span style="color:var(--text-light)">—</span>`
+      }
+    </td>
     <td>
       <div class="tbl-actions">
         <button class="tbl-btn info" title="Ver detalle" onclick="verReq(${r.id})"><i class="fas fa-eye"></i></button>
@@ -3505,14 +3715,14 @@ function verReq(id) {
   if (!r) { showNotif('Error', 'No se encontró el requerimiento', 'warning'); return; }
 
   document.getElementById('rd-codigo').textContent = r.codigo || r.consecutivo || '—';
-  document.getElementById('rd-fecha').textContent   = r.fecha_creacion || r.fecha || r.fecha_requerimiento || '—';
+  document.getElementById('rd-fecha').textContent   = _soloFecha(r.fecha_creacion || r.fecha || r.fecha_requerimiento) || '—';
   document.getElementById('rd-badge').innerHTML     = _reqEstadoBadge(r.estado);
 
   document.getElementById('rd-solicitante').innerHTML = [
     { l: 'Solicitante', v: r.solicitante || r.remitente },
     { l: 'Prioridad',   v: r.prioridad },
     { l: 'Asignado a',  v: r.asignado || r.responsable || 'Sin asignar' },
-    { l: 'Vencimiento', v: r.fecha_vencimiento },
+    { l: 'Vencimiento', v: _soloFecha(r.fecha_vencimiento) },
   ].map(f => `
     <div class="detail-field">
       <div class="detail-field-label">${f.l}</div>
@@ -3553,8 +3763,8 @@ async function cargarRequerimientos() {
       <p>Cargando requerimientos...</p>
     </div>
   </td></tr>`;
-  if (tbAct) tbAct.innerHTML = loadingRow(8);
-  if (tbCer) tbCer.innerHTML = loadingRow(9);
+  if (tbAct) tbAct.innerHTML = loadingRow(6);
+  if (tbCer) tbCer.innerHTML = loadingRow(7);
 
   try {
     const res = await apiFetch(API.misReqTic);
@@ -3588,6 +3798,9 @@ async function cargarRequerimientos() {
       categoria_id:       r.categoria_id,
       subcategoria_id:    r.subcategoria_id,
       id_usuario_asig:    r.id_usuario_asig,
+      tiene_adjunto:      r.tiene_adjunto,
+      nombre_adjunto:     r.nombre_adjunto,
+      url_adjunto:        r.url_adjunto,
     });
 
     const ESTADOS_CERRADOS = [4, 6]; // 4 = Cerrado, 6 = Calificado
@@ -3598,7 +3811,7 @@ async function cargarRequerimientos() {
     renderReqCerrados();
   } catch(e) {
     console.error('Error cargando requerimientos:', e);
-    if (tbAct) tbAct.innerHTML = loadingRow(8).replace('fa-spinner fa-spin','fa-exclamation-triangle').replace('Cargando requerimientos...','Error al cargar');
+    if (tbAct) tbAct.innerHTML = loadingRow(6).replace('fa-spinner fa-spin','fa-exclamation-triangle').replace('Cargando requerimientos...','Error al cargar');
   }
 }
 
@@ -3767,7 +3980,7 @@ function renderAsignar() {
   const tbody = document.getElementById('asig-tbody');
 
   if (!slice.length) {
-    tbody.innerHTML = `<tr><td colspan="9" style="text-align:center;padding:40px;color:var(--text-light)">
+    tbody.innerHTML = `<tr><td colspan="6" style="text-align:center;padding:40px;color:var(--text-light)">
       <i class="fas fa-user-plus" style="font-size:28px;display:block;margin-bottom:10px;opacity:.3"></i>
       No hay requerimientos pendientes de asignación
     </td></tr>`;
@@ -3775,11 +3988,10 @@ function renderAsignar() {
     tbody.innerHTML = slice.map(r => `
       <tr>
         <td><span class="serial-mono" style="color:var(--primary)">${r.codigo || '—'}</span></td>
-        
-        <td><span class="serial-mono">${r.fecha || '—'}</span></td>
         <td>${r.solicitante || '—'}</td>
-        <td>${_reqPrioridadBadge(r.prioridad)}</td>
-        <td><span class="serial-mono">${r.fecha_vencimiento || '—'}</span></td>
+        <!-- Fecha / Prioridad / Fecha vencimiento: ya se ven en "Ver detalle",
+             se ocultan aquí para no repetir. Los datos se siguen guardando
+             y llegando igual, solo se dejó de pintar la columna. -->
         <td>
           ${r.asignado
             ? `<span class="asig-asignado"><i class="fas fa-user-check"></i>${r.asignado}</span>`
@@ -3787,6 +3999,15 @@ function renderAsignar() {
           }
         </td>
         <td>${_reqEstadoBadge(r.estado)}</td>
+        <td style="text-align:center">
+          ${r.tiene_adjunto
+            ? `<button class="tbl-btn info" title="Ver adjunto: ${r.nombre_adjunto}"
+                onclick='verAdjuntoReq(${JSON.stringify(r.nombre_adjunto)}, ${JSON.stringify(r.url_adjunto)})'>
+                <i class="fas fa-paperclip"></i>
+              </button>`
+            : `<span style="color:var(--text-light)">—</span>`
+          }
+        </td>
         <td>
           <div class="tbl-actions">
             <button class="tbl-btn assign" title="Asignar"
@@ -3812,6 +4033,33 @@ function renderAsignar() {
   );
 }
 
+// Extensiones que se muestran visualmente en el modal; el resto solo
+// ofrece el botón de descarga (Word, Excel, etc. no se pueden incrustar
+// de forma confiable sin una librería extra).
+const ADJUNTO_EXT_IMAGEN = ['jpg', 'jpeg', 'png', 'gif', 'webp', 'bmp', 'svg'];
+
+function verAdjuntoReq(nombre, url) {
+  const ext = (nombre.split('.').pop() || '').toLowerCase();
+  const visor = document.getElementById('adjunto-modal-visor');
+  document.getElementById('adjunto-modal-nombre').textContent = nombre;
+  document.getElementById('adjunto-modal-descargar').href = url;
+  document.getElementById('adjunto-modal-descargar').setAttribute('download', nombre);
+
+  if (ADJUNTO_EXT_IMAGEN.includes(ext)) {
+    visor.innerHTML = `<img src="${url}" alt="${nombre}" style="max-width:100%;max-height:60vh;border-radius:var(--radius-md);box-shadow:var(--shadow-sm)">`;
+  } else if (ext === 'pdf') {
+    visor.innerHTML = `<iframe src="${url}" style="width:100%;height:60vh;border:1px solid var(--border);border-radius:var(--radius-md)"></iframe>`;
+  } else {
+    visor.innerHTML = `
+      <div style="display:flex;flex-direction:column;align-items:center;gap:10px;color:var(--text-secondary)">
+        <i class="fas fa-file-alt" style="font-size:52px;color:var(--primary-light)"></i>
+        <span>${nombre}</span>
+        <small>Vista previa no disponible para este tipo de archivo — usa "Descargar".</small>
+      </div>`;
+  }
+  document.getElementById('modalVerAdjunto').classList.add('active');
+}
+
 function sortAsig(key) {
   if (asigSortKey === key) asigSortAsc = !asigSortAsc;
   else { asigSortKey = key; asigSortAsc = true; }
@@ -3821,7 +4069,7 @@ function sortAsig(key) {
 async function cargarAsignar() {
   const tbody = document.getElementById('asig-tbody');
   if (tbody) {
-    tbody.innerHTML = `<tr><td colspan="9">
+    tbody.innerHTML = `<tr><td colspan="6">
       <div class="empty-state">
         <i class="fas fa-spinner fa-spin"></i>
         <p>Cargando requerimientos...</p>
@@ -4020,7 +4268,7 @@ function _mostrarDetalleHReq(r) {
   // Fecha solución
   const elFecha = document.getElementById('hreq-det-fecha-sol');
   if (r.fecha_solucion) {
-    elFecha.textContent = r.fecha_solucion;
+    elFecha.textContent = _soloFecha(r.fecha_solucion);
     elFecha.style.background = '#dce9ff';
     elFecha.style.color      = '#1B4698';
   } else {
@@ -4057,11 +4305,11 @@ function _pintarTimelineHReq(r) {
 
   // Cada etapa se marca "cumplida" si su dato ya existe
   const pasos = [
-    { key: 'recibido',    cumplido: true,                 fecha: r.fecha_requerimiento },
+    { key: 'recibido',    cumplido: true,                 fecha: r.fecha_requerimiento ? _soloFecha(r.fecha_requerimiento) : null },
     { key: 'asignado',    cumplido: !!r.asignado,          fecha: r.asignado },
     { key: 'plan',        cumplido: !!r.plan_accion,       fecha: r.plan_accion },
-    { key: 'solucionado', cumplido: !!(r.fecha_solucion || r.solucion), fecha: r.fecha_solucion || r.solucion },
-    { key: 'cerrado',     cumplido: estado === 'CERRADO',  fecha: estado === 'CERRADO' ? (r.fecha_solucion || 'Cerrado') : null },
+    { key: 'solucionado', cumplido: !!(r.fecha_solucion || r.solucion), fecha: r.fecha_solucion ? _soloFecha(r.fecha_solucion) : r.solucion },
+    { key: 'cerrado',     cumplido: estado === 'CERRADO',  fecha: estado === 'CERRADO' ? (r.fecha_solucion ? _soloFecha(r.fecha_solucion) : 'Cerrado') : null },
   ];
 
   // La "etapa actual" es la primera pendiente después de la última cumplida

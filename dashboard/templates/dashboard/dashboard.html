@@ -768,8 +768,6 @@
               <label class="cc-filter-label">Tipo de dispositivo</label>
               <select class="cc-filter-select" id="cc-tipo"><option value="">Todos los tipos</option></select>
             </div>
-          </div>
-          <div style="margin-top:16px;text-align:right;">
             <button class="cc-btn-consultar" onclick="consultarCC()"><i class="fas fa-search"></i> Consultar</button>
           </div>
         </div>
@@ -1082,13 +1080,15 @@
               <th>NOMBRE COMPLETO</th>
               <th>CARGO</th>
               <th>C.O.</th>
+              <!--
               <th>CORREO ELECTRÓNICO</th>
               <th>FECHA DE CREACIÓN</th>
               <th>TIPO DE USUARIO</th>
+              -->
               <th>ACCIONES</th>
             </tr></thead>
             <tbody id="usr-tbody">
-              <tr><td colspan="8" style="text-align:center;padding:30px;color:var(--text-light)">Cargando...</td></tr>
+              <tr><td colspan="5" style="text-align:center;padding:30px;color:var(--text-light)">Cargando...</td></tr>
             </tbody>
           </table>
           <div class="pagination-wrap">
@@ -1100,6 +1100,36 @@
           </div>
         </div>
       </section>
+
+      <!-- ══════════ MODAL VER DETALLE USUARIO (Gestión de Usuarios) ══════════ -->
+      <div class="modal-overlay" id="modalVerUsuario">
+        <div class="modal-form" style="width:520px;max-width:95vw">
+          <div class="modal-form-header">
+            <div class="modal-form-icon"><i class="fas fa-user"></i></div>
+            <div>
+              <div class="modal-form-title" id="usr-detalle-nombre">—</div>
+              <div class="modal-form-sub" id="usr-detalle-cedula">—</div>
+            </div>
+            <button class="modal-close-btn" onclick="closeModal('modalVerUsuario')">
+              <i class="fas fa-times"></i>
+            </button>
+          </div>
+          <div class="modal-form-body">
+            <div class="hreq-detalle-grid" style="padding-top:0;margin-top:0;border-top:none">
+              <div class="hreq-detalle-item"><span class="hreq-detalle-label">Cargo</span><span id="usr-detalle-cargo">—</span></div>
+              <div class="hreq-detalle-item"><span class="hreq-detalle-label">Centro de Operación</span><span id="usr-detalle-co">—</span></div>
+              <div class="hreq-detalle-item"><span class="hreq-detalle-label">Correo Electrónico</span><span id="usr-detalle-correo">—</span></div>
+              <div class="hreq-detalle-item"><span class="hreq-detalle-label">Fecha de Creación</span><span id="usr-detalle-fecha">—</span></div>
+              <div class="hreq-detalle-item"><span class="hreq-detalle-label">Tipo de Usuario</span><span id="usr-detalle-tipo">—</span></div>
+            </div>
+          </div>
+          <div class="modal-form-footer">
+            <button class="btn-cancel" onclick="closeModal('modalVerUsuario')">
+              <i class="fas fa-times"></i> Cerrar
+            </button>
+          </div>
+        </div>
+      </div>
 
       <!-- ══════════ MIS REQUERIMIENTOS ══════════ -->
 <section class="screen" id="screen-mis-requerimientos">
@@ -1146,9 +1176,11 @@
   <div id="req-panel-activos" class="inv-table-wrap" style="margin-top:12px">
     <table class="data-table">
       <thead><tr>
+        <!--
         <th onclick="sortReq('fecha_creacion')">
           <div class="sort-wrap">Fecha creación <i class="fas fa-sort sort-ico"></i></div>
         </th>
+        -->
         <th onclick="sortReq('codigo')">
           <div class="sort-wrap">Código <i class="fas fa-sort sort-ico"></i></div>
         </th>
@@ -1163,16 +1195,19 @@
         <th onclick="sortReq('prioridad')">
           <div class="sort-wrap">Prioridad <i class="fas fa-sort sort-ico"></i></div>
         </th>
+        <!--
         <th onclick="sortReq('fecha_vencimiento')">
           <div class="sort-wrap">Fecha vencimiento <i class="fas fa-sort sort-ico"></i></div>
         </th>
+        -->
         <th onclick="sortReq('estado')">
           <div class="sort-wrap">Estado <i class="fas fa-sort sort-ico"></i></div>
         </th>
+        <th>Adjunto</th>
         <th>Acciones</th>
       </tr></thead>
       <tbody id="req-activos-tbody">
-        <tr><td colspan="8" style="text-align:center;padding:40px;color:var(--text-light)">
+        <tr><td colspan="6" style="text-align:center;padding:40px;color:var(--text-light)">
           <i class="fas fa-clipboard-list" style="font-size:28px;display:block;margin-bottom:10px;opacity:.3"></i>
           No hay requerimientos activos
         </td></tr>
@@ -1191,9 +1226,11 @@
   <div id="req-panel-cerrados" class="inv-table-wrap" style="margin-top:12px;display:none">
     <table class="data-table">
       <thead><tr>
+        <!--
         <th onclick="sortReqC('fecha_creacion')">
           <div class="sort-wrap">Fecha creación <i class="fas fa-sort sort-ico"></i></div>
         </th>
+        -->
         <th onclick="sortReqC('codigo')">
           <div class="sort-wrap">Código <i class="fas fa-sort sort-ico"></i></div>
         </th>
@@ -1212,7 +1249,7 @@
         <th onclick="sortReqC('plan_accion')">
           <div class="sort-wrap">Plan de acción <i class="fas fa-sort sort-ico"></i></div>
         </th>
-      
+
         <th onclick="sortReqC('solucion')">
           <div class="sort-wrap">Solución <i class="fas fa-sort sort-ico"></i></div>
         </th>
@@ -1223,10 +1260,11 @@
         <th onclick="sortReqC('estado')">
           <div class="sort-wrap">Estado <i class="fas fa-sort sort-ico"></i></div>
         </th>
+        <th>Adjunto</th>
         <th>Acciones</th>
       </tr></thead>
       <tbody id="req-cerrados-tbody">
-        <tr><td colspan="9" style="text-align:center;padding:40px;color:var(--text-light)">
+        <tr><td colspan="7" style="text-align:center;padding:40px;color:var(--text-light)">
           <i class="fas fa-archive" style="font-size:28px;display:block;margin-bottom:10px;opacity:.3"></i>
           No hay requerimientos cerrados
         </td></tr>
@@ -1279,11 +1317,12 @@
           <div class="sort-wrap">Descripción <i class="fas fa-sort sort-ico"></i></div>
         </th>
       -->  
-        <th onclick="sortAsig('fecha')">
-          <div class="sort-wrap">Fecha <i class="fas fa-sort sort-ico"></i></div>
-        </th>
         <th onclick="sortAsig('solicitante')">
           <div class="sort-wrap">Usuario solicitante <i class="fas fa-sort sort-ico"></i></div>
+        </th>
+        <!--
+        <th onclick="sortAsig('fecha')">
+          <div class="sort-wrap">Fecha <i class="fas fa-sort sort-ico"></i></div>
         </th>
         <th onclick="sortAsig('prioridad')">
           <div class="sort-wrap">Prioridad <i class="fas fa-sort sort-ico"></i></div>
@@ -1291,16 +1330,18 @@
         <th onclick="sortAsig('fecha_vencimiento')">
           <div class="sort-wrap">Fecha vencimiento <i class="fas fa-sort sort-ico"></i></div>
         </th>
+        -->
         <th onclick="sortAsig('asignado')">
           <div class="sort-wrap">Asignado <i class="fas fa-sort sort-ico"></i></div>
         </th>
         <th onclick="sortAsig('estado')">
           <div class="sort-wrap">Estado <i class="fas fa-sort sort-ico"></i></div>
         </th>
+        <th>Adjunto</th>
         <th>Acciones</th>
       </tr></thead>
       <tbody id="asig-tbody">
-        <tr><td colspan="9" style="text-align:center;padding:40px;color:var(--text-light)">
+        <tr><td colspan="6" style="text-align:center;padding:40px;color:var(--text-light)">
           <i class="fas fa-user-plus" style="font-size:28px;display:block;margin-bottom:10px;opacity:.3"></i>
           No hay requerimientos pendientes de asignación
         </td></tr>
@@ -1374,6 +1415,33 @@
       <button class="btn-save" onclick="guardarAsignacionReq()">
         <i class="fas fa-save"></i> Guardar
       </button>
+    </div>
+  </div>
+</div>
+
+<!-- ══════════ MODAL VER ADJUNTO (Asignar Requerimientos) ══════════ -->
+<div class="modal-overlay" id="modalVerAdjunto">
+  <div class="modal-form" style="width:640px;max-width:95vw">
+    <div class="modal-form-header">
+      <div class="modal-form-icon"><i class="fas fa-paperclip"></i></div>
+      <div>
+        <div class="modal-form-title">Adjunto del requerimiento</div>
+        <div class="modal-form-sub" id="adjunto-modal-nombre">—</div>
+      </div>
+      <button class="modal-close-btn" onclick="closeModal('modalVerAdjunto')">
+        <i class="fas fa-times"></i>
+      </button>
+    </div>
+    <div class="modal-form-body" style="text-align:center">
+      <div id="adjunto-modal-visor" style="min-height:200px;display:flex;align-items:center;justify-content:center"></div>
+    </div>
+    <div class="modal-form-footer">
+      <button class="btn-cancel" onclick="closeModal('modalVerAdjunto')">
+        <i class="fas fa-times"></i> Cerrar
+      </button>
+      <a class="btn-save" id="adjunto-modal-descargar" href="#" download style="text-decoration:none">
+        <i class="fas fa-download"></i> Descargar
+      </a>
     </div>
   </div>
 </div>

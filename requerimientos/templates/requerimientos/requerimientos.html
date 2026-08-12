@@ -49,6 +49,7 @@
       <button type="button" class="profile-modal-avatar-edit" id="profileModalAvatarBtn" title="Cambiar foto"><i class="fa-solid fa-camera"></i></button>
       <input type="file" id="profileModalAvatarInput" accept="image/*" style="display:none;">
     </div>
+    <button type="button" id="profileModalAvatarQuitar" style="display:none;background:none;border:none;color:var(--text-secondary);font-size:12.5px;text-decoration:underline;cursor:pointer;margin:-10px 0 4px;">Quitar foto</button>
     <h3 id="profileModalNombre">—</h3>
     <p class="profile-modal-cargo" id="profileModalCargo"></p>
     <div class="profile-modal-doc-label">Número de documento</div>
@@ -200,7 +201,111 @@
   </div>
 </div>
 
+<!-- MODAL: chat de soporte (Microsoft Teams) -->
+<style>
+  .teams-presence-row{
+    display:flex; align-items:center; gap:8px; justify-content:center;
+    margin-top:10px; padding:8px 14px; background:#f8fafc; border-radius:20px;
+    font-size:13px; font-weight:600; color:#334155;
+  }
+  .teams-presence-dot{
+    width:9px; height:9px; border-radius:50%; background:#94a3b8; flex-shrink:0;
+    transition:background-color .25s ease;
+  }
+  .teams-presence-dot.green{ background:#22c55e; }
+  .teams-presence-dot.red{ background:#ef4444; }
+  .teams-presence-dot.yellow{ background:#eab308; }
+  .teams-presence-dot.gray{ background:#94a3b8; }
+  #btnChatVincular{ display:flex; align-items:center; justify-content:center; gap:8px; }
+  #chatNoVinculado.hidden, #chatVinculado.hidden{ display:none; }
+  .chat-widget-box{ display:flex; flex-direction:column; margin-top:14px; }
+  .chat-widget-mensajes{
+    display:flex; flex-direction:column; gap:8px;
+    max-height:280px; overflow-y:auto; padding:10px;
+    background:#f8fafc; border-radius:12px; margin-bottom:10px;
+  }
+  .chat-widget-vacio{ text-align:center; color:#94a3b8; font-size:13px; padding:20px 0; }
+  .chat-bubble{
+    max-width:80%; padding:8px 12px; border-radius:14px; font-size:14px;
+    line-height:1.4; word-wrap:break-word; white-space:pre-wrap;
+  }
+  .chat-bubble.saliente{
+    align-self:flex-end; background:#2563eb; color:#fff; border-bottom-right-radius:4px;
+  }
+  .chat-bubble.entrante{
+    align-self:flex-start; background:#e2e8f0; color:#1e293b; border-bottom-left-radius:4px;
+  }
+  .chat-bubble.error{ background:#fee2e2; color:#991b1b; }
+  .chat-bubble-hora{ display:block; font-size:10px; opacity:.7; margin-top:3px; }
+  .chat-widget-form{ display:flex; gap:8px; }
+  .chat-widget-form textarea{
+    flex:1; resize:none; border:1px solid #e2e8f0; border-radius:10px;
+    padding:8px 10px; font-size:14px; font-family:inherit; height:40px;
+  }
+  .chat-widget-form button{
+    width:40px; height:40px; border:none; border-radius:10px; background:#2563eb;
+    color:#fff; cursor:pointer; flex-shrink:0;
+  }
+  .chat-widget-form button:hover{ background:#1d4ed8; }
+  .chat-agente-header{ display:flex; align-items:center; justify-content:center; gap:10px; margin-top:12px; }
+  .chat-agente-avatar{
+    width:44px; height:44px; border-radius:50%; object-fit:cover;
+    background:#e2e8f0; border:2px solid #fff; box-shadow:0 0 0 1px #e2e8f0;
+  }
+  .chat-agente-nombre{ font-weight:700; font-size:14px; color:#1e293b; }
+  .help-box-icon{ position:relative; }
+  .help-box-presence-dot{
+    position:absolute; bottom:-1px; right:-1px; width:11px; height:11px;
+    border-radius:50%; background:#94a3b8; border:2px solid #fff;
+  }
+  .whatsapp-float-bubble{
+    position:fixed; bottom:26px; right:26px; z-index:9999;
+    width:60px; height:60px; border-radius:50%;
+    background:#25D366;
+    color:#fff; border:none; cursor:pointer; text-decoration:none;
+    display:flex; align-items:center; justify-content:center;
+    font-size:28px; box-shadow:0 6px 20px rgba(37,211,102,.45);
+    transition:transform .2s ease, box-shadow .2s ease;
+  }
+  .whatsapp-float-bubble:hover{ transform:scale(1.08); box-shadow:0 8px 26px rgba(37,211,102,.55); color:#fff; }
+  @media (max-width:640px){
+    .whatsapp-float-bubble{ width:52px; height:52px; font-size:24px; bottom:18px; right:18px; }
+  }
+</style>
+<div class="id-modal-overlay hidden" id="teamsChatOverlay">
+  <div class="id-modal-box" style="max-width:420px;">
+    <button class="id-modal-close" id="teamsChatClose" title="Cerrar" aria-label="Cerrar"><i class="fa-solid fa-xmark"></i></button>
+    <div class="id-modal-icon"><i class="fa-solid fa-headset"></i></div>
+    <h3>¿Necesitas ayuda?</h3>
+    <p>Nuestro equipo de soporte está para apoyarte. Escríbenos por Microsoft Teams.</p>
 
+    <div class="chat-agente-header">
+      <img id="teamsAgenteFoto" class="chat-agente-avatar" alt="" onerror="this.style.display='none'">
+      <span class="chat-agente-nombre" id="chatAgenteNombre">Soporte técnico</span>
+    </div>
+
+    <div class="teams-presence-row">
+      <span class="teams-presence-dot gray" id="teamsPresenceDot"></span>
+      <span id="teamsPresenceLabel">Consultando estado...</span>
+    </div>
+
+    <div id="chatNoVinculado" class="hidden">
+      <button type="button" class="btn-submit" id="btnChatVincular" style="width:100%;margin-top:16px;">
+        <i class="fa-brands fa-microsoft"></i> Conectar con Microsoft Teams
+      </button>
+    </div>
+
+    <div id="chatVinculado" class="hidden chat-widget-box">
+      <div class="chat-widget-mensajes" id="chatMensajesLista">
+        <div class="chat-widget-vacio" id="chatMensajesVacio">Escríbenos y te responderemos por Microsoft Teams.</div>
+      </div>
+      <div class="chat-widget-form">
+        <textarea id="chatInputTexto" placeholder="Escribe tu mensaje..." maxlength="2000"></textarea>
+        <button type="button" id="btnChatEnviar" title="Enviar"><i class="fa-solid fa-paper-plane"></i></button>
+      </div>
+    </div>
+  </div>
+</div>
 
 <!-- MODAL: seguimiento animado tipo Didi/Uber -->
 <div class="trip-modal-overlay hidden" id="tripModalOverlay">
@@ -332,7 +437,7 @@
 
       <div class="sidebar-footer">
         <div class="help-box">
-          <div class="help-box-icon"><i class="fa-solid fa-headset"></i></div>
+          <div class="help-box-icon"><i class="fa-solid fa-headset"></i><span class="help-box-presence-dot" id="helpBoxPresenceDot"></span></div>
           <div>
             <div class="help-box-title">¿Necesitas ayuda?</div>
             <div class="help-box-sub">Nuestro equipo está para apoyarte</div>
@@ -605,6 +710,17 @@
     </div><!-- /content-area -->
   </div><!-- /main-layout -->
 </div><!-- /app-container -->
+
+<!-- BOTÓN FLOTANTE: WhatsApp. El chat de Teams sigue disponible desde
+     "Contáctanos" en el panel lateral — este es un enlace directo, sin
+     backend (WhatsApp click-to-chat no se puede "embeber" en la página). -->
+<a
+  href="https://wa.me/573103809738?text=Hola%2C%20necesito%20ayuda%20con%20el%20portal%20de%20Requerimientos."
+  target="_blank" rel="noopener noreferrer"
+  class="whatsapp-float-bubble" id="whatsappFloatBubble" title="Escríbenos por WhatsApp"
+>
+  <i class="fa-brands fa-whatsapp"></i>
+</a>
 
 <script src="{% static 'js/requerimientos.js' %}"></script>
 
