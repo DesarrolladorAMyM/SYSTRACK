@@ -89,9 +89,14 @@ function showNotif(title, msg, type = 'success', duration = 3500) {
   // ===== Requerimientos ya solucionados (Cerrado) que el usuario aún
   // no ha calificado. Mientras existan, se bloquea crear uno nuevo.
   // Se basa en DATA (ya cargado) para que el bloqueo sea instantáneo,
-  // sin depender de otro fetch. =====
+  // sin depender de otro fetch. Solo cuentan los solucionados desde esta
+  // fecha en adelante (mismo corte que el backend) para no arrastrar
+  // backlog histórico (hay casos desde 2023). =====
+  const FECHA_INICIO_PENDIENTES_CALIFICAR = '2026-07-01';
   function requerimientosPendientesCalificar(){
-    return misRequerimientos().filter(r => r.estado === 'Cerrado');
+    return misRequerimientos().filter(r =>
+      r.estado === 'Cerrado' && r.fecha_solucion && r.fecha_solucion >= FECHA_INICIO_PENDIENTES_CALIFICAR
+    );
   }
 
   // ===== Notificaciones reales (asignado/aprobado/rechazado/solucionado
