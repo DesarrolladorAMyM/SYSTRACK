@@ -203,21 +203,21 @@ def mis_requerimientos(request):
         data.append({
             'codigo':          r.codigo(),
             'documento':       r.CedulaUsuario,
-            'fecha_creacion':  str(r.Fecha) if r.Fecha else '',
+            'fecha_creacion':  r.Fecha.strftime('%d/%m/%Y') if r.Fecha else '',
             'requerimiento':   r.Requerimiento or '',
             'area':            categoria_map.get(r.IdCategoria, ''),
             'subcategoria':    subcategoria_map.get(r.IdSubCategoria, ''),
             'prioridad':       prioridad_map.get(r.IdPrioridad, ''),
-            'vencimiento':     str(r.FechaEstiSoluci) if r.FechaEstiSoluci else '',
+            'vencimiento':     r.FechaEstiSoluci.strftime('%d/%m/%Y') if r.FechaEstiSoluci else '',
             'responsable':     r.NombreUsuariAsig or '',
             'plan_accion':     r.PlanAccion or '',
             'solucion':        r.Solucion or '',
-            'fecha_solucion':  str(r.FechaRealSoluci) if r.FechaRealSoluci else '',
+            'fecha_solucion':  r.FechaRealSoluci.strftime('%d/%m/%Y') if r.FechaRealSoluci else '',
             'clasificacion':   clasif_map.get(r.Clasificacion, ''),
             'calificacion':    evaluacion_map.get(r.Codigo, None),
             'estado':          ESTADOS.get(r.IdEstado, str(r.IdEstado or '')),
             'requiere_aprobacion': bool(r.IdJefeArea),
-            'fecha_aprobacion':    str(r.FechaAprobacion) if r.FechaAprobacion else '',
+            'fecha_aprobacion':    r.FechaAprobacion.strftime('%d/%m/%Y') if r.FechaAprobacion else '',
         })
 
     return JsonResponse({'ok': True, 'data': data})
@@ -1029,7 +1029,7 @@ def mis_notificaciones(request):
         'titulo': n.Titulo,
         'mensaje': n.Mensaje,
         'leida':  n.Leida,
-        'fecha':  n.FechaCreacion.strftime('%Y-%m-%d %H:%M') if n.FechaCreacion else '',
+        'fecha':  n.FechaCreacion.strftime('%d/%m/%Y %H:%M') if n.FechaCreacion else '',
     } for n in notifs]
 
     hoy = datetime.date.today()
@@ -1038,7 +1038,7 @@ def mis_notificaciones(request):
         .using(DB)
         .filter(CedulaUsuario=cedula, IdEstado__in=ESTADOS_VENCIMIENTO_ACTIVO, FechaEstiSoluci__lt=hoy)
     )
-    data_vencidos = [{'codigo': r.codigo(), 'fecha_estimada': str(r.FechaEstiSoluci)} for r in vencidos]
+    data_vencidos = [{'codigo': r.codigo(), 'fecha_estimada': r.FechaEstiSoluci.strftime('%d/%m/%Y') if r.FechaEstiSoluci else ''} for r in vencidos]
 
     pendientes_calificar = list(
         Requerimiento.objects.using(DB).filter(

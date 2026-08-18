@@ -93,10 +93,26 @@ function showNotif(title, msg, type = 'success', duration = 3500) {
   // fecha en adelante (mismo corte que el backend) para no arrastrar
   // backlog histórico (hay casos desde 2023). =====
   const FECHA_INICIO_PENDIENTES_CALIFICAR = '2026-07-01';
+
+  // fecha_solucion llega como texto "DD/MM/AAAA" (formato de visualización).
+  // Para comparar cronológicamente hay que convertirlo a "AAAA-MM-DD" primero;
+  // si el valor viene vacío o mal formado, devuelve '' y ese registro se
+  // excluye del filtro en vez de romper la comparación.
+  function _fechaSolucionAISO(str){
+    if (!str) return '';
+    const partes = String(str).split('/');
+    if (partes.length !== 3) return '';
+    const [dia, mes, anio] = partes;
+    if (!dia || !mes || !anio) return '';
+    return `${anio}-${mes.padStart(2,'0')}-${dia.padStart(2,'0')}`;
+  }
+
   function requerimientosPendientesCalificar(){
-    return misRequerimientos().filter(r =>
-      r.estado === 'Cerrado' && r.fecha_solucion && r.fecha_solucion >= FECHA_INICIO_PENDIENTES_CALIFICAR
-    );
+    return misRequerimientos().filter(r => {
+      if (r.estado !== 'Cerrado') return false;
+      const iso = _fechaSolucionAISO(r.fecha_solucion);
+      return iso !== '' && iso >= FECHA_INICIO_PENDIENTES_CALIFICAR;
+    });
   }
 
   // ===== Notificaciones reales (asignado/aprobado/rechazado/solucionado
