@@ -637,7 +637,7 @@ def _enviar_correo_asignacion(req, es_reasignacion=False):
         return
 
     base_url = _obtener_link_base()
-    link_ver = f"{base_url}{PREFIJO_APP}/requerimiento/?seg={req.codigo()}"
+    link_ver = f"{base_url}{PREFIJO_APP}/inventario/"
 
     asunto = (f"Requerimiento reasignado — {req.codigo()}" if es_reasignacion
               else f"Nuevo requerimiento asignado — {req.codigo()}")

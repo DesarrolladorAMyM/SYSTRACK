@@ -2177,20 +2177,22 @@ function renderCurrentDevices(dispositivos, colabId) {
     return;
   }
   container.innerHTML = `
-    <table class="inv-table" style="margin-bottom:0">
-      <thead><tr><th>Tipo</th><th>Marca</th><th>Serial</th><th></th></tr></thead>
-      <tbody>
-        ${dispositivos.map(d => `
-          <tr>
-            <td>${d.tipo}</td>
-            <td>${d.marca}</td>
-            <td><span class="serial-mono">${d.serial}</span></td>
-            <td><button class="btn-remove-row" title="Quitar asignación"
-              onclick="eliminarAsignacion(${colabId}, ${d.id})">
-              <i class="fas fa-unlink"></i></button></td>
-          </tr>`).join('')}
-      </tbody>
-    </table>`;
+    <div class="assigned-table-wrap">
+      <table class="assigned-table" style="margin-bottom:0">
+        <thead><tr><th>Tipo</th><th>Marca</th><th>Serial</th><th></th></tr></thead>
+        <tbody>
+          ${dispositivos.map(d => `
+            <tr>
+              <td>${d.tipo}</td>
+              <td>${d.marca}</td>
+              <td><span class="serial-mono">${d.serial}</span></td>
+              <td style="text-align:right"><button class="btn-remove-row" title="Quitar asignación"
+                onclick="eliminarAsignacion(${colabId}, ${d.id})">
+                <i class="fas fa-unlink"></i></button></td>
+            </tr>`).join('')}
+        </tbody>
+      </table>
+    </div>`;
 }
 
 function removeTempDevice(idx) { tempDevices.splice(idx, 1); renderTempDevices(); }
