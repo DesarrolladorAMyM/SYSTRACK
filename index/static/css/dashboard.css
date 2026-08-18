@@ -184,6 +184,7 @@
     .data-table th:hover{background:rgba(27,70,152,0.06);}
     .data-table th .sort-wrap{display:flex;align-items:center;gap:5px;}
     .data-table th .sort-ico{font-size:10px;color:var(--gray-light);}
+    .data-table th .sort-ico.active{color:var(--primary);}
     .data-table td{padding:14px 16px;font-size:14px;color:var(--text-primary);border-bottom:1px solid var(--border);}
     .data-table tbody tr:hover{background:rgba(27,70,152,0.025);cursor:pointer;}
     .data-table tbody tr:last-child td{border-bottom:none;}
@@ -535,6 +536,8 @@
     .acta-devices-table td:first-child{text-align:left;}
     .acta-devices-table tbody tr:last-child td{border-bottom:none;}
     .acta-devices-empty{padding:24px;text-align:center;font-size:13px;color:var(--text-light);}
+    .acta-devices-table th.acta-chk-th,.acta-devices-table td.acta-chk-td{text-align:center;width:40px;padding:12px 8px;}
+    .acta-chk-th input,.acta-dev-chk{width:16px;height:16px;cursor:pointer;accent-color:var(--primary);}
     /* Signature pads */
     .sig-section{display:grid;grid-template-columns:1fr 1fr;gap:24px;margin-bottom:20px;}
     .sig-block{display:flex;flex-direction:column;gap:8px;}

@@ -423,7 +423,10 @@
       <div class="form-section-title" style="margin-bottom:12px"><i class="fas fa-boxes"></i> Dispositivos del acta</div>
       <div class="acta-devices-wrap" style="margin-bottom:20px">
         <table class="acta-devices-table">
-          <thead><tr><th>Tipo Dispositivo</th><th>Serial</th><th>Marca</th><th>Observaciones</th></tr></thead>
+          <thead><tr>
+            <th class="acta-chk-th" id="acta-chk-th" style="display:none"><input type="checkbox" id="acta-chk-all" title="Seleccionar todos" onchange="toggleActaAllDevices(this)"></th>
+            <th>Tipo Dispositivo</th><th>Serial</th><th>Marca</th><th>Observaciones</th>
+          </tr></thead>
           <tbody id="acta-devices-tbody">
             <tr><td colspan="4" class="acta-devices-empty">Sin dispositivos asignados al colaborador</td></tr>
           </tbody>
@@ -945,11 +948,11 @@
         <div class="inv-table-wrap">
           <table class="data-table">
             <thead><tr>
-              <th onclick="sortColab('documento')"><div class="sort-wrap">Documento <i class="fas fa-sort sort-ico"></i></div></th>
-              <th onclick="sortColab('nombre')"><div class="sort-wrap">Nombre Completo <i class="fas fa-sort sort-ico"></i></div></th>
-              <th onclick="sortColab('co')"><div class="sort-wrap">CO <i class="fas fa-sort sort-ico"></i></div></th>
-              <th onclick="sortColab('cargo')"><div class="sort-wrap">Cargo <i class="fas fa-sort sort-ico"></i></div></th>
-              <th onclick="sortColab('estado')"><div class="sort-wrap">Estado <i class="fas fa-sort sort-ico"></i></div></th>
+              <th data-field="documento" onclick="sortColab('documento')"><div class="sort-wrap">Documento <i class="fas fa-sort sort-ico"></i></div></th>
+              <th data-field="nombre" onclick="sortColab('nombre')"><div class="sort-wrap">Nombre Completo <i class="fas fa-sort sort-ico"></i></div></th>
+              <th data-field="co" onclick="sortColab('co')"><div class="sort-wrap">CO <i class="fas fa-sort sort-ico"></i></div></th>
+              <th data-field="cargo" onclick="sortColab('cargo')"><div class="sort-wrap">Cargo <i class="fas fa-sort sort-ico"></i></div></th>
+              <th data-field="estado" onclick="sortColab('estado')"><div class="sort-wrap">Estado <i class="fas fa-sort sort-ico"></i></div></th>
               <th>Acciones</th>
             </tr></thead>
             <tbody id="colab-tbody"></tbody>

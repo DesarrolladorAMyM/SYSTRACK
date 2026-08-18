@@ -1178,7 +1178,18 @@ def api_colaboradores(request):
             Q(g215_cargo__icontains=q)
         )
 
-    qs = qs.order_by('g215_nombre')
+    # Orden solicitado por el paginador de la tabla (clic en encabezado)
+    SORT_FIELDS_COLAB = {
+        'documento': 'g215_documento',
+        'nombre':    'g215_nombre',
+        'co':        'g215_co__g207_co',
+        'cargo':     'g215_cargo',
+        'estado':    'g215_estado__g201_descripcion',
+    }
+    sort_field = SORT_FIELDS_COLAB.get(request.GET.get('sort', ''), 'g215_nombre')
+    if request.GET.get('dir', 'asc') == 'desc':
+        sort_field = f'-{sort_field}'
+    qs = qs.order_by(sort_field)
     total = qs.count()
 
     # Paginación
@@ -1830,6 +1841,16 @@ def api_acta_guardar(request, colaborador_id):
         if not body.get(f):
             return _json_err(f'Campo requerido: {f}')
 
+    # Selección parcial de dispositivos (colaborador con varios asignados y
+    # solo se está devolviendo/incluyendo algunos). Si no llega, se usa el
+    # comportamiento de siempre: todos los dispositivos asignados al colaborador.
+    dispositivos_ids = body.get('dispositivos_ids')
+    if dispositivos_ids is not None:
+        try:
+            dispositivos_ids = [int(x) for x in dispositivos_ids]
+        except (TypeError, ValueError):
+            return _json_err('dispositivos_ids inválido')
+
     # 1. Guardar el acta en BD (igual que antes)
     acta = Acta.objects.create(
         g217_colaborador  = c,
@@ -1843,10 +1864,14 @@ def api_acta_guardar(request, colaborador_id):
     c.save(update_fields=['g215_correo'])
 
     # 2. Construir los dispositivos (reutilizando la misma lógica de api_acta_detalle)
+    #    Si llegó dispositivos_ids, el acta solo cubre esos (los demás asignados
+    #    al colaborador quedan intactos, sin aparecer en el acta ni liberarse).
+    asignaciones_acta = AsignacionColaborador.objects.filter(g216_colaborador=c)
+    if dispositivos_ids:
+        asignaciones_acta = asignaciones_acta.filter(g216_dispositivo_id__in=dispositivos_ids)
+
     dispositivos = []
-    for asig in AsignacionColaborador.objects.filter(
-        g216_colaborador=c
-    ).select_related(
+    for asig in asignaciones_acta.select_related(
         'g216_dispositivo__g212_tipo',
         'g216_dispositivo__caract_pc__g222_procesador',
         'g216_dispositivo__caract_pc__g222_so',
@@ -1879,6 +1904,8 @@ def api_acta_guardar(request, colaborador_id):
     if 'DEVOLU' in body['tipo'].upper():
         with transaction.atomic():
             asignaciones = AsignacionColaborador.objects.filter(g216_colaborador=c)
+            if dispositivos_ids:
+                asignaciones = asignaciones.filter(g216_dispositivo_id__in=dispositivos_ids)
             dispositivos_devueltos = list(asignaciones.values_list('g216_dispositivo_id', flat=True))
             asignaciones.delete()
 

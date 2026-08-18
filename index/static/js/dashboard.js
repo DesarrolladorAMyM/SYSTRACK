@@ -2003,6 +2003,8 @@ async function loadColaboradores() {
     if (q) params.set('q', q);
     params.set('page', colabPage);
     params.set('page_size', colabPageSize);
+    params.set('sort', colabSort);
+    params.set('dir', colabSortAsc ? 'asc' : 'desc');
     const res = await apiFetch(`${API.colaboradores}?${params}`);
     if (!res.ok) { showNotif('Error', 'No se pudieron cargar los colaboradores', 'warning'); return; }
     colabData       = res.data.colaboradores;
@@ -2016,7 +2018,18 @@ async function loadColaboradores() {
 
 function renderColaboradores() { colabPage = 1; loadColaboradores(); }
 
+function _updateColabSortIcons() {
+  document.querySelectorAll('#screen-colaboradores .data-table th[data-field]').forEach(th => {
+    const ico = th.querySelector('.sort-ico');
+    if (!ico) return;
+    ico.className = th.dataset.field === colabSort
+      ? `fas ${colabSortAsc ? 'fa-sort-up' : 'fa-sort-down'} sort-ico active`
+      : 'fas fa-sort sort-ico';
+  });
+}
+
 function _renderColabTable() {
+  _updateColabSortIcons();
   const total   = colabTotal;
   const maxPage = colabTotalPages;
   const from    = (colabPage - 1) * colabPageSize;
@@ -2230,12 +2243,18 @@ function openActa(id) {
   document.getElementById('acta-correo').value = c.correo || '';
   document.getElementById('acta-tipo').value            = '';
   document.getElementById('acta-proceso').value         = '';
-  const tbody = document.getElementById('acta-devices-tbody');
+  const tbody   = document.getElementById('acta-devices-tbody');
+  const chkTh   = document.getElementById('acta-chk-th');
+  const chkAll  = document.getElementById('acta-chk-all');
+  const multiple = !!(c.dispositivos && c.dispositivos.length > 1);
+  if (chkTh)  chkTh.style.display = multiple ? '' : 'none';
+  if (chkAll) chkAll.checked = true;
   if (!c.dispositivos || c.dispositivos.length === 0) {
     tbody.innerHTML = '<tr><td colspan="4" class="acta-devices-empty">Sin dispositivos asignados al colaborador</td></tr>';
   } else {
     tbody.innerHTML = c.dispositivos.map(d => `
       <tr>
+        ${multiple ? `<td class="acta-chk-td"><input type="checkbox" class="acta-dev-chk" value="${d.id}" checked></td>` : ''}
         <td>${d.tipo}</td>
         <td><span class="serial-mono">${d.serial}</span></td>
         <td>${d.marca}</td>
@@ -2245,6 +2264,12 @@ function openActa(id) {
   renderActaHist(c);
   document.getElementById('modalActa').classList.add('active');
   setTimeout(() => initSignaturePads(), 100);
+}
+
+function toggleActaAllDevices(masterChk) {
+  document.querySelectorAll('#acta-devices-tbody .acta-dev-chk').forEach(chk => {
+    chk.checked = masterChk.checked;
+  });
 }
 
 function renderActaHist(c) {
@@ -2473,16 +2498,30 @@ async function guardarActa() {
   const tipo    = document.getElementById('acta-tipo').value;
   const proceso = document.getElementById('acta-proceso').value;
   if (!correo || !tipo || !proceso) { showNotif('Campos requeridos', 'Completa correo, tipo de acta y proceso/área', 'warning'); return; }
+
+  // Selección parcial de dispositivos (solo existe si el colaborador tiene >1)
+  const devChks = document.querySelectorAll('#acta-devices-tbody .acta-dev-chk');
+  let dispositivosIds = null;
+  if (devChks.length) {
+    dispositivosIds = Array.from(devChks).filter(chk => chk.checked).map(chk => parseInt(chk.value));
+    if (dispositivosIds.length === 0) {
+      showNotif('Selecciona dispositivos', 'Marca al menos un dispositivo para incluir en el acta', 'warning');
+      return;
+    }
+  }
+
   const getSigData = (id) => {
     const pad = sigPads[id];
     if (!pad) return '';
     return pad.isEmpty() ? '' : pad.toDataURL();
   };
-  const res = await apiFetch(API.acta(colabEditId), 'POST', {
+  const payload = {
     tipo, proceso, correo,
     firma_recibe:  getSigData('sig-recibe'),
     firma_entrega: getSigData('sig-entrega'),
-  });
+  };
+  if (dispositivosIds) payload.dispositivos_ids = dispositivosIds;
+  const res = await apiFetch(API.acta(colabEditId), 'POST', payload);
   if (!res.ok) { showNotif('Error', res.error || 'No se pudo guardar el acta', 'warning'); return; }
   const c = colabData.find(x => x.id === colabEditId);
   showNotif('📄 Acta generada', `Acta de ${tipo} creada exitosamente para ${c ? c.nombre : ''}`, 'success', 5000);

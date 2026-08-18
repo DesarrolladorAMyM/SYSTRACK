@@ -24,6 +24,12 @@ PREFIJO_APP = '/SYSTRACK'
 
 ID_TIPO_REQ_SISTEMAS = 4  # Requerimiento Sistemas — único tipo que usa este formulario
 
+# Los requerimientos "Cerrados sin calificar" (IdEstado=4) solo cuentan para
+# el bloqueo de creación y la campanita de notificaciones si se solucionaron
+# desde esta fecha en adelante — evita arrastrar backlog histórico (hay
+# casos desde 2023 que ya no tiene sentido seguir bloqueando).
+FECHA_INICIO_PENDIENTES_CALIFICAR = datetime.date(2026, 7, 1)
+
 # Categoría bajo la cual viven las subcategorías que exigen aprobación.
 CATEGORIA_SOPORTE_EXTERNO = 'soporte tecnico externo'
 
@@ -267,7 +273,8 @@ def crear_requerimiento(request):
         pendientes_calificar = list(
             Requerimiento.objects
             .using(DB)
-            .filter(CedulaUsuario=cedula, IdEstado=4)
+            .filter(CedulaUsuario=cedula, IdEstado=4,
+                    FechaRealSoluci__gte=FECHA_INICIO_PENDIENTES_CALIFICAR)
             .order_by('-FechaRealSoluci')
         )
         if pendientes_calificar:
@@ -1034,7 +1041,9 @@ def mis_notificaciones(request):
     data_vencidos = [{'codigo': r.codigo(), 'fecha_estimada': str(r.FechaEstiSoluci)} for r in vencidos]
 
     pendientes_calificar = list(
-        Requerimiento.objects.using(DB).filter(CedulaUsuario=cedula, IdEstado=4)
+        Requerimiento.objects.using(DB).filter(
+            CedulaUsuario=cedula, IdEstado=4,
+            FechaRealSoluci__gte=FECHA_INICIO_PENDIENTES_CALIFICAR)
     )
     data_pendientes = [r.codigo() for r in pendientes_calificar]
 
