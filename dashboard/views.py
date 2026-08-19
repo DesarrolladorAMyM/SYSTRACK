@@ -25,7 +25,7 @@ from .models import (
     CaracteristicaMovil, CaracteristicaPantalla, CaracteristicaImpresora,
     CaracteristicaPeriferico, CaracteristicaLicencia,
     DispositivoInactivo, HistorialEquipo, Colaborador,
-    AsignacionColaborador, Acta, CentroCosto, TipoImpresora,
+    AsignacionColaborador, Acta, ActaDispositivo, CentroCosto, TipoImpresora,
     RAM, TipoDisco ,CaracteristicasVideoBeam,TipoActa
 )
 import base64
@@ -1895,6 +1895,14 @@ def api_acta_guardar(request, colaborador_id):
             'caracteristicas': _get_caracteristicas_acta(d),
         })
 
+    # 2a. Snapshot: guardar exactamente qué dispositivos quedaron incluidos en
+    #     esta acta, para que "ver acta" los muestre siempre igual sin importar
+    #     cambios posteriores en las asignaciones del colaborador.
+    ActaDispositivo.objects.bulk_create([
+        ActaDispositivo(g234_acta=acta, g234_dispositivo_id=asig.g216_dispositivo_id)
+        for asig in asignaciones_acta
+    ])
+
     # 2b. Si el acta es de DEVOLUCIÓN → liberar dispositivos y actualizar colaborador
     #     (mismo patrón que api_asignacion_eliminar)
     ESTADO_DISP_LIBRE     = 1   # HABILITADO  (dispositivo libre)
@@ -2057,27 +2065,46 @@ def api_acta_detalle(request, acta_id):
     acta = get_object_or_404(Acta, pk=acta_id)
     colaborador = acta.g217_colaborador
 
+    # Dispositivos que realmente quedaron incluidos en ESTA acta:
+    #  1. Snapshot (ActaDispositivo) — actas creadas después de este fix.
+    #  2. Actas viejas de DEVOLUCIÓN sin snapshot → se reconstruye desde el
+    #     historial de auditoría, que ya quedó marcado con el número de acta.
+    #  3. Cualquier otra acta vieja (Entrega/otro tipo, sin snapshot) → se
+    #     mantiene el comportamiento anterior (asignaciones vigentes del
+    #     colaborador), porque no hay forma de recuperar ese dato retroactivamente.
+    disp_ids = list(
+        ActaDispositivo.objects.filter(g234_acta=acta).values_list('g234_dispositivo_id', flat=True)
+    )
+    if not disp_ids:
+        if 'DEVOLU' in (acta.g217_tipo or '').upper():
+            disp_ids = list(
+                HistorialEquipo.objects.filter(g214_observaciones__icontains=f'Acta #{acta.g217_id}')
+                .values_list('g214_dispositivo_id', flat=True)
+            )
+        else:
+            disp_ids = list(
+                AsignacionColaborador.objects.filter(g216_colaborador=colaborador)
+                .values_list('g216_dispositivo_id', flat=True)
+            )
+
     dispositivos = []
-    for asig in AsignacionColaborador.objects.filter(
-        g216_colaborador=colaborador
-    ).select_related(
-        'g216_dispositivo__g212_tipo',
-        'g216_dispositivo__g212_marca',
-        'g216_dispositivo__caract_pc__g222_procesador',
-        'g216_dispositivo__caract_pc__g222_so',
-        'g216_dispositivo__caract_pc__g222_antivirus',
-        'g216_dispositivo__caract_pc__g222_licencia',
-        'g216_dispositivo__caract_pc__g222_tipo_disco',
-        'g216_dispositivo__caract_pc__g222_almacenamiento',
-        'g216_dispositivo__caract_movil__g223_operador',
-        'g216_dispositivo__caract_movil__g223_almacenamiento',
-        'g216_dispositivo__caract_pantalla',
-        'g216_dispositivo__caract_impresora__g225_tipo_impresora',
-        'g216_dispositivo__caract_periferico',
-        'g216_dispositivo__caract_licencia',
-        'g216_dispositivo__caract_videobeam',
+    for d in Dispositivo.objects.filter(pk__in=disp_ids).select_related(
+        'g212_tipo',
+        'g212_marca',
+        'caract_pc__g222_procesador',
+        'caract_pc__g222_so',
+        'caract_pc__g222_antivirus',
+        'caract_pc__g222_licencia',
+        'caract_pc__g222_tipo_disco',
+        'caract_pc__g222_almacenamiento',
+        'caract_movil__g223_operador',
+        'caract_movil__g223_almacenamiento',
+        'caract_pantalla',
+        'caract_impresora__g225_tipo_impresora',
+        'caract_periferico',
+        'caract_licencia',
+        'caract_videobeam',
     ):
-        d = asig.g216_dispositivo
         dispositivos.append({
             'tipo':            d.g212_tipo.g200_tipo_dispositivo if d.g212_tipo else '—',
             'serial':          d.g212_serial,
@@ -2085,7 +2112,7 @@ def api_acta_detalle(request, acta_id):
             'caracteristicas': _get_caracteristicas_acta(d),
         })
 
-    #  Logo 
+    #  Logo
     logo_b64 = ''
     logo_path = os.path.join(settings.BASE_DIR, 'index', 'static', 'img', 'imagen.png')
     if os.path.exists(logo_path):
@@ -3107,11 +3134,10 @@ def api_mis_req_tic(request):
             'fecha':              _fmt_fecha_hora(r.Fecha)['fecha'],
             'hora':               _fmt_fecha_hora(r.Fecha)['hora'],
             'vencimiento':        _fmt_fecha_hora(r.FechaEstiSoluci)['fecha'],
-            'hora_vencimiento':   _fmt_fecha_hora(r.FechaEstiSoluci)['hora'],'fecha':              str(r.Fecha) if r.Fecha else '',
-            'vencimiento':        str(r.FechaEstiSoluci) if r.FechaEstiSoluci else '',
+            'hora_vencimiento':   _fmt_fecha_hora(r.FechaEstiSoluci)['hora'],
             'plan_accion':        r.PlanAccion or '',
             'solucion':           r.Solucion or '',
-            'fecha_solucion':     str(r.FechaRealSoluci) if r.FechaRealSoluci else '',
+            'fecha_solucion':     _fmt_fecha_hora(r.FechaRealSoluci)['fecha'],
             'categoria_id':       r.IdCategoria,
             'subcategoria_id':    r.IdSubCategoria,
             'id_usuario_asig':    r.IdUsuarioAsig,

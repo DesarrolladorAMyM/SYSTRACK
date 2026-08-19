@@ -614,6 +614,17 @@ function showNotif(title, msg, type = 'success', duration = 3500) {
     onDocumentoConfirmado = null;
   }
 
+  // Continúa el login normal (cargar datos y cerrar el modal de identificación)
+  // una vez que sabemos que el usuario ya tiene sus datos completos.
+  function _continuarTrasValidarCedula(val){
+    cargarMisRequerimientos(val).then(() => {
+      idModalOverlay.classList.add('hidden');
+      const callback = onDocumentoConfirmado;
+      onDocumentoConfirmado = null;
+      if(typeof callback === 'function') callback();
+    });
+  }
+
   function confirmarDocumento(){
     const val = idModalInput.value.trim();
     if(val.length < 5){
@@ -649,12 +660,12 @@ function showNotif(title, msg, type = 'success', duration = 3500) {
         id_co:     resp.id_co,
         co_texto:  resp.co_texto,
       });
-      cargarMisRequerimientos(val).then(() => {
-        idModalOverlay.classList.add('hidden');
-        const callback = onDocumentoConfirmado;
-        onDocumentoConfirmado = null;
-        if(typeof callback === 'function') callback();
-      });
+
+      if(!resp.datos_actualizados){
+        abrirModalActualizarDatos(val, resp);
+        return;
+      }
+      _continuarTrasValidarCedula(val);
     })
     .catch(() => {
       btnSubmit.disabled = false;
@@ -799,6 +810,119 @@ function showNotif(title, msg, type = 'success', duration = 3500) {
         btnSubmit.textContent = 'REGISTRARME';
         registroModalError.textContent = 'Error de conexión. Intenta de nuevo.';
         registroModalError.classList.add('show');
+      }
+    });
+  }
+
+  /* ===== ACTUALIZACIÓN OBLIGATORIA DE DATOS (usuarios existentes) =====
+     Se muestra en vez de dejar entrar a la plataforma cuando validar-cedula
+     responde datos_actualizados=false. No tiene botón de cerrar ni se puede
+     saltar: solo se oculta al guardar exitosamente, y ahí sí continúa el
+     login normal (_continuarTrasValidarCedula). Es de una sola vez por
+     usuario: el backend marca DatosActualizados=true al guardar. */
+  const actualizarModalOverlay = document.getElementById('actualizarModalOverlay');
+  const formActualizarDatos    = document.getElementById('formActualizarDatos');
+  const actualizarModalError   = document.getElementById('actualizarModalError');
+  let catalogosActualizarCargados = false;
+  let cedulaEnActualizacion = '';
+
+  async function cargarCatalogosActualizar(){
+    if(catalogosActualizarCargados) return;
+    try {
+      const r    = await fetch('/SYSTRACK/requerimiento/api/catalogos-registro/');
+      const resp = await r.json();
+      if(!resp.ok) return;
+
+      const opsCargo  = resp.cargos.map(c=>({ value:String(c.IdCargo), label:c.Descripcion }));
+      const opsCentro = resp.centros.map(c=>({ value:String(c.IdCo), label:c.Descripcion }));
+
+      crearSDR('sdr_au_cargo', 'au_cargo', opsCargo);
+      crearSDR('sdr_au_centro', 'au_centro', opsCentro);
+
+      const selArea = document.getElementById('au_area');
+      resp.areas.forEach(a=>{
+        const opt = document.createElement('option');
+        opt.value = a.IdArea; opt.textContent = a.NombreArea;
+        selArea.appendChild(opt);
+      });
+
+      catalogosActualizarCargados = true;
+    } catch(e){ console.error('Error cargando catálogos de actualización:', e); }
+  }
+
+  async function abrirModalActualizarDatos(cedula, datosActuales){
+    cedulaEnActualizacion = cedula;
+    actualizarModalError.textContent = '';
+    actualizarModalError.classList.remove('show');
+    idModalOverlay.classList.add('hidden');
+    actualizarModalOverlay.classList.remove('hidden');
+    await cargarCatalogosActualizar();
+
+    // Precarga lo que el usuario ya tenga, para que solo complete lo que falta.
+    // crearSDR no expone un método para preseleccionar desde afuera, así que
+    // se llenan directamente el input visible (texto) y el hidden (id).
+    if(datosActuales.id_cargo){
+      const wrap = document.getElementById('sdr_au_cargo');
+      document.getElementById('au_cargo').value = String(datosActuales.id_cargo);
+      const visible = wrap?.querySelector('.sdr-input');
+      if(visible){ visible.value = datosActuales.cargo_txt || ''; visible.dataset.selected = datosActuales.cargo_txt || ''; }
+    }
+    if(datosActuales.id_co){
+      const wrap = document.getElementById('sdr_au_centro');
+      document.getElementById('au_centro').value = String(datosActuales.id_co);
+      const visible = wrap?.querySelector('.sdr-input');
+      if(visible){ visible.value = datosActuales.co_texto || ''; visible.dataset.selected = datosActuales.co_texto || ''; }
+    }
+    if(datosActuales.id_area){
+      document.getElementById('au_area').value = String(datosActuales.id_area);
+    }
+    if(datosActuales.email){
+      document.getElementById('au_correo').value = datosActuales.email;
+    }
+  }
+
+  if(formActualizarDatos){
+    formActualizarDatos.addEventListener('submit', async (e)=>{
+      e.preventDefault();
+      const btnSubmit = document.getElementById('actualizarModalSubmit');
+      btnSubmit.disabled = true;
+      btnSubmit.textContent = 'Guardando...';
+      actualizarModalError.textContent = '';
+      actualizarModalError.classList.remove('show');
+
+      const payload = {
+        cedula:   cedulaEnActualizacion,
+        id_cargo: document.getElementById('au_cargo').value,
+        id_co:    document.getElementById('au_centro').value,
+        id_area:  document.getElementById('au_area').value,
+        correo:   document.getElementById('au_correo').value.trim(),
+      };
+
+      try {
+        const r    = await fetch('/SYSTRACK/requerimiento/api/actualizar-datos/', {
+          method: 'POST',
+          headers: {'Content-Type': 'application/json'},
+          body: JSON.stringify(payload)
+        });
+        const resp = await r.json();
+        btnSubmit.disabled = false;
+        btnSubmit.textContent = 'GUARDAR Y CONTINUAR';
+
+        if(!resp.ok){
+          actualizarModalError.textContent = resp.error || 'No se pudieron guardar los datos.';
+          actualizarModalError.classList.add('show');
+          return;
+        }
+
+        actualizarModalOverlay.classList.add('hidden');
+        showNotif('¡Datos actualizados!', 'Gracias por confirmar tu información.', 'success');
+        _continuarTrasValidarCedula(cedulaEnActualizacion);
+
+      } catch(err){
+        btnSubmit.disabled = false;
+        btnSubmit.textContent = 'GUARDAR Y CONTINUAR';
+        actualizarModalError.textContent = 'Error de conexión. Intenta de nuevo.';
+        actualizarModalError.classList.add('show');
       }
     });
   }

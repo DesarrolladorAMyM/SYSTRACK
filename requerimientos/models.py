@@ -66,8 +66,9 @@ class Usuario(models.Model):
     Email          = models.EmailField(max_length=200, null=True, blank=True)
     Contrasena     = models.CharField(max_length=255, null=True, blank=True, db_column='Contraseña')
     FechaCreacion  = models.DateTimeField(null=True, blank=True)
-    TipoUsuario = models.IntegerField(null=True, blank=True) 
+    TipoUsuario = models.IntegerField(null=True, blank=True)
     Estado         = models.IntegerField(null=True, blank=True)
+    DatosActualizados = models.BooleanField(default=False)
 
     class Meta:
         managed  = False

@@ -60,28 +60,36 @@
 
 <!-- MODAL: registro de usuario nuevo -->
 <style>
-  #registroModalOverlay .id-modal-box{
+  #registroModalOverlay .id-modal-box,
+  #actualizarModalOverlay .id-modal-box{
     max-height:88vh;
     overflow-y:auto;
     -webkit-overflow-scrolling:touch;
   }
-  #registroModalOverlay .id-modal-box::-webkit-scrollbar{ width:6px; }
-  #registroModalOverlay .id-modal-box::-webkit-scrollbar-thumb{
+  #registroModalOverlay .id-modal-box::-webkit-scrollbar,
+  #actualizarModalOverlay .id-modal-box::-webkit-scrollbar{ width:6px; }
+  #registroModalOverlay .id-modal-box::-webkit-scrollbar-thumb,
+  #actualizarModalOverlay .id-modal-box::-webkit-scrollbar-thumb{
     background:rgba(0,0,0,0.15); border-radius:999px;
   }
-  #registroModalOverlay #formRegistroUsuario .form-field{
+  #registroModalOverlay #formRegistroUsuario .form-field,
+  #actualizarModalOverlay #formActualizarDatos .form-field{
     margin-bottom:14px;
   }
-  #registroModalOverlay #formRegistroUsuario label{
+  #registroModalOverlay #formRegistroUsuario label,
+  #actualizarModalOverlay #formActualizarDatos label{
     display:block; margin-bottom:6px; font-weight:600; font-size:13.5px;
   }
   #registroModalOverlay #formRegistroUsuario input,
-  #registroModalOverlay #formRegistroUsuario select{
+  #registroModalOverlay #formRegistroUsuario select,
+  #actualizarModalOverlay #formActualizarDatos input,
+  #actualizarModalOverlay #formActualizarDatos select{
     width:100%; box-sizing:border-box;
     padding:10px 12px; border:1px solid #e2e8f0; border-radius:8px;
     font-size:14px; font-family:inherit;
   }
-  #registroModalOverlay #formRegistroUsuario select{
+  #registroModalOverlay #formRegistroUsuario select,
+  #actualizarModalOverlay #formActualizarDatos select{
     appearance:auto; background:#fff; cursor:pointer;
   }
   #screen-equipos .equipo-badge{
@@ -141,6 +149,53 @@
       <div class="id-modal-error" id="registroModalError"></div>
 
       <button type="submit" class="btn-submit" id="registroModalSubmit" style="width:100%;">REGISTRARME</button>
+    </form>
+  </div>
+</div>
+
+<!-- MODAL: actualización obligatoria de datos (usuarios existentes con perfil incompleto).
+     A propósito NO tiene botón de cerrar ni se cierra con click afuera / Escape: es obligatorio. -->
+<div class="id-modal-overlay hidden" id="actualizarModalOverlay">
+  <div class="id-modal-box" style="max-width:480px;">
+    <div class="id-modal-icon"><i class="fa-solid fa-user-pen"></i></div>
+    <h3>Actualiza tus datos</h3>
+    <p>Antes de continuar, necesitamos que confirmes esta información. Es única vez.</p>
+
+    <form id="formActualizarDatos" novalidate>
+      <div class="form-field">
+        <label>Cargo<span class="req-mark">*</span></label>
+        <div class="sdr-wrap" id="sdr_au_cargo">
+          <input type="text" class="sdr-input" placeholder="Buscar cargo..." autocomplete="off">
+          <input type="hidden" id="au_cargo" name="id_cargo">
+          <div class="sdr-dropdown">
+            <div class="sdr-empty">Sin resultados</div>
+          </div>
+        </div>
+      </div>
+      <div class="form-field">
+        <label>Centro de operación<span class="req-mark">*</span></label>
+        <div class="sdr-wrap" id="sdr_au_centro">
+          <input type="text" class="sdr-input" placeholder="Buscar centro de operación..." autocomplete="off">
+          <input type="hidden" id="au_centro" name="id_co">
+          <div class="sdr-dropdown">
+            <div class="sdr-empty">Sin resultados</div>
+          </div>
+        </div>
+      </div>
+      <div class="form-field">
+        <label for="au_area">Área<span class="req-mark">*</span></label>
+        <select id="au_area" name="id_area" required>
+          <option value="">Selecciona tu área...</option>
+        </select>
+      </div>
+      <div class="form-field">
+        <label for="au_correo">Correo corporativo<span class="req-mark">*</span></label>
+        <input type="email" id="au_correo" name="correo" placeholder="correo@empresa.com" required>
+      </div>
+
+      <div class="id-modal-error" id="actualizarModalError"></div>
+
+      <button type="submit" class="btn-submit" id="actualizarModalSubmit" style="width:100%;">GUARDAR Y CONTINUAR</button>
     </form>
   </div>
 </div>

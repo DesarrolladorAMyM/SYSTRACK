@@ -107,6 +107,7 @@ def api_registrar_usuario_req(request):
         FechaCreacion  = datetime.datetime.now(),
         TipoUsuario    = ID_TIPO_USUARIO_AUTORREGISTRO,
         Estado         = 1,
+        DatosActualizados = True,
     )
     usuario.save(using=DB)
 

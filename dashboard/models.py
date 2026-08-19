@@ -745,9 +745,33 @@ class Acta(models.Model):
 
     def __str__(self):
         return f"Acta {self.g217_tipo} — {self.g217_colaborador.g215_nombre}"
-    
-    
-#CENTRO DE COSTOS 
+
+
+# j234 — DISPOSITIVOS INCLUIDOS EN CADA ACTA (snapshot)
+
+class ActaDispositivo(models.Model):
+    """Snapshot de qué dispositivos quedaron incluidos en cada acta al momento
+    de crearla, para que 'ver acta' siempre muestre exactamente eso, sin
+    importar cambios posteriores en las asignaciones del colaborador."""
+    g234_id          = models.AutoField(primary_key=True)
+    g234_acta        = models.ForeignKey(
+        Acta, on_delete=models.CASCADE,
+        db_column='g234_acta_id', related_name='dispositivos_acta'
+    )
+    g234_dispositivo = models.ForeignKey(
+        Dispositivo, on_delete=models.CASCADE,
+        db_column='g234_dispositivo_id'
+    )
+
+    class Meta:
+        db_table = 'j234_acta_dispositivo'
+        unique_together = ('g234_acta', 'g234_dispositivo')
+
+    def __str__(self):
+        return f"Acta #{self.g234_acta_id} ← {self.g234_dispositivo.g212_serial}"
+
+
+#CENTRO DE COSTOS
 
 class CentroCosto(models.Model):
     g228_id          = models.AutoField(primary_key=True)

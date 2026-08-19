@@ -11,6 +11,7 @@ urlpatterns = [
     path('requerimiento/api/validar-cedula/',     views.validar_cedula,           name='req_validar_cedula'),
     path('requerimiento/api/catalogos-registro/', views_registro.api_catalogos_registro,     name='req_catalogos_registro'),
     path('requerimiento/api/registro/',           views_registro.api_registrar_usuario_req,  name='req_registro'),
+    path('requerimiento/api/actualizar-datos/',   views.api_actualizar_datos_usuario,        name='req_actualizar_datos'),
     path('requerimiento/api/equipos/',            views_equipos.api_equipos_lista,           name='req_equipos_lista'),
     path('requerimiento/api/equipos/prestar/',    views_equipos.api_equipos_prestar,         name='req_equipos_prestar'),
     path('requerimiento/api/equipos/devolver/',   views_equipos.api_equipos_devolver,        name='req_equipos_devolver'),

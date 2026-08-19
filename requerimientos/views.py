@@ -146,7 +146,70 @@ def validar_cedula(request):
         'cargo_txt': cargo_txt,
         'id_co':     id_co_limpio,
         'co_texto':  co_texto,
+        'id_area':   usuario.IdArea or '',
+        'datos_actualizados': bool(usuario.DatosActualizados),
     })
+
+
+@csrf_exempt
+@require_POST
+def api_actualizar_datos_usuario(request):
+    """
+    Actualización obligatoria de datos (una sola vez) para usuarios ya
+    existentes cuyo perfil está incompleto. A diferencia del auto-registro
+    (api_registrar_usuario_req), esto actualiza un usuario que YA existe,
+    no crea uno nuevo, y marca DatosActualizados=True para que no se le
+    vuelva a pedir.
+    """
+    try:
+        data = json.loads(request.body)
+    except Exception:
+        return JsonResponse({'ok': False, 'error': 'Solicitud inválida.'}, status=400)
+
+    cedula   = str(data.get('cedula', '')).strip()
+    id_cargo = data.get('id_cargo') or None
+    id_co    = str(data.get('id_co', '')).strip()
+    correo   = str(data.get('correo', '')).strip()
+    id_area  = data.get('id_area') or None
+
+    faltantes = []
+    if not cedula:
+        faltantes.append('Número de documento')
+    if not id_cargo:
+        faltantes.append('Cargo')
+    if not id_co:
+        faltantes.append('Centro de operación')
+    if not id_area:
+        faltantes.append('Área')
+    if not correo:
+        faltantes.append('Correo corporativo')
+
+    if faltantes:
+        return JsonResponse({
+            'ok': False,
+            'error': 'Faltan campos obligatorios: ' + ', '.join(faltantes)
+        }, status=400)
+
+    try:
+        usuario = Usuario.objects.using(DB).get(Cedula=cedula, Estado=1)
+    except Usuario.DoesNotExist:
+        return JsonResponse({'ok': False, 'error': 'Cédula no encontrada o usuario inhabilitado.'}, status=404)
+
+    if not Cargo.objects.using(DB).filter(IdCargo=id_cargo).exists():
+        return JsonResponse({'ok': False, 'error': 'El cargo seleccionado no es válido.'}, status=400)
+    if not CentroOperacion.objects.using(DB).filter(IdCo=id_co).exists():
+        return JsonResponse({'ok': False, 'error': 'El centro de operación seleccionado no es válido.'}, status=400)
+    if not Area.objects.using(DB).filter(IdArea=id_area).exists():
+        return JsonResponse({'ok': False, 'error': 'El área seleccionada no es válida.'}, status=400)
+
+    usuario.IdCargo           = id_cargo
+    usuario.IdCO              = id_co
+    usuario.IdArea            = id_area
+    usuario.Email             = correo
+    usuario.DatosActualizados = True
+    usuario.save(using=DB, update_fields=['IdCargo', 'IdCO', 'IdArea', 'Email', 'DatosActualizados'])
+
+    return JsonResponse({'ok': True})
 
 
 @require_GET
@@ -366,7 +429,18 @@ def crear_requerimiento(request):
             if not es_jefe:
                 token = uuid.uuid4().hex
                 jefe_usr = Usuario.objects.using(DB).filter(Email__iexact=area.CorreoJefe, Estado=1).first()
-                id_jefe_us = jefe_usr.IdUsuario if jefe_usr else None
+                if not jefe_usr:
+                    return JsonResponse({
+                        'ok': False,
+                        'error': 'No se encontró un usuario activo para el jefe de área configurado. Contacta al administrador.'
+                    }, status=400)
+                id_jefe_us = jefe_usr.IdUsuario
+
+        if not usuario.IdCargo:
+            return JsonResponse({
+                'ok': False,
+                'error': 'Tu usuario no tiene un cargo asignado. Contacta al administrador para configurarlo antes de crear un requerimiento.'
+            }, status=400)
 
         estado_inicial = 1 if (not requiere_aprobacion or es_jefe) else 7  # 7 = Pendiente Aprobación
 
@@ -861,6 +935,8 @@ def api_usuario_req_crear(request):
 
         if not cedula or not nombre or not password:
             return JsonResponse({'ok': False, 'error': 'Cédula, nombre y contraseña son requeridos'}, status=400)
+        if not tipo:
+            return JsonResponse({'ok': False, 'error': 'El tipo de usuario es requerido'}, status=400)
         if Usuario.objects.using(DB).filter(Cedula=cedula).exists():
             return JsonResponse({'ok': False, 'error': 'Ya existe un usuario con esa cédula'}, status=400)
 
