@@ -651,7 +651,6 @@ function showNotif(title, msg, type = 'success', duration = 3500) {
         idModalError.classList.add('show');
         return;
       }
-      setDocumento(val);
       setPerfil({
         nombre:    resp.nombre,
         email:     resp.email,
@@ -662,9 +661,14 @@ function showNotif(title, msg, type = 'success', duration = 3500) {
       });
 
       if(!resp.datos_actualizados){
+        // OJO: setDocumento() NO se llama aquí a propósito. Es la señal que el
+        // resto de la app usa como "sesión iniciada" — si se guarda antes de
+        // pasar la actualización obligatoria, con solo recargar la página
+        // (getDocumento() ya truthy) se salta el modal por completo.
         abrirModalActualizarDatos(val, resp);
         return;
       }
+      setDocumento(val);
       _continuarTrasValidarCedula(val);
     })
     .catch(() => {
@@ -916,6 +920,8 @@ function showNotif(title, msg, type = 'success', duration = 3500) {
 
         actualizarModalOverlay.classList.add('hidden');
         showNotif('¡Datos actualizados!', 'Gracias por confirmar tu información.', 'success');
+        // Recién aquí se marca la sesión como iniciada (ver nota en confirmarDocumento).
+        setDocumento(cedulaEnActualizacion);
         _continuarTrasValidarCedula(cedulaEnActualizacion);
 
       } catch(err){
@@ -949,16 +955,19 @@ function showNotif(title, msg, type = 'success', duration = 3500) {
     const doc       = getDocumento();
     const perfil    = getPerfil();
     const avatarUrl = getAvatar(doc);
-    const wrap   = document.getElementById('idChipHeader');
-    const avatar = document.getElementById('idChipHeaderAvatar');
+    const wrap     = document.getElementById('idChipHeader');
+    const avatar   = document.getElementById('idChipHeaderAvatar');
+    const bellWrap = document.getElementById('bellWrap');
     if(!wrap) return;
     if(doc){
       wrap.style.display = 'flex';
+      if(bellWrap) bellWrap.style.display = '';
       if(avatar){
         avatar.innerHTML = avatarUrl ? ('<img src="' + avatarUrl + '" alt="">') : iniciales(perfil.nombre);
       }
     } else {
       wrap.style.display = 'none';
+      if(bellWrap) bellWrap.style.display = 'none';
     }
   }
 
@@ -982,7 +991,22 @@ function showNotif(title, msg, type = 'success', duration = 3500) {
     cerrarDropdown();
     cerrarModalPerfil();
     clearDocumento();
-    pedirDocumento(() => irAVista(document.querySelector('.nav-btn.active').dataset.screen));
+
+    // Limpia todo lo que quedaba pintado en pantalla de la sesión anterior
+    // (antes solo se borraban las variables, pero la tabla y la campanita
+    // seguían mostrando los datos viejos hasta la próxima recarga).
+    NOTIF = { notificaciones: [], vencidos: [], pendientes_calificar: [], total_alertas: 0 };
+    cerrarBellPanel();
+    actualizarBell();
+    actualizarChipsDocumento();
+    page = 1;
+    renderMisReq();
+
+    // Siempre vuelve al inicio al cerrar sesión, sin importar en qué
+    // pantalla estabas (ej. Mis Requerimientos) — y sigue pidiendo la
+    // cédula normalmente para quien quiera identificarse de nuevo.
+    irAVista('home');
+    pedirDocumento(() => irAVista('home'));
   }
 
   document.querySelectorAll('.profile-avatar-btn').forEach(chip=>{
