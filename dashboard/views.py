@@ -369,6 +369,8 @@ def _get_caracteristicas(d):
                 'grupo':     'pantalla',
                 'pulgadas':  str(pan.g224_pulgadas) if pan.g224_pulgadas else '',
                 'resolucion': pan.g224_resolucion or '',
+                'valor_promedio':     str(d.g212_valor_promedio) if d.g212_valor_promedio else '',
+                'valor_arrendamiento': str(d.g212_valor_arrendamiento) if d.g212_valor_arrendamiento else '',
             }
         except Exception:
             return {'grupo': 'pantalla'}

@@ -1252,8 +1252,11 @@ function fillCaracteristicas(tipoNombre, caract) {
         'cel-plan': caract.plan_datos,   'mw-plan': caract.plan_datos, 'tab-plan': caract.plan_datos,
         'cel-gmail': caract.cuenta_gmail, 'tab-gmail': caract.cuenta_gmail,
         'cel-pass': caract.contrasena_gmail, 'tab-pass': caract.contrasena_gmail,
+        'cel-valor': caract.valor_promedio,  'tab-valor': caract.valor_promedio, 'mw-valor': caract.valor_promedio,
+        'cel-arrend': caract.valor_arrendamiento, 'tab-arrend': caract.valor_arrendamiento,
+        'mw-arrend': caract.valor_arrendamiento,  'sim-arrend': caract.valor_arrendamiento,
       },
-      pantalla:  { 'pan-tam': caract.pulgadas, 'pan-res': caract.resolucion },
+      pantalla:  { 'pan-tam': caract.pulgadas, 'pan-res': caract.resolucion, 'pan-valor': caract.valor_promedio, 'pan-arrend': caract.valor_arrendamiento },
       impresora: { 'imp-tipo': caract.tipo_impresora_id, 'imp-funcion': caract.funcion },
       videobeam: { 'vb-lumenes': caract.lumenes },
       periferico: {
@@ -1286,8 +1289,8 @@ function buildCaracteristicasBody() {
     ?.g200_tipo_dispositivo || '';
 
   const g = (id) => document.getElementById(id)?.value || '';
-  if (tipo === 'TORRE DE ESCRITORIO') return { grupo: 'pc', antivirus_id: g('tc-antivirus'), procesador_id: g('tc-procesador'), so_id: g('tc-so'), licencia_id: g('tc-office'), ram: g('tc-ram'), tipo_disco_id: g('tc-disco'), almacenamiento_id: g('tc-alm'), correo_office: g('tc-correo'), valor_promedio: g('tc-valor'), valor_arrendamiento: g('tc-arrend')  };
-  if (tipo === 'PORTATIL')            return { grupo: 'pc', antivirus_id: g('pc-antivirus'), procesador_id: g('pc-procesador'), so_id: g('pc-so'), licencia_id: g('pc-office'), ram: g('pc-ram'), tipo_disco_id: g('pc-disco'), almacenamiento_id: g('pc-alm'), correo_office: g('pc-correo'), activo: g('pc-activo'), valor_promedio: g('pc-valor'), valor_arrendamiento: g('pc-arrend')  };
+  if (tipo === 'TORRE DE ESCRITORIO') return { grupo: 'pc', antivirus_id: g('tc-antivirus'), procesador_id: g('tc-procesador'), so_id: g('tc-so'), licencia_id: g('tc-office'), ram: g('tc-ram'), tipo_disco_id: g('tc-disco'), almacenamiento_id: g('tc-alm'), correo_office: g('tc-correo'), nombre_equipo: g('tc-nombre'), valor_promedio: g('tc-valor'), valor_arrendamiento: g('tc-arrend')  };
+  if (tipo === 'PORTATIL')            return { grupo: 'pc', antivirus_id: g('pc-antivirus'), procesador_id: g('pc-procesador'), so_id: g('pc-so'), licencia_id: g('pc-office'), ram: g('pc-ram'), tipo_disco_id: g('pc-disco'), almacenamiento_id: g('pc-alm'), correo_office: g('pc-correo'), activo: g('pc-activo'), nombre_equipo: g('pc-nombre'), valor_promedio: g('pc-valor'), valor_arrendamiento: g('pc-arrend')  };
   if (tipo === 'CELULAR')             return { grupo: 'movil', numero_linea: g('cel-num'), operador_id: g('cel-op'), imei1: g('cel-imei1'), imei2: g('cel-imei2'), plan_datos: g('cel-plan'), cuenta_gmail: g('cel-gmail'), contrasena_gmail: g('cel-pass'), valor_promedio: g('cel-valor'), valor_arrendamiento: g('cel-arrend') };
   if (tipo === 'TABLET')              return { grupo: 'movil', numero_linea: g('tab-num'), operador_id: g('tab-op'), imei1: g('tab-imei1'), imei2: g('tab-imei2'), plan_datos: g('tab-plan'), cuenta_gmail: g('tab-gmail'), contrasena_gmail: g('tab-pass'), valor_promedio: g('tab-valor'), valor_arrendamiento: g('tab-arrend') };
   if (tipo === 'MODEM WIFI')          return { grupo: 'movil', numero_linea: g('mw-num'), operador_id: g('mw-op'), imei1: g('mw-imei1'), imei2: g('mw-imei2'), plan_datos: g('mw-plan'), valor_promedio: g('mw-valor'), valor_arrendamiento: g('mw-arrend') };
