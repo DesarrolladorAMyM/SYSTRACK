@@ -489,6 +489,12 @@ def _formatear_serial(prefijo, numero, padding):
     return f'{prefijo}{numero_str}'
 
 
+def _normalizar_serial(valor):
+    """Quita todos los espacios en blanco (incluso internos) del serial,
+    para que 'ML- 167904' y 'ML-167904' se traten como el mismo valor."""
+    return re.sub(r'\s+', '', valor or '')
+
+
 def _generar_siguiente_serial(prefijo, padding):
     """
     Calcula el siguiente serial secuencial para el prefijo dado
@@ -567,7 +573,7 @@ def api_dispositivo_crear(request):
             config_serie = SERIES_AUTOMATICAS.get(tipo_nombre)
 
             # Generar serial automático si no viene
-            serial = body.get('serial', '').strip()
+            serial = _normalizar_serial(body.get('serial', ''))
             if not serial:
                 if config_serie:
                     prefijo, padding = config_serie
@@ -576,6 +582,8 @@ def api_dispositivo_crear(request):
                     ultimo = Dispositivo.objects.order_by('-g212_id').first()
                     siguiente_id = (ultimo.g212_id + 1) if ultimo else 1
                     serial = str(siguiente_id).zfill(5)
+            elif Dispositivo.objects.filter(g212_serial__iexact=serial).exists():
+                return _json_err(f'Ya existe un dispositivo con el serial "{serial}"')
 
             d = Dispositivo.objects.create(
                 g212_serial=serial,
@@ -610,7 +618,11 @@ def api_dispositivo_editar(request, pk):
 
     try:
         with transaction.atomic():
-            d.g212_serial = body.get('serial', d.g212_serial).strip()
+            nuevo_serial = _normalizar_serial(body.get('serial', d.g212_serial))
+            if (nuevo_serial and nuevo_serial.lower() != d.g212_serial.lower()
+                    and Dispositivo.objects.filter(g212_serial__iexact=nuevo_serial).exclude(pk=d.pk).exists()):
+                return _json_err(f'Ya existe un dispositivo con el serial "{nuevo_serial}"')
+            d.g212_serial = nuevo_serial or d.g212_serial
             d.g212_tipo_id = body.get('tipo_id', d.g212_tipo_id)
             d.g212_marca_id = body.get('marca_id') or None
             d.g212_propietario_id = body.get('propietario_id', d.g212_propietario_id)
@@ -2779,7 +2791,7 @@ def api_carga_masiva(request):
 
         for num_fila, fila in enumerate(filas[1:], start=2):
 
-            serial = _val(fila, 'serial')
+            serial = _normalizar_serial(_val(fila, 'serial'))
             if not serial:
                 omitidos += 1
                 errores.append({
