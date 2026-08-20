@@ -675,17 +675,20 @@ def _save_caracteristicas(d, body):
             }
         )
         # Guardar nombre_equipo, valor_promedio y valor_arrendamiento (campos de Dispositivo)
-        # que vienen dentro de la sección Características de TORRE/PORTÁTIL
+        # que vienen dentro de la sección Características de TORRE/PORTÁTIL.
+        # Se usa 'in caract' (no 'is not None') para vp/va: así, si el usuario
+        # deja el campo en blanco a propósito, se guarda vacío en vez de
+        # conservar para siempre el valor anterior.
         nombre = caract.get('nombre_equipo')
-        vp = caract.get('valor_promedio') or None
-        va = caract.get('valor_arrendamiento') or None
-        if nombre or vp is not None or va is not None:
+        tiene_vp = 'valor_promedio' in caract
+        tiene_va = 'valor_arrendamiento' in caract
+        if nombre or tiene_vp or tiene_va:
             if nombre:
                 d.g212_nombre_equipo = nombre
-            if vp is not None:
-                d.g212_valor_promedio = vp
-            if va is not None:
-                d.g212_valor_arrendamiento = va
+            if tiene_vp:
+                d.g212_valor_promedio = caract.get('valor_promedio') or None
+            if tiene_va:
+                d.g212_valor_arrendamiento = caract.get('valor_arrendamiento') or None
             d.save()
 
     elif grupo == 'movil':
@@ -704,13 +707,13 @@ def _save_caracteristicas(d, body):
             }
         )
         # Guardar valor_promedio y valor_arrendamiento si vienen en caract (MODEM, SIMCARD, TABLET)
-        vp = caract.get('valor_promedio') or None
-        va = caract.get('valor_arrendamiento') or None
-        if vp is not None or va is not None:
-            if vp is not None:
-                d.g212_valor_promedio = vp
-            if va is not None:
-                d.g212_valor_arrendamiento = va
+        tiene_vp = 'valor_promedio' in caract
+        tiene_va = 'valor_arrendamiento' in caract
+        if tiene_vp or tiene_va:
+            if tiene_vp:
+                d.g212_valor_promedio = caract.get('valor_promedio') or None
+            if tiene_va:
+                d.g212_valor_arrendamiento = caract.get('valor_arrendamiento') or None
             d.save()
 
     elif grupo == 'pantalla':
@@ -722,13 +725,13 @@ def _save_caracteristicas(d, body):
             }
         )
         # Guardar valor_promedio y valor_arrendamiento si vienen en caract (PANTALLA)
-        vp = caract.get('valor_promedio') or None
-        va = caract.get('valor_arrendamiento') or None
-        if vp is not None or va is not None:
-            if vp is not None:
-                d.g212_valor_promedio = vp
-            if va is not None:
-                d.g212_valor_arrendamiento = va
+        tiene_vp = 'valor_promedio' in caract
+        tiene_va = 'valor_arrendamiento' in caract
+        if tiene_vp or tiene_va:
+            if tiene_vp:
+                d.g212_valor_promedio = caract.get('valor_promedio') or None
+            if tiene_va:
+                d.g212_valor_arrendamiento = caract.get('valor_arrendamiento') or None
             d.save()
 
     elif grupo == 'impresora':
@@ -774,9 +777,8 @@ def _save_caracteristicas(d, body):
                 'g227_almacenamiento_id': caract.get('almacenamiento_id') or None,
             }
         )
-        va = caract.get('valor_arrendamiento') or None
-        if va is not None:
-            d.g212_valor_arrendamiento = va
+        if 'valor_arrendamiento' in caract:
+            d.g212_valor_arrendamiento = caract.get('valor_arrendamiento') or None
             d.save()
 
     elif grupo== 'videobeam':
