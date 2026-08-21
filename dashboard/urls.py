@@ -74,6 +74,8 @@ urlpatterns = [
      path('api/categorias-req/',     views.api_categorias_req,     name='api_categorias_req'),
      path('api/subcategorias-req/',  views.api_subcategorias_req,  name='api_subcategorias_req'),
      
+     path('api/notificaciones-bell/', views.api_notificaciones_bell, name='api_notificaciones_bell'),
+
      path('api/indicadores/resumen/',   views.api_indicadores_resumen,   name='api_indicadores_resumen'),
      path('api/indicadores/tendencia/', views.api_indicadores_tendencia, name='api_indicadores_tendencia'),
      path('api/indicadores/calificacion/', views.api_indicadores_calificacion, name='api_indicadores_calificacion'),

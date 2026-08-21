@@ -943,3 +943,39 @@ a.nav-btn.active {
 
 .data-table td { vertical-align: middle; }
 
+/* ===== CAMPANITA DE NOTIFICACIONES (header) ===== */
+.bell-wrap{position:relative;}
+.bell-btn{
+  width:42px;height:42px;border-radius:50%;background:rgba(27,70,152,0.08);
+  border:1.5px solid var(--border);color:var(--primary);font-size:15px;
+  display:flex;align-items:center;justify-content:center;cursor:pointer;transition:background .2s;position:relative;
+}
+.bell-btn:hover{background:rgba(27,70,152,0.16);}
+.bell-btn.bell-alert i{animation:bell-shake 2.2s ease-in-out infinite;}
+.bell-badge{
+  display:none;position:absolute;top:-4px;right:-4px;min-width:18px;height:18px;padding:0 4px;
+  background:#dc2626;color:#fff;border:1.5px solid #fff;border-radius:10px;
+  font-size:10px;font-weight:800;line-height:15px;text-align:center;font-family:'DM Sans',sans-serif;
+}
+@keyframes bell-shake{
+  0%,85%,100%{transform:rotate(0);}
+  87%{transform:rotate(-12deg);} 89%{transform:rotate(10deg);} 91%{transform:rotate(-8deg);}
+  93%{transform:rotate(6deg);} 95%{transform:rotate(0);}
+}
+.bell-panel{
+  position:fixed;width:340px;max-height:420px;overflow-y:auto;
+  background:#fff;border-radius:var(--radius-lg);box-shadow:0 12px 32px rgba(0,0,0,.18);
+  border:1.5px solid var(--border);z-index:1000;
+}
+.bell-panel.hidden{display:none;}
+.bell-panel-header{padding:14px 16px;font-weight:700;font-size:13.5px;color:var(--text-primary);border-bottom:1.5px solid var(--border);}
+.bell-panel-empty{padding:24px 16px;text-align:center;color:var(--text-light);font-size:13px;}
+.bell-item{display:flex;gap:10px;padding:12px 16px;border-bottom:1px solid var(--border);cursor:pointer;transition:background .15s;}
+.bell-item:last-child{border-bottom:none;}
+.bell-item:hover{background:rgba(27,70,152,0.05);}
+.bell-item-icon{width:32px;height:32px;border-radius:50%;display:flex;align-items:center;justify-content:center;flex-shrink:0;font-size:13px;color:#fff;background:#dc2626;}
+.bell-item-body{flex:1;min-width:0;}
+.bell-item-title{font-size:12.5px;font-weight:700;color:var(--text-primary);}
+.bell-item-msg{font-size:12px;color:var(--text-secondary);margin-top:2px;line-height:1.4;}
+.bell-item-time{font-size:10.5px;color:var(--text-light);margin-top:4px;}
+

@@ -488,6 +488,16 @@
         </div>
       </div>
       <div class="header-actions">
+        <div class="bell-wrap" id="bellWrap">
+          <button class="bell-btn" id="btnBell" title="Notificaciones" onclick="toggleBellPanel(event)">
+            <i class="fa-solid fa-bell"></i>
+            <span class="bell-badge" id="bellBadge"></span>
+          </button>
+          <div class="bell-panel hidden" id="bellPanel">
+            <div class="bell-panel-header">Requerimientos vencidos</div>
+            <div class="bell-panel-list" id="bellPanelList"></div>
+          </div>
+        </div>
         <div class="user-chip">
           <div class="avatar">{{ request.session.req_user_primer_nombre|slice:":1"|upper }}</div>
           <div class="user-text">

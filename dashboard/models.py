@@ -643,11 +643,15 @@ class TipoActa(models.Model):
 class HistorialEquipo(models.Model):
     g214_id          = models.AutoField(primary_key=True)
     g214_dispositivo = models.ForeignKey(
-        Dispositivo, on_delete=models.CASCADE,
-        db_column='g214_dispositivo_id', related_name='historial'
+        Dispositivo, on_delete=models.SET_NULL,
+        null=True, db_column='g214_dispositivo_id', related_name='historial'
     )
+    # Instantánea de texto ('SERIAL — TIPO — MARCA') tomada al crear el
+    # registro, para que el historial siga siendo legible aunque el
+    # dispositivo (g214_dispositivo) sea eliminado permanentemente después.
+    g214_dispositivo_desc = models.CharField(max_length=200, blank=True, null=True)
     g214_novedad     = models.ForeignKey(
-        TipoNovedad, on_delete=models.SET_NULL,      
+        TipoNovedad, on_delete=models.SET_NULL,
         null=True, db_column='g214_novedad_id'
     )
     g214_fecha          = models.DateField()
@@ -664,7 +668,9 @@ class HistorialEquipo(models.Model):
         db_table = 'j214_historialequipo'
 
     def __str__(self):
-        return f"{self.g214_dispositivo.g212_serial} — {self.g214_fecha}"
+        if self.g214_dispositivo:
+            return f"{self.g214_dispositivo.g212_serial} — {self.g214_fecha}"
+        return f"{self.g214_dispositivo_desc or '(dispositivo eliminado)'} — {self.g214_fecha}"
 
 
 

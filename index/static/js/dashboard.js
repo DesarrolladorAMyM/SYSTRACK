@@ -33,6 +33,7 @@ const API = {
   categoriasReq:     `${BASE}/inventario/api/categorias-req/`,
   subcategoriasReq:  (categoriaId) => `${BASE}/inventario/api/subcategorias-req/?categoria_id=${categoriaId}`,
   reqTicAccion:      (id) => `${BASE}/inventario/api/req-tic/${id}/accion/`,
+  notificacionesBell: `${BASE}/inventario/api/notificaciones-bell/`,
 
   // ── Préstamo de Equipos ──
   equiposAdmin:        `${BASE}/inventario/api/prestamo-equipos/`,
@@ -148,6 +149,48 @@ function cerrarSesion() {
 
 // NAVEGACIÓN
 
+// Buscadores/filtros a limpiar al entrar a cada sección, para no arrastrar
+// una búsqueda vieja de una visita anterior (mismo criterio que resetCC).
+// Solo se listan los inputs y la variable de página; las funciones de carga
+// de cada sección ya leen esos inputs en vivo, así que basta con vaciarlos
+// antes de que esas funciones se ejecuten.
+const FILTROS_SECCION = {
+  'inventario':               { inputs: ['inv-search', 'inv-filter-tipo', 'inv-filter-estado'], onReset: () => { invPage = 1; } },
+  'inactivos':                { inputs: ['inac-search', 'inac-filter-tipo', 'inac-filter-estado'], onReset: () => { inacPage = 1; } },
+  'colaboradores':            { inputs: ['colab-search'], onReset: () => { colabPage = 1; } },
+  'prestamo-equipos':         { inputs: ['equipo-search'] },
+  'mis-requerimientos':       { inputs: ['req-search'], onReset: () => { reqActPage = 1; reqCerPage = 1; } },
+  'gestion-usuarios':         { inputs: ['usr-search'], onReset: () => { usrPage = 1; } },
+  'asignar-requerimientos':   { inputs: ['asig-search'], onReset: () => { asigPage = 1; } },
+  'historial-requerimientos': { inputs: ['hreq-search'], onReset: () => { hreqPage = 1; } },
+};
+
+function resetFiltrosSeccion(id) {
+  const cfg = FILTROS_SECCION[id];
+  if (!cfg) return;
+  cfg.inputs.forEach(inputId => {
+    const el = document.getElementById(inputId);
+    if (el) el.value = '';
+  });
+  if (cfg.onReset) cfg.onReset();
+}
+
+// Reinicia filtros y resultados de Historial de Equipo al entrar a la
+// pantalla — hoy es la única sección que showScreen no recargaba en absoluto.
+function resetHistorialEquipo() {
+  ['hist-tipo', 'hist-serial'].forEach(id => {
+    const el = document.getElementById(id);
+    if (el) el.value = '';
+  });
+  histData = [];
+  histPage = 1;
+  const wrap = document.getElementById('hist-resultado-wrap');
+  const card = wrap && wrap.querySelector('.hist-ficha-card');
+  if (card) card.remove();
+  const initial = document.getElementById('hist-initial');
+  if (initial) initial.style.display = '';
+}
+
 function showScreen(id) {
   document.querySelectorAll('.screen').forEach(s => s.classList.remove('active'));
   const t = document.getElementById('screen-' + id);
@@ -166,6 +209,10 @@ function showScreen(id) {
   inacLoading  = false;
   colabLoading = false;
 
+  // Limpia buscadores/filtros de la sección antes de que sus funciones de
+  // carga lean esos inputs, para no arrastrar una búsqueda de una visita anterior
+  resetFiltrosSeccion(id);
+
   if (id === 'inventario')              loadInventario();
   if (id === 'inactivos')               loadInactivos();
   if (id === 'colaboradores')           loadColaboradores();
@@ -176,6 +223,7 @@ function showScreen(id) {
   if (id === 'historial-requerimientos') cargarHistorialReq();
   if (id === 'prestamo-equipos')        loadEquiposAdmin();
   if (id === 'centro-costo')            resetCC();
+  if (id === 'historial-equipo')        resetHistorialEquipo();
 }
 
 // Reinicia filtros y resultados de Centro de Costos al entrar a la pantalla,
@@ -2750,6 +2798,108 @@ function downloadCSV(rows, filename) {
 }
 
 // ============================================================
+// CAMPANITA DE NOTIFICACIONES (header) — requerimientos TIC vencidos
+// asignados al usuario logueado. Se refresca solo (polling) para que se
+// sienta casi en tiempo real sin necesitar WebSockets/infraestructura nueva.
+// ============================================================
+let BELL_VENCIDOS = [];
+
+async function cargarNotificacionesBell() {
+  const res = await apiFetch(API.notificacionesBell);
+  if (!res.ok) return;
+  BELL_VENCIDOS = res.data.vencidos || [];
+  renderBellBadge();
+  const panel = document.getElementById('bellPanel');
+  if (panel && !panel.classList.contains('hidden')) renderBellPanel();
+}
+
+function renderBellBadge() {
+  const btn   = document.getElementById('btnBell');
+  const badge = document.getElementById('bellBadge');
+  if (!btn || !badge) return;
+  const total = BELL_VENCIDOS.length;
+  if (total > 0) {
+    badge.textContent = total > 9 ? '9+' : String(total);
+    badge.style.display = 'flex';
+    btn.classList.add('bell-alert');
+  } else {
+    badge.style.display = 'none';
+    btn.classList.remove('bell-alert');
+  }
+}
+
+function renderBellPanel() {
+  const list = document.getElementById('bellPanelList');
+  if (!list) return;
+  if (BELL_VENCIDOS.length === 0) {
+    list.innerHTML = '<div class="bell-panel-empty">No tienes requerimientos vencidos.</div>';
+    return;
+  }
+  list.innerHTML = BELL_VENCIDOS.map(v => `
+    <div class="bell-item" data-codigo="${v.codigo}">
+      <div class="bell-item-icon"><i class="fa-solid fa-clock"></i></div>
+      <div class="bell-item-body">
+        <div class="bell-item-title">${v.codigo} está vencido</div>
+        <div class="bell-item-msg">${v.descripcion || 'Sin descripción'}</div>
+        <div class="bell-item-time">Debió resolverse antes del ${v.fecha_estimada}</div>
+      </div>
+    </div>`).join('');
+
+  list.querySelectorAll('.bell-item').forEach(el => {
+    el.addEventListener('click', () => {
+      const codigo = el.dataset.codigo;
+      cerrarBellPanel();
+      showScreen('asignar-requerimientos');
+      setTimeout(() => {
+        const buscador = document.getElementById('asig-search');
+        if (buscador) { buscador.value = codigo; asigPage = 1; renderAsignar(); }
+      }, 500);
+    });
+  });
+}
+
+function toggleBellPanel(ev) {
+  ev.stopPropagation();
+  const panel = document.getElementById('bellPanel');
+  if (!panel) return;
+  panel.classList.contains('hidden') ? abrirBellPanel() : cerrarBellPanel();
+}
+
+function abrirBellPanel() {
+  const btn   = document.getElementById('btnBell');
+  const panel = document.getElementById('bellPanel');
+  if (!btn || !panel) return;
+  const rect = btn.getBoundingClientRect();
+  panel.style.top   = (rect.bottom + 10) + 'px';
+  panel.style.right = (window.innerWidth - rect.right) + 'px';
+  panel.classList.remove('hidden');
+  renderBellPanel();
+}
+
+function cerrarBellPanel() {
+  document.getElementById('bellPanel')?.classList.add('hidden');
+}
+
+document.addEventListener('click', (ev) => {
+  const panel = document.getElementById('bellPanel');
+  const wrap  = document.getElementById('bellWrap');
+  if (!panel || panel.classList.contains('hidden')) return;
+  if (wrap && !wrap.contains(ev.target)) cerrarBellPanel();
+});
+
+window.addEventListener('resize', () => {
+  const panel = document.getElementById('bellPanel');
+  if (panel && !panel.classList.contains('hidden')) abrirBellPanel();
+});
+
+// Refresco cada 15s + al volver a la pestaña — se siente casi instantáneo
+// sin necesitar WebSockets (ver conversación sobre infraestructura del servidor).
+setInterval(cargarNotificacionesBell, 15000);
+document.addEventListener('visibilitychange', () => {
+  if (document.visibilityState === 'visible') cargarNotificacionesBell();
+});
+
+// ============================================================
 // INIT — único DOMContentLoaded
 // ============================================================
 window.addEventListener('DOMContentLoaded', async () => {
@@ -2758,6 +2908,9 @@ window.addEventListener('DOMContentLoaded', async () => {
 
   // 2. Dashboard inicial
   await loadDashboard();
+
+  // 3. Campanita de notificaciones (no se espera, no debe bloquear el resto)
+  cargarNotificacionesBell();
 
   // ── Tipo dispositivo → características dinámicas ──
   document.getElementById('f-tipo')?.addEventListener('change', async function () {

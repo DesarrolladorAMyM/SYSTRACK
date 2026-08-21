@@ -490,9 +490,10 @@ def _formatear_serial(prefijo, numero, padding):
 
 
 def _normalizar_serial(valor):
-    """Quita todos los espacios en blanco (incluso internos) del serial,
-    para que 'ML- 167904' y 'ML-167904' se traten como el mismo valor."""
-    return re.sub(r'\s+', '', valor or '')
+    """Quita todos los espacios en blanco (incluso internos) del serial y lo
+    pasa a mayúsculas, para que 'ML- 167904', 'ml-167904' y 'ML-167904' se
+    traten como el mismo valor."""
+    return re.sub(r'\s+', '', valor or '').upper()
 
 
 def _generar_siguiente_serial(prefijo, padding):
@@ -592,7 +593,7 @@ def api_dispositivo_crear(request):
                 g212_propietario_id=body['propietario_id'],
                 g212_estado_id=body['estado_id'],
                 g212_co_id=body['co_id'],
-                g212_nombre_equipo=body.get('nombre_equipo', ''),
+                g212_nombre_equipo=(body.get('nombre_equipo') or '').strip().upper(),
                 g212_valor_promedio=body.get('valor_promedio') or None,
                 g212_valor_arrendamiento=body.get('valor_arrendamiento') or None,
                 g212_departamento_id=body['departamento_id'],
@@ -633,7 +634,7 @@ def api_dispositivo_editar(request, pk):
             # un cuerpo sin ese dato NO debe borrar lo que ya estaba guardado
             # (ej. cargado por Excel) en dispositivos sin esa sección.
             if body.get('nombre_equipo'):
-                d.g212_nombre_equipo = body['nombre_equipo']
+                d.g212_nombre_equipo = body['nombre_equipo'].strip().upper()
             if body.get('valor_promedio') not in (None, ''):
                 d.g212_valor_promedio = body['valor_promedio']
             if body.get('valor_arrendamiento') not in (None, ''):
@@ -643,6 +644,13 @@ def api_dispositivo_editar(request, pk):
             d.g212_observaciones = body.get('observaciones', d.g212_observaciones)
             d.save()
             _save_caracteristicas(d, body)
+            _registrar_historial_auto(
+                dispositivo    = d,
+                nombre_novedad = 'EDICIÓN',
+                responsable    = request.user.get_full_name() or request.user.username,
+                observaciones  = 'Dispositivo editado desde Inventario.',
+                co             = d.g212_co,
+            )
     except Exception as e:
         return _json_err(str(e))
 
@@ -684,7 +692,7 @@ def _save_caracteristicas(d, body):
         tiene_va = 'valor_arrendamiento' in caract
         if nombre or tiene_vp or tiene_va:
             if nombre:
-                d.g212_nombre_equipo = nombre
+                d.g212_nombre_equipo = nombre.strip().upper()
             if tiene_vp:
                 d.g212_valor_promedio = caract.get('valor_promedio') or None
             if tiene_va:
@@ -803,6 +811,13 @@ def api_dispositivo_eliminar(request, pk):
     """Elimina un dispositivo permanentemente."""
     d = get_object_or_404(Dispositivo, pk=pk)
     serial = d.g212_serial
+    _registrar_historial_auto(
+        dispositivo    = d,
+        nombre_novedad = 'ELIMINACIÓN PERMANENTE',
+        responsable    = request.user.get_full_name() or request.user.username,
+        observaciones  = f'Dispositivo eliminado permanentemente desde Inventario.',
+        co             = d.g212_co,
+    )
     d.delete()
     return _json_ok({'serial': serial})
 
@@ -834,26 +849,51 @@ def api_historial(request):
 
     serial = request.GET.get('serial', '').strip()
     if serial:
-        qs = qs.filter(g214_dispositivo__g212_serial__icontains=serial)
+        # Incluye también dispositivos ya eliminados: para esos no queda
+        # relación en vivo, así que se busca en la instantánea de texto
+        # (g214_dispositivo_desc) guardada en el momento del evento.
+        qs = qs.filter(
+            Q(g214_dispositivo__g212_serial__icontains=serial) |
+            Q(g214_dispositivo__isnull=True, g214_dispositivo_desc__icontains=serial)
+        )
 
     registros = []
     for h in qs:
-        registros.append({
-            'id':          h.g214_id,
-            'serial':      h.g214_dispositivo.g212_serial,
-            'tipo':        h.g214_dispositivo.g212_tipo.g200_tipo_dispositivo if h.g214_dispositivo.g212_tipo else '—',
-            'marca':       h.g214_dispositivo.g212_marca.g202_marca if h.g214_dispositivo.g212_marca else '—',   
-            'propietario': h.g214_dispositivo.g212_propietario.g203_propietario if h.g214_dispositivo.g212_propietario else '—',
-            'estado':      h.g214_dispositivo.g212_estado.g201_descripcion if h.g214_dispositivo.g212_estado else '—',
-            'co_equipo':   f"{h.g214_dispositivo.g212_co.g207_co}" if h.g214_dispositivo.g212_co else '—',          
-            'novedad':     h.g214_novedad.g220_novedad if h.g214_novedad else '—',
-            'novedad_id':  h.g214_novedad_id,
-            'fecha':       h.g214_fecha.strftime('%Y-%m-%d'),
-            'hora':        h.g214_hora.strftime('%H:%M'),
-            'responsable': h.g214_responsable,
-            'co':          f"{h.g214_co.g207_co} — {h.g214_co.g207_descripcion_co}" if h.g214_co else '—',
-            'observaciones': h.g214_observaciones or '',
-        })
+        dispositivo = h.g214_dispositivo
+        if dispositivo:
+            registros.append({
+                'id':          h.g214_id,
+                'serial':      dispositivo.g212_serial,
+                'tipo':        dispositivo.g212_tipo.g200_tipo_dispositivo if dispositivo.g212_tipo else '—',
+                'marca':       dispositivo.g212_marca.g202_marca if dispositivo.g212_marca else '—',
+                'propietario': dispositivo.g212_propietario.g203_propietario if dispositivo.g212_propietario else '—',
+                'estado':      dispositivo.g212_estado.g201_descripcion if dispositivo.g212_estado else '—',
+                'co_equipo':   f"{dispositivo.g212_co.g207_co}" if dispositivo.g212_co else '—',
+                'novedad':     h.g214_novedad.g220_novedad if h.g214_novedad else '—',
+                'novedad_id':  h.g214_novedad_id,
+                'fecha':       h.g214_fecha.strftime('%Y-%m-%d'),
+                'hora':        h.g214_hora.strftime('%H:%M'),
+                'responsable': h.g214_responsable,
+                'co':          f"{h.g214_co.g207_co} — {h.g214_co.g207_descripcion_co}" if h.g214_co else '—',
+                'observaciones': h.g214_observaciones or '',
+            })
+        else:
+            registros.append({
+                'id':          h.g214_id,
+                'serial':      h.g214_dispositivo_desc or '(dispositivo eliminado)',
+                'tipo':        '—',
+                'marca':       '—',
+                'propietario': '—',
+                'estado':      'ELIMINADO',
+                'co_equipo':   '—',
+                'novedad':     h.g214_novedad.g220_novedad if h.g214_novedad else '—',
+                'novedad_id':  h.g214_novedad_id,
+                'fecha':       h.g214_fecha.strftime('%Y-%m-%d'),
+                'hora':        h.g214_hora.strftime('%H:%M'),
+                'responsable': h.g214_responsable,
+                'co':          f"{h.g214_co.g207_co} — {h.g214_co.g207_descripcion_co}" if h.g214_co else '—',
+                'observaciones': h.g214_observaciones or '',
+            })
 
     return _json_ok(registros)
 
@@ -865,14 +905,22 @@ def _registrar_historial_auto(dispositivo, nombre_novedad, responsable, observac
     """
     Crea un registro en HistorialEquipo automáticamente.
     Crea el TipoNovedad si no existe.
+
+    Siempre guarda una instantánea de texto (serial — tipo — marca) del
+    dispositivo en g214_dispositivo_desc, para que el registro se pueda
+    seguir identificando aunque el dispositivo sea eliminado permanentemente
+    más adelante (g214_dispositivo pasaría a NULL por on_delete=SET_NULL).
     """
     from datetime import date, datetime
     novedad_obj, _ = TipoNovedad.objects.get_or_create(
         g220_novedad__iexact=nombre_novedad,
         defaults={'g220_novedad': nombre_novedad, 'g220_estado': True}
     )
+    tipo_nombre = dispositivo.g212_tipo.g200_tipo_dispositivo if dispositivo.g212_tipo else '—'
+    marca_nombre = dispositivo.g212_marca.g202_marca if dispositivo.g212_marca else '—'
     HistorialEquipo.objects.create(
-        g214_dispositivo   = dispositivo,
+        g214_dispositivo      = dispositivo,
+        g214_dispositivo_desc = f"{dispositivo.g212_serial} — {tipo_nombre} — {marca_nombre}",
         g214_novedad       = novedad_obj,
         g214_fecha         = date.today(),
         g214_hora          = datetime.now().time(),
@@ -1295,8 +1343,8 @@ def api_colaborador_crear(request):
         return _json_err('JSON inválido')
 
     documento = (body.get('documento') or '').strip()
-    nombre    = (body.get('nombre') or '').strip()
-    cargo     = (body.get('cargo') or '').strip()
+    nombre    = (body.get('nombre') or '').strip().upper()
+    cargo     = (body.get('cargo') or '').strip().upper()
     correo    = (body.get('correo') or '').strip()
     co_id     = body.get('co_id') or None
     estado_id = body.get('estado_id') or None
@@ -3315,6 +3363,44 @@ def api_todos_req_tic(request):
             'url_adjunto':        adjunto['url'] if adjunto else '',
         })
     return _json_ok({'requerimientos': data, 'total': len(data)})
+
+
+@login_required(login_url='login')
+@require_http_methods(['GET'])
+def api_notificaciones_bell(request):
+    """
+    Campanita del header del Dashboard: requerimientos TIC asignados al
+    usuario logueado (técnico) que ya vencieron su fecha estimada de
+    solución y siguen activos.
+
+    Distinto del sistema de notificaciones del Portal de Requerimientos
+    (mv_Notificaciones / mis_notificaciones): ese avisa al SOLICITANTE de
+    que su requerimiento fue asignado/solucionado. Este avisa al TÉCNICO
+    de lo que tiene pendiente y vencido — son audiencias distintas.
+    """
+    req_user_id = request.session.get('req_user_id')
+    if not req_user_id:
+        return _json_ok({'vencidos': [], 'total_alertas': 0})
+
+    # Abierto, Asignado, En Proceso, Pendiente Aprobación — mismos estados
+    # "activos" que usa el Portal de Requerimientos para calcular vencidos.
+    ESTADOS_ACTIVOS = [1, 2, 3, 7]
+    hoy = timezone.now().date()
+
+    vencidos_qs = (
+        Requerimiento.objects
+        .using('requerimientos')
+        .filter(IdUsuarioAsig=req_user_id, IdEstado__in=ESTADOS_ACTIVOS, FechaEstiSoluci__lt=hoy)
+        .order_by('FechaEstiSoluci')
+    )
+    vencidos = [{
+        'id':             r.Codigo,
+        'codigo':         r.codigo(),
+        'descripcion':    (r.Requerimiento or '')[:120],
+        'fecha_estimada': r.FechaEstiSoluci.strftime('%d/%m/%Y') if r.FechaEstiSoluci else '',
+    } for r in vencidos_qs]
+
+    return _json_ok({'vencidos': vencidos, 'total_alertas': len(vencidos)})
 
 
 @login_required(login_url='login')
