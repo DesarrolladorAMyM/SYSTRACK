@@ -499,7 +499,8 @@
           </div>
         </div>
         <div class="user-chip">
-          <div class="avatar">{{ request.session.req_user_primer_nombre|slice:":1"|upper }}</div>
+          <div class="avatar" id="miAvatar" data-userkey="{{ request.session.usuario|default:'' }}"
+               onclick="toggleAvatarPanel(event)" title="Cambiar foto de perfil">{{ request.session.req_user_primer_nombre|slice:":1"|upper }}</div>
           <div class="user-text">
             <p class="label">BIENVENIDO</p>
             <p class="name">{{ request.session.req_user_primer_nombre }}</p>
@@ -508,6 +509,16 @@
               <span class="status-text">En línea</span>
             </div>
           </div>
+        </div>
+        <div class="avatar-panel hidden" id="avatarPanel">
+          <div class="avatar-panel-preview" id="avatarPanelPreview">{{ request.session.req_user_primer_nombre|slice:":1"|upper }}</div>
+          <input type="file" id="avatarFileInput" accept="image/*" style="display:none">
+          <button type="button" class="avatar-panel-btn" onclick="document.getElementById('avatarFileInput').click()">
+            <i class="fa-solid fa-camera"></i> Cambiar foto
+          </button>
+          <button type="button" class="avatar-panel-btn danger" id="avatarPanelQuitar" style="display:none">
+            <i class="fa-solid fa-trash"></i> Quitar foto
+          </button>
         </div>
       </div>
     </div>

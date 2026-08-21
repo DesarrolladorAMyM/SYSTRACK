@@ -34,6 +34,7 @@ const API = {
   subcategoriasReq:  (categoriaId) => `${BASE}/inventario/api/subcategorias-req/?categoria_id=${categoriaId}`,
   reqTicAccion:      (id) => `${BASE}/inventario/api/req-tic/${id}/accion/`,
   notificacionesBell: `${BASE}/inventario/api/notificaciones-bell/`,
+  marcarLeidaBell:    `${BASE}/inventario/api/notificaciones-bell/marcar-leida/`,
 
   // ── Préstamo de Equipos ──
   equiposAdmin:        `${BASE}/inventario/api/prestamo-equipos/`,
@@ -2802,22 +2803,93 @@ function downloadCSV(rows, filename) {
 // asignados al usuario logueado. Se refresca solo (polling) para que se
 // sienta casi en tiempo real sin necesitar WebSockets/infraestructura nueva.
 // ============================================================
-let BELL_VENCIDOS = [];
+let BELL_DATA = { vencidos: [], licencias_por_vencer: [], pendientes_aprobacion: [], vencidos_sin_asignar: [] };
 
 async function cargarNotificacionesBell() {
   const res = await apiFetch(API.notificacionesBell);
   if (!res.ok) return;
-  BELL_VENCIDOS = res.data.vencidos || [];
+  BELL_DATA = {
+    vencidos:              res.data.vencidos || [],
+    licencias_por_vencer:  res.data.licencias_por_vencer || [],
+    pendientes_aprobacion: res.data.pendientes_aprobacion || [],
+    vencidos_sin_asignar:  res.data.vencidos_sin_asignar || [],
+  };
   renderBellBadge();
   const panel = document.getElementById('bellPanel');
   if (panel && !panel.classList.contains('hidden')) renderBellPanel();
+}
+
+// "Marcar como leído" — SOLO para licencias y pendientes de aprobación.
+// Vencidos y vencidos-sin-asignar NUNCA se pueden ocultar: son alertas que
+// necesitan una acción real, no que se ignoren.
+//
+// Se guarda en el SERVIDOR (tabla NotificacionBellLeida, por usuario), no en
+// localStorage — así persiste sin importar desde qué computador/navegador
+// inicies sesión. api_notificaciones_bell ya excluye del lado del backend
+// lo que el usuario marcó como leído, así que aquí solo hace falta avisarle
+// al servidor y quitar el item de la vista al instante (optimista).
+async function _bellMarcarLeida(tipo, referenciaId, referenciaFecha) {
+  if (tipo === 'licencia') {
+    BELL_DATA.licencias_por_vencer = BELL_DATA.licencias_por_vencer
+      .filter(l => !(l.id === referenciaId && l.fecha_vencimiento === referenciaFecha));
+  } else if (tipo === 'aprobacion') {
+    BELL_DATA.pendientes_aprobacion = BELL_DATA.pendientes_aprobacion
+      .filter(p => !(p.id === referenciaId && p.fecha === referenciaFecha));
+  }
+  renderBellBadge();
+  renderBellPanel();
+
+  try {
+    await apiFetch(API.marcarLeidaBell, 'POST', {
+      tipo, referencia_id: referenciaId, referencia_fecha: referenciaFecha,
+    });
+  } catch (e) {
+    console.error('No se pudo marcar la notificación como leída:', e);
+  }
+}
+
+// Construye la lista de items visibles, compartida entre el badge y el
+// panel para que siempre cuenten exactamente lo mismo.
+function _construirBellItems() {
+  const items = [];
+
+  BELL_DATA.vencidos.forEach(v => items.push({
+    tipo: 'vencido', titulo: `${v.codigo} está vencido`,
+    mensaje: v.descripcion || 'Sin descripción',
+    fecha: `Debió resolverse antes del ${v.fecha_estimada}`,
+    icono: 'fa-clock', onClick: () => _irARequerimiento(v.codigo),
+    dismissible: false,
+  }));
+  BELL_DATA.vencidos_sin_asignar.forEach(v => items.push({
+    tipo: 'sin_asignar', titulo: `${v.codigo} vencido y sin asignar`,
+    mensaje: v.descripcion || 'Sin descripción',
+    fecha: `Debió resolverse antes del ${v.fecha_estimada}`,
+    icono: 'fa-triangle-exclamation', onClick: () => _irARequerimiento(v.codigo),
+    dismissible: false,
+  }));
+  BELL_DATA.pendientes_aprobacion.forEach(p => items.push({
+    tipo: 'aprobacion', titulo: `${p.codigo} espera tu aprobación`,
+    mensaje: `Solicitado por ${p.solicitante}`,
+    fecha: `Creado el ${p.fecha}`,
+    icono: 'fa-user-check', onClick: () => _irARequerimiento(p.codigo),
+    dismissible: true, onLeida: () => _bellMarcarLeida('aprobacion', p.id, p.fecha),
+  }));
+  BELL_DATA.licencias_por_vencer.forEach(l => items.push({
+    tipo: 'licencia', titulo: `Licencia ${l.software} ${l.vencida ? 'venció' : 'por vencer'}`,
+    mensaje: `Dispositivo: ${l.serial_dispositivo}`,
+    fecha: `${l.vencida ? 'Venció' : 'Vence'} el ${l.fecha_vencimiento}`,
+    icono: 'fa-key', onClick: () => _irADispositivo(l.serial_dispositivo),
+    dismissible: true, onLeida: () => _bellMarcarLeida('licencia', l.id, l.fecha_vencimiento),
+  }));
+
+  return items;
 }
 
 function renderBellBadge() {
   const btn   = document.getElementById('btnBell');
   const badge = document.getElementById('bellBadge');
   if (!btn || !badge) return;
-  const total = BELL_VENCIDOS.length;
+  const total = _construirBellItems().length;
   if (total > 0) {
     badge.textContent = total > 9 ? '9+' : String(total);
     badge.style.display = 'flex';
@@ -2828,32 +2900,57 @@ function renderBellBadge() {
   }
 }
 
+// Navega a Asignar Requerimientos y filtra por el código — usado por
+// vencidos (asignados a mí), vencidos sin asignar, y pendientes de aprobación
+// (ahí también aparecen, aunque la aprobación en sí se hace por el link del correo).
+function _irARequerimiento(codigo) {
+  cerrarBellPanel();
+  showScreen('asignar-requerimientos');
+  setTimeout(() => {
+    const buscador = document.getElementById('asig-search');
+    if (buscador) { buscador.value = codigo; asigPage = 1; renderAsignar(); }
+  }, 500);
+}
+
+// Navega a Inventario y busca el dispositivo de la licencia por vencer.
+function _irADispositivo(serial) {
+  cerrarBellPanel();
+  showScreen('inventario');
+  setTimeout(() => {
+    const buscador = document.getElementById('inv-search');
+    if (buscador) { buscador.value = serial; loadInventario(); }
+  }, 500);
+}
+
 function renderBellPanel() {
   const list = document.getElementById('bellPanelList');
   if (!list) return;
-  if (BELL_VENCIDOS.length === 0) {
-    list.innerHTML = '<div class="bell-panel-empty">No tienes requerimientos vencidos.</div>';
+
+  const items = _construirBellItems();
+
+  if (items.length === 0) {
+    list.innerHTML = '<div class="bell-panel-empty">No tienes notificaciones nuevas.</div>';
     return;
   }
-  list.innerHTML = BELL_VENCIDOS.map(v => `
-    <div class="bell-item" data-codigo="${v.codigo}">
-      <div class="bell-item-icon"><i class="fa-solid fa-clock"></i></div>
+
+  list.innerHTML = items.map((it, i) => `
+    <div class="bell-item" data-idx="${i}">
+      <div class="bell-item-icon ${it.tipo}"><i class="fa-solid ${it.icono}"></i></div>
       <div class="bell-item-body">
-        <div class="bell-item-title">${v.codigo} está vencido</div>
-        <div class="bell-item-msg">${v.descripcion || 'Sin descripción'}</div>
-        <div class="bell-item-time">Debió resolverse antes del ${v.fecha_estimada}</div>
+        <div class="bell-item-title">${it.titulo}</div>
+        <div class="bell-item-msg">${it.mensaje}</div>
+        <div class="bell-item-time">${it.fecha}</div>
       </div>
+      ${it.dismissible ? `<button class="bell-item-leida" data-idx="${i}" title="Marcar como leída"><i class="fa-solid fa-check"></i></button>` : ''}
     </div>`).join('');
 
   list.querySelectorAll('.bell-item').forEach(el => {
-    el.addEventListener('click', () => {
-      const codigo = el.dataset.codigo;
-      cerrarBellPanel();
-      showScreen('asignar-requerimientos');
-      setTimeout(() => {
-        const buscador = document.getElementById('asig-search');
-        if (buscador) { buscador.value = codigo; asigPage = 1; renderAsignar(); }
-      }, 500);
+    el.addEventListener('click', () => items[Number(el.dataset.idx)].onClick());
+  });
+  list.querySelectorAll('.bell-item-leida').forEach(btn => {
+    btn.addEventListener('click', (ev) => {
+      ev.stopPropagation(); // no disparar el onClick de navegación del item
+      items[Number(btn.dataset.idx)].onLeida(); // ya re-renderiza el panel/badge internamente
     });
   });
 }
@@ -2869,6 +2966,11 @@ function abrirBellPanel() {
   const btn   = document.getElementById('btnBell');
   const panel = document.getElementById('bellPanel');
   if (!btn || !panel) return;
+  // El panel nace dentro del header (.app-header tiene overflow:hidden), lo
+  // que puede recortarlo al hacer scroll aunque use position:fixed. Se mueve
+  // una sola vez al <body> — mismo truco que ya usa la vista previa del
+  // acta (modalVerActa) — para que quede libre de cualquier contenedor padre.
+  if (panel.parentElement !== document.body) document.body.appendChild(panel);
   const rect = btn.getBoundingClientRect();
   panel.style.top   = (rect.bottom + 10) + 'px';
   panel.style.right = (window.innerWidth - rect.right) + 'px';
@@ -2884,7 +2986,11 @@ document.addEventListener('click', (ev) => {
   const panel = document.getElementById('bellPanel');
   const wrap  = document.getElementById('bellWrap');
   if (!panel || panel.classList.contains('hidden')) return;
-  if (wrap && !wrap.contains(ev.target)) cerrarBellPanel();
+  // Tras moverse al <body> (ver abrirBellPanel), el panel ya no es
+  // descendiente de #bellWrap — hay que considerar clic "adentro" a
+  // cualquiera de los dos, si no, un clic dentro del panel lo cerraría solo.
+  const dentro = (wrap && wrap.contains(ev.target)) || panel.contains(ev.target);
+  if (!dentro) cerrarBellPanel();
 });
 
 window.addEventListener('resize', () => {
@@ -2900,6 +3006,104 @@ document.addEventListener('visibilitychange', () => {
 });
 
 // ============================================================
+// FOTO DE PERFIL (header) — mismo patrón que ya existe y funciona en el
+// Portal de Requerimientos: solo local (localStorage), no viaja al backend.
+// Se guarda ligada al usuario de sesión (data-userkey en #miAvatar, tomado
+// de request.session.usuario = la cédula), así que solo cambia cuando el
+// usuario lo pide explícitamente (Cambiar foto / Quitar foto) — nunca solo.
+// ============================================================
+function _avatarKey() {
+  const userKey = document.getElementById('miAvatar')?.dataset.userkey || '';
+  return userKey ? ('amm_avatar_' + userKey) : '';
+}
+function _getAvatarFoto() {
+  const key = _avatarKey();
+  try { return key ? (localStorage.getItem(key) || '') : ''; } catch (e) { return ''; }
+}
+function _setAvatarFoto(dataUrl) {
+  const key = _avatarKey();
+  try { if (key) localStorage.setItem(key, dataUrl); } catch (e) {}
+}
+function _removeAvatarFoto() {
+  const key = _avatarKey();
+  try { if (key) localStorage.removeItem(key); } catch (e) {}
+}
+
+// Guarda la primera vez la inicial que ya renderiza Django (ej. "J"), para
+// poder volver a mostrarla tal cual cuando se quite la foto.
+let _avatarInicialHTML = {};
+function _pintarAvatar(elId, foto) {
+  const el = document.getElementById(elId);
+  if (!el) return;
+  if (!(elId in _avatarInicialHTML)) _avatarInicialHTML[elId] = el.innerHTML;
+  el.innerHTML = foto ? `<img src="${foto}" alt="">` : _avatarInicialHTML[elId];
+}
+
+function toggleAvatarPanel(ev) {
+  ev.stopPropagation();
+  const panel = document.getElementById('avatarPanel');
+  if (!panel) return;
+  panel.classList.contains('hidden') ? abrirAvatarPanel() : cerrarAvatarPanel();
+}
+
+function abrirAvatarPanel() {
+  cerrarBellPanel();
+  const btn   = document.getElementById('miAvatar');
+  const panel = document.getElementById('avatarPanel');
+  if (!btn || !panel) return;
+  // Mismo truco que el panel de la campana: se mueve al <body> para no
+  // quedar recortado por el overflow:hidden del header al hacer scroll.
+  if (panel.parentElement !== document.body) document.body.appendChild(panel);
+  const rect = btn.getBoundingClientRect();
+  panel.style.top   = (rect.bottom + 10) + 'px';
+  panel.style.right = (window.innerWidth - rect.right) + 'px';
+  panel.classList.remove('hidden');
+  const foto = _getAvatarFoto();
+  _pintarAvatar('avatarPanelPreview', foto);
+  const btnQuitar = document.getElementById('avatarPanelQuitar');
+  if (btnQuitar) btnQuitar.style.display = foto ? '' : 'none';
+}
+function cerrarAvatarPanel() {
+  document.getElementById('avatarPanel')?.classList.add('hidden');
+}
+
+document.addEventListener('click', (ev) => {
+  const panel = document.getElementById('avatarPanel');
+  if (!panel || panel.classList.contains('hidden')) return;
+  const btn = document.getElementById('miAvatar');
+  const dentro = panel.contains(ev.target) || (btn && btn.contains(ev.target));
+  if (!dentro) cerrarAvatarPanel();
+});
+
+window.addEventListener('resize', () => {
+  const panel = document.getElementById('avatarPanel');
+  if (panel && !panel.classList.contains('hidden')) abrirAvatarPanel();
+});
+
+document.getElementById('avatarFileInput')?.addEventListener('change', (ev) => {
+  const file = ev.target.files && ev.target.files[0];
+  if (!file || !file.type.startsWith('image/')) return;
+  const reader = new FileReader();
+  reader.onload = () => {
+    _setAvatarFoto(reader.result);
+    _pintarAvatar('miAvatar', reader.result);
+    _pintarAvatar('avatarPanelPreview', reader.result);
+    const btnQuitar = document.getElementById('avatarPanelQuitar');
+    if (btnQuitar) btnQuitar.style.display = '';
+  };
+  reader.readAsDataURL(file);
+});
+
+document.getElementById('avatarPanelQuitar')?.addEventListener('click', () => {
+  _removeAvatarFoto();
+  _pintarAvatar('miAvatar', '');
+  _pintarAvatar('avatarPanelPreview', '');
+  document.getElementById('avatarPanelQuitar').style.display = 'none';
+  const input = document.getElementById('avatarFileInput');
+  if (input) input.value = '';
+});
+
+// ============================================================
 // INIT — único DOMContentLoaded
 // ============================================================
 window.addEventListener('DOMContentLoaded', async () => {
@@ -2911,6 +3115,9 @@ window.addEventListener('DOMContentLoaded', async () => {
 
   // 3. Campanita de notificaciones (no se espera, no debe bloquear el resto)
   cargarNotificacionesBell();
+
+  // 4. Foto de perfil guardada en este navegador (si tiene una puesta)
+  _pintarAvatar('miAvatar', _getAvatarFoto());
 
   // ── Tipo dispositivo → características dinámicas ──
   document.getElementById('f-tipo')?.addEventListener('change', async function () {

@@ -773,6 +773,38 @@ class ActaDispositivo(models.Model):
         db_table = 'j234_acta_dispositivo'
         unique_together = ('g234_acta', 'g234_dispositivo')
 
+
+# j235 — NOTIFICACIONES DE LA CAMPANITA MARCADAS COMO LEÍDAS
+
+class NotificacionBellLeida(models.Model):
+    """Registra qué alertas de la campanita del header del Dashboard ya vio
+    cada usuario, para que 'marcar como leída' persista sin importar desde
+    qué computador/navegador inicie sesión (a diferencia de localStorage).
+
+    Solo aplica a 'licencia' y 'aprobacion' — 'vencido' y 'sin_asignar' nunca
+    se pueden ocultar (ver api_notificaciones_bell), así que nunca se crea
+    una fila con esos tipos.
+
+    g235_referencia_fecha se guarda como texto (la fecha tal cual la muestra
+    la campana) a propósito: si el dato subyacente cambia — ej. se renueva
+    la licencia con otra fecha de vencimiento — esta fila deja de coincidir
+    y la alerta vuelve a aparecer como nueva, en vez de quedar oculta para
+    siempre por error.
+    """
+    g235_id               = models.AutoField(primary_key=True)
+    g235_usuario_id       = models.IntegerField()  # Usuario.IdUsuario (requerimientos), = session['req_user_id']
+    g235_tipo             = models.CharField(max_length=20)   # 'licencia' | 'aprobacion'
+    g235_referencia_id    = models.IntegerField()              # id de la licencia o código del requerimiento
+    g235_referencia_fecha = models.CharField(max_length=20)    # fecha mostrada en la campana, tal cual
+    g235_fecha_marcado    = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        db_table = 'j235_notificacion_bell_leida'
+        unique_together = ('g235_usuario_id', 'g235_tipo', 'g235_referencia_id', 'g235_referencia_fecha')
+
+    def __str__(self):
+        return f"Usuario {self.g235_usuario_id} — {self.g235_tipo}:{self.g235_referencia_id}"
+
     def __str__(self):
         return f"Acta #{self.g234_acta_id} ← {self.g234_dispositivo.g212_serial}"
 

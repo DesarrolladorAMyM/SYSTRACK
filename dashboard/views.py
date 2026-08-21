@@ -26,7 +26,7 @@ from .models import (
     CaracteristicaPeriferico, CaracteristicaLicencia,
     DispositivoInactivo, HistorialEquipo, Colaborador,
     AsignacionColaborador, Acta, ActaDispositivo, CentroCosto, TipoImpresora,
-    RAM, TipoDisco ,CaracteristicasVideoBeam,TipoActa
+    RAM, TipoDisco ,CaracteristicasVideoBeam,TipoActa, NotificacionBellLeida
 )
 import base64
 import os
@@ -3369,38 +3369,157 @@ def api_todos_req_tic(request):
 @require_http_methods(['GET'])
 def api_notificaciones_bell(request):
     """
-    Campanita del header del Dashboard: requerimientos TIC asignados al
-    usuario logueado (técnico) que ya vencieron su fecha estimada de
-    solución y siguen activos.
+    Campanita del header del Dashboard. Combina 4 fuentes, todas calculadas
+    en vivo (sin tabla propia de notificaciones):
+
+      1. vencidos               — requerimientos TIC asignados a mí, ya vencidos.
+      2. licencias_por_vencer   — licencias de Office que vencen en <=30 días
+                                   (o ya vencidas), visible para cualquier usuario
+                                   del Dashboard (es info de infraestructura, no
+                                   de una persona en particular).
+      3. pendientes_aprobacion  — requerimientos en estado "Pendiente Aprobación"
+                                   donde YO soy el jefe de área que debe aprobar.
+      4. vencidos_sin_asignar   — requerimientos vencidos que nunca se asignaron
+                                   a nadie (vista de supervisor). El Dashboard no
+                                   tiene control de roles hoy, así que se muestra
+                                   igual que el resto de pantallas.
 
     Distinto del sistema de notificaciones del Portal de Requerimientos
     (mv_Notificaciones / mis_notificaciones): ese avisa al SOLICITANTE de
-    que su requerimiento fue asignado/solucionado. Este avisa al TÉCNICO
-    de lo que tiene pendiente y vencido — son audiencias distintas.
+    que su requerimiento fue asignado/solucionado. Este avisa al TÉCNICO/staff
+    del Dashboard de lo que tiene pendiente — son audiencias distintas.
     """
+    from datetime import timedelta
+
     req_user_id = request.session.get('req_user_id')
-    if not req_user_id:
-        return _json_ok({'vencidos': [], 'total_alertas': 0})
+    hoy = timezone.now().date()
+
+    # Alertas que este usuario ya marcó como leídas (solo aplica a 'licencia'
+    # y 'aprobacion' — 'vencido'/'sin_asignar' nunca se filtran aquí).
+    leidas = set()
+    if req_user_id:
+        leidas = set(
+            NotificacionBellLeida.objects
+            .filter(g235_usuario_id=req_user_id)
+            .values_list('g235_tipo', 'g235_referencia_id', 'g235_referencia_fecha')
+        )
 
     # Abierto, Asignado, En Proceso, Pendiente Aprobación — mismos estados
     # "activos" que usa el Portal de Requerimientos para calcular vencidos.
     ESTADOS_ACTIVOS = [1, 2, 3, 7]
-    hoy = timezone.now().date()
 
-    vencidos_qs = (
+    vencidos = []
+    pendientes_aprobacion = []
+    if req_user_id:
+        vencidos_qs = (
+            Requerimiento.objects
+            .using('requerimientos')
+            .filter(IdUsuarioAsig=req_user_id, IdEstado__in=ESTADOS_ACTIVOS, FechaEstiSoluci__lt=hoy)
+            .order_by('FechaEstiSoluci')
+        )
+        vencidos = [{
+            'id':             r.Codigo,
+            'codigo':         r.codigo(),
+            'descripcion':    (r.Requerimiento or '')[:120],
+            'fecha_estimada': r.FechaEstiSoluci.strftime('%d/%m/%Y') if r.FechaEstiSoluci else '',
+        } for r in vencidos_qs]
+
+        pendientes_aprob_qs = (
+            Requerimiento.objects
+            .using('requerimientos')
+            .filter(IdEstado=7, IdJefeArea=req_user_id)
+            .order_by('Fecha')
+        )
+        for r in pendientes_aprob_qs:
+            fecha_str = r.Fecha.strftime('%d/%m/%Y') if r.Fecha else ''
+            if ('aprobacion', r.Codigo, fecha_str) in leidas:
+                continue
+            pendientes_aprobacion.append({
+                'id':          r.Codigo,
+                'codigo':      r.codigo(),
+                'solicitante': r.NombreUsuario or '—',
+                'fecha':       fecha_str,
+            })
+
+    UMBRAL_DIAS_LICENCIA = 30
+    limite_licencia = hoy + timedelta(days=UMBRAL_DIAS_LICENCIA)
+    licencias_qs = (
+        CaracteristicaLicencia.objects
+        .select_related('g227_dispositivo')
+        .filter(g227_fecha_vencimiento__isnull=False, g227_fecha_vencimiento__lte=limite_licencia)
+        .order_by('g227_fecha_vencimiento')
+    )
+    licencias_por_vencer = []
+    for l in licencias_qs:
+        fecha_str = l.g227_fecha_vencimiento.strftime('%d/%m/%Y')
+        if ('licencia', l.g227_id, fecha_str) in leidas:
+            continue
+        licencias_por_vencer.append({
+            'id':                 l.g227_id,
+            'software':           l.g227_software or 'Licencia',
+            'serial_dispositivo': l.g227_dispositivo.g212_serial if l.g227_dispositivo else '—',
+            'fecha_vencimiento':  fecha_str,
+            'vencida':            l.g227_fecha_vencimiento < hoy,
+        })
+
+    sin_asignar_qs = (
         Requerimiento.objects
         .using('requerimientos')
-        .filter(IdUsuarioAsig=req_user_id, IdEstado__in=ESTADOS_ACTIVOS, FechaEstiSoluci__lt=hoy)
+        .filter(IdUsuarioAsig__isnull=True, IdEstado__in=ESTADOS_ACTIVOS, FechaEstiSoluci__lt=hoy)
         .order_by('FechaEstiSoluci')
     )
-    vencidos = [{
+    vencidos_sin_asignar = [{
         'id':             r.Codigo,
         'codigo':         r.codigo(),
         'descripcion':    (r.Requerimiento or '')[:120],
         'fecha_estimada': r.FechaEstiSoluci.strftime('%d/%m/%Y') if r.FechaEstiSoluci else '',
-    } for r in vencidos_qs]
+    } for r in sin_asignar_qs]
 
-    return _json_ok({'vencidos': vencidos, 'total_alertas': len(vencidos)})
+    total_alertas = (
+        len(vencidos) + len(licencias_por_vencer)
+        + len(pendientes_aprobacion) + len(vencidos_sin_asignar)
+    )
+
+    return _json_ok({
+        'vencidos':              vencidos,
+        'licencias_por_vencer':  licencias_por_vencer,
+        'pendientes_aprobacion': pendientes_aprobacion,
+        'vencidos_sin_asignar':  vencidos_sin_asignar,
+        'total_alertas':         total_alertas,
+    })
+
+
+@login_required(login_url='login')
+@require_http_methods(['POST'])
+def api_notificacion_bell_marcar_leida(request):
+    """
+    Marca como leída una alerta de la campanita (solo 'licencia' o
+    'aprobacion' — las otras dos no son marcables, ver api_notificaciones_bell).
+    Body: {tipo, referencia_id, referencia_fecha}
+    """
+    req_user_id = request.session.get('req_user_id')
+    if not req_user_id:
+        return _json_err('Sesión inválida.')
+
+    try:
+        body = json.loads(request.body)
+    except json.JSONDecodeError:
+        return _json_err('JSON inválido')
+
+    tipo             = body.get('tipo')
+    referencia_id    = body.get('referencia_id')
+    referencia_fecha = body.get('referencia_fecha')
+
+    if tipo not in ('licencia', 'aprobacion') or not referencia_id or not referencia_fecha:
+        return _json_err('Datos incompletos.')
+
+    NotificacionBellLeida.objects.get_or_create(
+        g235_usuario_id=req_user_id,
+        g235_tipo=tipo,
+        g235_referencia_id=referencia_id,
+        g235_referencia_fecha=referencia_fecha,
+    )
+    return _json_ok({})
 
 
 @login_required(login_url='login')
