@@ -18,6 +18,7 @@ urlpatterns = [
     path('requerimiento/api/mis-requerimientos/', views.mis_requerimientos,       name='req_mis_requerimientos'),
     path('requerimiento/api/crear/',              views.crear_requerimiento,      name='req_crear'),
     path('requerimiento/api/adjuntar/<int:codigo>/', views.api_adjuntar_archivo,  name='req_adjuntar'),
+    path('requerimiento/api/corregir/<int:codigo>/', views.api_corregir_requerimiento, name='req_corregir'),
     path('requerimiento/api/calificar/',          views.calificar_requerimiento,  name='req_calificar'),
     path('requerimiento/api/aprobar/<str:token>/',  views.aprobar_requerimiento,  name='req_aprobar'),
     path('requerimiento/api/rechazar/<str:token>/', views.rechazar_requerimiento, name='req_rechazar'),

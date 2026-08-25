@@ -41,6 +41,7 @@ const API = {
   equiposAdminCat:     `${BASE}/inventario/api/prestamo-equipos/catalogos/`,
   equipoAdminGuardar:  `${BASE}/inventario/api/prestamo-equipos/guardar/`,
   equipoAdminEliminar: (pk) => `${BASE}/inventario/api/prestamo-equipos/${pk}/eliminar/`,
+  equipoAdminHistorial: (pk) => `${BASE}/inventario/api/prestamo-equipos/${pk}/historial/`,
 };
 let CAT = {};
 
@@ -2702,11 +2703,109 @@ function _renderEquiposAdmin() {
         <td>${_eqEstadoBadge(e.estado)}</td>
         <td>
           <div class="tbl-actions">
+            <button class="tbl-btn info" title="Ver historial" onclick='abrirHistorialEquipoModal(${e.id_equipo}, ${JSON.stringify(e.nombre)})'><i class="fas fa-history"></i></button>
             <button class="tbl-btn edit" onclick="openEquipoModal(${e.id_equipo})"><i class="fas fa-edit"></i></button>
             <button class="tbl-btn del"  onclick="eliminarEquipoAdmin(${e.id_equipo})"><i class="fas fa-trash-alt"></i></button>
           </div>
         </td>
       </tr>`).join('');
+}
+
+/* ── Modal: historial de préstamos de un equipo (con buscador) ── */
+let _historialEquipoData = [];
+
+async function abrirHistorialEquipoModal(idEquipo, nombreEquipo) {
+  let overlay = document.getElementById('modalHistorialEquipo');
+  if (!overlay) {
+    overlay = document.createElement('div');
+    overlay.id = 'modalHistorialEquipo';
+    overlay.style.cssText = 'position:fixed;inset:0;background:rgba(0,0,0,.6);z-index:9999;display:flex;align-items:center;justify-content:center;padding:20px';
+    overlay.innerHTML = `
+      <div style="background:#fff;border-radius:12px;width:100%;max-width:800px;max-height:85vh;display:flex;flex-direction:column;overflow:hidden;box-shadow:0 25px 60px rgba(0,0,0,.3)">
+        <div style="display:flex;align-items:center;justify-content:space-between;padding:16px 24px;border-bottom:1px solid #e5e7eb;background:#1e3a5f">
+          <span style="color:#fff;font-weight:600;font-size:15px" id="historialEquipoTitulo"></span>
+          <button onclick="document.getElementById('modalHistorialEquipo').style.display='none'"
+                  style="background:transparent;border:none;color:#fff;font-size:18px;cursor:pointer;line-height:1"><i class="fas fa-times"></i></button>
+        </div>
+        <div style="padding:14px 24px 0;background:#f8fafc">
+          <div style="position:relative">
+            <i class="fas fa-search" style="position:absolute;left:12px;top:50%;transform:translateY(-50%);color:var(--text-light);font-size:13px"></i>
+            <input type="text" id="historialEquipoBuscar" placeholder="Buscar por solicitante, cédula, área u observación..."
+                   style="width:100%;box-sizing:border-box;border:1.5px solid var(--border);border-radius:8px;
+                          padding:9px 12px 9px 34px;font-family:'DM Sans',sans-serif;font-size:13px">
+          </div>
+        </div>
+        <div id="historialEquipoBody" style="overflow-y:auto;flex:1;padding:20px;background:#f8fafc"></div>
+      </div>`;
+    document.body.appendChild(overlay);
+    overlay.addEventListener('click', e => { if (e.target === overlay) overlay.style.display = 'none'; });
+    document.getElementById('historialEquipoBuscar').addEventListener('input', _renderHistorialEquipoTabla);
+  }
+
+  overlay.style.display = 'flex';
+  document.getElementById('historialEquipoTitulo').innerHTML =
+    `<i class="fas fa-history" style="margin-right:8px"></i>Historial de préstamos — ${nombreEquipo}`;
+  document.getElementById('historialEquipoBuscar').value = '';
+  const body = document.getElementById('historialEquipoBody');
+  body.innerHTML = `<div class="empty-state"><i class="fas fa-spinner fa-spin"></i><p>Cargando historial...</p></div>`;
+
+  const res = await apiFetch(API.equipoAdminHistorial(idEquipo));
+  if (!res.ok) {
+    _historialEquipoData = [];
+    body.innerHTML = `<div class="empty-state"><i class="fas fa-exclamation-triangle"></i><p>${res.error || 'No se pudo cargar el historial'}</p></div>`;
+    return;
+  }
+  _historialEquipoData = res.historial || [];
+  _renderHistorialEquipoTabla();
+}
+
+function _renderHistorialEquipoTabla() {
+  const body = document.getElementById('historialEquipoBody');
+  if (!body) return;
+
+  if (_historialEquipoData.length === 0) {
+    body.innerHTML = `<div class="empty-state"><i class="fas fa-inbox"></i><p>Este equipo todavía no tiene préstamos registrados</p></div>`;
+    return;
+  }
+
+  const q = (document.getElementById('historialEquipoBuscar')?.value || '').toLowerCase().trim();
+  const filtrado = !q ? _historialEquipoData : _historialEquipoData.filter(h =>
+    (h.solicitante || '').toLowerCase().includes(q) ||
+    (h.cedula || '').toLowerCase().includes(q) ||
+    (h.area || '').toLowerCase().includes(q) ||
+    (h.observaciones || '').toLowerCase().includes(q)
+  );
+
+  if (filtrado.length === 0) {
+    body.innerHTML = `<div class="empty-state"><i class="fas fa-search"></i><p>Sin resultados</p></div>`;
+    return;
+  }
+
+  body.innerHTML = `
+    <table class="data-table" style="width:100%">
+      <thead>
+        <tr>
+          <th>Solicitante</th><th>Cédula</th><th>Área</th>
+          <th>Fecha préstamo</th><th>Devolución estimada</th><th>Devolución real</th>
+          <th>Observaciones</th><th>Estado</th>
+        </tr>
+      </thead>
+      <tbody>
+        ${filtrado.map(h => `
+          <tr>
+            <td>${h.solicitante}</td>
+            <td class="serial-mono">${h.cedula}</td>
+            <td>${h.area}</td>
+            <td>${h.fecha_prestamo}</td>
+            <td>${h.fecha_estimada_devolucion}</td>
+            <td>${h.fecha_devolucion_real || '—'}</td>
+            <td>${h.observaciones || '—'}</td>
+            <td>${h.activo
+              ? '<span style="display:inline-block;padding:5px 14px;border-radius:20px;font-size:12px;font-weight:600;background:rgba(37,99,235,0.12);color:#2563eb">Activo</span>'
+              : '<span style="display:inline-block;padding:5px 14px;border-radius:20px;font-size:12px;font-weight:600;background:rgba(34,197,94,0.12);color:#16a34a">Devuelto</span>'}</td>
+          </tr>`).join('')}
+      </tbody>
+    </table>`;
 }
 
 async function openEquipoModal(id = null) {
@@ -2803,7 +2902,7 @@ function downloadCSV(rows, filename) {
 // asignados al usuario logueado. Se refresca solo (polling) para que se
 // sienta casi en tiempo real sin necesitar WebSockets/infraestructura nueva.
 // ============================================================
-let BELL_DATA = { vencidos: [], licencias_por_vencer: [], pendientes_aprobacion: [], vencidos_sin_asignar: [] };
+let BELL_DATA = { vencidos: [], licencias_por_vencer: [], pendientes_aprobacion: [], vencidos_sin_asignar: [], nuevos_sin_asignar: [], prestamos_realizados: [] };
 
 async function cargarNotificacionesBell() {
   const res = await apiFetch(API.notificacionesBell);
@@ -2813,6 +2912,8 @@ async function cargarNotificacionesBell() {
     licencias_por_vencer:  res.data.licencias_por_vencer || [],
     pendientes_aprobacion: res.data.pendientes_aprobacion || [],
     vencidos_sin_asignar:  res.data.vencidos_sin_asignar || [],
+    nuevos_sin_asignar:    res.data.nuevos_sin_asignar || [],
+    prestamos_realizados:  res.data.prestamos_realizados || [],
   };
   renderBellBadge();
   const panel = document.getElementById('bellPanel');
@@ -2853,20 +2954,10 @@ async function _bellMarcarLeida(tipo, referenciaId, referenciaFecha) {
 function _construirBellItems() {
   const items = [];
 
-  BELL_DATA.vencidos.forEach(v => items.push({
-    tipo: 'vencido', titulo: `${v.codigo} está vencido`,
-    mensaje: v.descripcion || 'Sin descripción',
-    fecha: `Debió resolverse antes del ${v.fecha_estimada}`,
-    icono: 'fa-clock', onClick: () => _irARequerimiento(v.codigo),
-    dismissible: false,
-  }));
-  BELL_DATA.vencidos_sin_asignar.forEach(v => items.push({
-    tipo: 'sin_asignar', titulo: `${v.codigo} vencido y sin asignar`,
-    mensaje: v.descripcion || 'Sin descripción',
-    fecha: `Debió resolverse antes del ${v.fecha_estimada}`,
-    icono: 'fa-triangle-exclamation', onClick: () => _irARequerimiento(v.codigo),
-    dismissible: false,
-  }));
+  // Orden a propósito: primero lo "nuevo" (aprobación, licencia, nuevo,
+  // préstamo — todo marcable como leído), y AL FINAL lo vencido/sin
+  // asignar — esas dos siguen ahí siempre hasta que se resuelvan de
+  // verdad, así que no hace falta que compitan por el primer lugar.
   BELL_DATA.pendientes_aprobacion.forEach(p => items.push({
     tipo: 'aprobacion', titulo: `${p.codigo} espera tu aprobación`,
     mensaje: `Solicitado por ${p.solicitante}`,
@@ -2880,6 +2971,34 @@ function _construirBellItems() {
     fecha: `${l.vencida ? 'Venció' : 'Vence'} el ${l.fecha_vencimiento}`,
     icono: 'fa-key', onClick: () => _irADispositivo(l.serial_dispositivo),
     dismissible: true, onLeida: () => _bellMarcarLeida('licencia', l.id, l.fecha_vencimiento),
+  }));
+  BELL_DATA.nuevos_sin_asignar.forEach(n => items.push({
+    tipo: 'nuevo', titulo: `${n.codigo} nuevo sin asignar`,
+    mensaje: `Solicitado por ${n.solicitante}`,
+    fecha: `Creado el ${n.fecha}`,
+    icono: 'fa-inbox', onClick: () => _irARequerimiento(n.codigo),
+    dismissible: true, onLeida: () => _bellMarcarLeida('nuevo', n.id, n.fecha),
+  }));
+  BELL_DATA.prestamos_realizados.forEach(p => items.push({
+    tipo: 'prestamo', titulo: `Préstamo realizado: ${p.equipo}`,
+    mensaje: `${p.solicitante}${p.area ? ' — ' + p.area : ''}`,
+    fecha: `Prestado el ${p.fecha}`,
+    icono: 'fa-hand-holding', onClick: () => _irAPrestamoEquipos(p.equipo),
+    dismissible: true, onLeida: () => _bellMarcarLeida('prestamo', p.id, p.fecha),
+  }));
+  BELL_DATA.vencidos.forEach(v => items.push({
+    tipo: 'vencido', titulo: `${v.codigo} está vencido`,
+    mensaje: v.descripcion || 'Sin descripción',
+    fecha: `Debió resolverse antes del ${v.fecha_estimada}`,
+    icono: 'fa-clock', onClick: () => _irARequerimiento(v.codigo),
+    dismissible: false,
+  }));
+  BELL_DATA.vencidos_sin_asignar.forEach(v => items.push({
+    tipo: 'sin_asignar', titulo: `${v.codigo} vencido y sin asignar`,
+    mensaje: v.descripcion || 'Sin descripción',
+    fecha: `Debió resolverse antes del ${v.fecha_estimada}`,
+    icono: 'fa-triangle-exclamation', onClick: () => _irARequerimiento(v.codigo),
+    dismissible: false,
   }));
 
   return items;
@@ -2919,6 +3038,16 @@ function _irADispositivo(serial) {
   setTimeout(() => {
     const buscador = document.getElementById('inv-search');
     if (buscador) { buscador.value = serial; loadInventario(); }
+  }, 500);
+}
+
+// Navega a Préstamo de Equipos y busca el equipo del préstamo recién hecho.
+function _irAPrestamoEquipos(nombreEquipo) {
+  cerrarBellPanel();
+  showScreen('prestamo-equipos');
+  setTimeout(() => {
+    const buscador = document.getElementById('equipo-search');
+    if (buscador) { buscador.value = nombreEquipo; _renderEquiposAdmin(); }
   }, 500);
 }
 
@@ -3232,9 +3361,9 @@ document.getElementById('colab-search')?.addEventListener('input', () => {
   });
 
   // ── Historial Requerimientos — búsqueda ──
-  ddocument.getElementById('req-search')?.addEventListener('input', () => {
-  if (!_suppressChange) { reqActPage = 1; reqCerPage = 1; reqLoadPage(1); }
-});
+  document.getElementById('req-search')?.addEventListener('input', () => {
+    if (!_suppressChange) { reqActPage = 1; reqCerPage = 1; reqLoadPage(1); }
+  });
 
 document.getElementById('asig-search')?.addEventListener('input', () => {
   if (!_suppressChange) { asigPage = 1; renderAsignar(); }
@@ -3888,6 +4017,10 @@ function renderReqActivos() {
               onclick='openPlanReqModal(${JSON.stringify(r)})'><i class="fas fa-tasks"></i></button>
             <button class="tbl-btn success" title="Solucionar"
               onclick='openSolucionarReqModal(${JSON.stringify(r)})'><i class="fas fa-check-circle"></i></button>
+            <button class="tbl-btn del" title="Rechazar"
+              onclick='openRechazarReqModal(${r.id}, ${JSON.stringify(r.codigo)}, ${JSON.stringify(r.descripcion || "")})'>
+              <i class="fas fa-ban"></i>
+            </button>
           </div>
         </td>
       </tr>`).join('');
@@ -4469,6 +4602,41 @@ function sortAsig(key) {
   else { asigSortKey = key; asigSortAsc = true; }
   renderAsignar();
 }
+
+// Rechazar requerimiento (con motivo obligatorio) — dispara correo al
+// solicitante con un botón para corregirlo. Solo disponible desde "Mis
+// Requerimientos" (siempre asignado al técnico logueado) — no desde
+// "Asignar Requerimientos", para no poder rechazar algo sin asignar
+// todavía (ahí no habría a quién avisarle cuando se corrija).
+// Reutiliza el modal de confirmación genérico (mismas clases CSS), pero
+// con su propio overlay (#modalRechazarReq) para no interferir con el de
+// "Eliminar".
+let _rechazarReqId = null;
+
+function openRechazarReqModal(id, codigo, descripcion) {
+  _rechazarReqId = id;
+  document.getElementById('rechazar-sub').textContent = `Requerimiento ${codigo}`;
+  document.getElementById('rechazar-descripcion').textContent = descripcion || '(sin descripción)';
+  document.getElementById('rechazar-motivo').value = '';
+  document.getElementById('modalRechazarReq').classList.add('active');
+}
+
+document.getElementById('btnConfirmRechazar')?.addEventListener('click', async () => {
+  const motivo = document.getElementById('rechazar-motivo').value.trim();
+  if (!motivo) {
+    showNotif('Motivo requerido', 'Escribe el motivo del rechazo', 'warning');
+    return;
+  }
+  const res = await apiFetch(API.reqTicAccion(_rechazarReqId), 'POST', { accion: 'rechazar', motivo });
+  if (!res.ok) { showNotif('Error', res.error || 'No se pudo rechazar el requerimiento', 'warning'); return; }
+  showNotif(
+    'Requerimiento rechazado',
+    `${res.data.codigo} fue rechazado — se notificó al solicitante para que lo corrija.`,
+    'success'
+  );
+  closeModal('modalRechazarReq');
+  cargarRequerimientos();
+});
 
 async function cargarAsignar() {
   const tbody = document.getElementById('asig-tbody');

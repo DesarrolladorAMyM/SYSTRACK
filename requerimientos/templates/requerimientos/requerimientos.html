@@ -58,18 +58,67 @@
   </div>
 </div>
 
+<!-- MODAL: corregir requerimiento rechazado por el técnico -->
+<div class="id-modal-overlay hidden" id="editarReqModalOverlay">
+  <div class="id-modal-box" style="max-width:560px;">
+    <button class="id-modal-close" id="editarReqModalClose" title="Cerrar" aria-label="Cerrar"><i class="fa-solid fa-xmark"></i></button>
+    <div class="id-modal-icon"><i class="fa-solid fa-pen-to-square"></i></div>
+    <h3>Corregir requerimiento</h3>
+    <p id="editreq-codigo-label" style="color:var(--text-secondary);font-size:13.5px;margin:-4px 0 16px;"></p>
+
+    <div style="background:#fef2f2;border:1px solid #fecaca;border-radius:8px;padding:12px 14px;
+                margin-bottom:18px;text-align:left;font-size:13px;color:#991b1b;">
+      <strong>Motivo del rechazo (<span id="editreq-quien-rechazo"></span>):</strong>
+      <div id="editreq-motivo-texto" style="margin-top:4px;"></div>
+    </div>
+
+    <form id="formEditarReq" novalidate style="text-align:left;display:flex;flex-direction:column;gap:14px;">
+      <input type="hidden" id="editreq_codigo">
+      <!-- Centro y correo no se editan aquí, pero viajan igual en el guardado -->
+      <input type="hidden" id="f_edit_centro">
+      <input type="hidden" id="f_edit_correo">
+
+      <div class="form-field">
+        <label>Categoría</label>
+        <div id="editreq-categoria-txt" style="padding:12px 14px;border:2px solid var(--border);
+             border-radius:var(--radius-md);background:#f8fafc;color:var(--text-secondary);font-size:14px;"></div>
+        <input type="hidden" id="f_edit_categoria">
+      </div>
+
+      <div class="form-field">
+        <label>Subcategoría</label>
+        <div id="editreq-subcategoria-txt" style="padding:12px 14px;border:2px solid var(--border);
+             border-radius:var(--radius-md);background:#f8fafc;color:var(--text-secondary);font-size:14px;"></div>
+        <input type="hidden" id="f_edit_subcategoria">
+      </div>
+
+      <div class="form-field">
+        <label for="f_edit_descripcion">Descripción<span class="req-mark">*</span></label>
+        <textarea id="f_edit_descripcion" rows="5"
+          placeholder="Describe el requerimiento con el mayor detalle posible..." required></textarea>
+      </div>
+
+      <div class="id-modal-error" id="editreqModalError"></div>
+      <button type="submit" class="btn-submit" style="width:100%;">GUARDAR CORRECCIÓN</button>
+    </form>
+  </div>
+</div>
+
 <!-- MODAL: registro de usuario nuevo -->
 <style>
   #registroModalOverlay .id-modal-box,
-  #actualizarModalOverlay .id-modal-box{
+  #actualizarModalOverlay .id-modal-box,
+  #editarReqModalOverlay .id-modal-box{
     max-height:88vh;
     overflow-y:auto;
     -webkit-overflow-scrolling:touch;
   }
   #registroModalOverlay .id-modal-box::-webkit-scrollbar,
-  #actualizarModalOverlay .id-modal-box::-webkit-scrollbar{ width:6px; }
+  #actualizarModalOverlay .id-modal-box::-webkit-scrollbar,
+  #editarReqModalOverlay .id-modal-box::-webkit-scrollbar{ width:6px; }
   #registroModalOverlay .id-modal-box::-webkit-scrollbar-thumb,
-  #actualizarModalOverlay .id-modal-box::-webkit-scrollbar-thumb{
+  #actualizarModalOverlay .id-modal-box::-webkit-scrollbar-thumb,
+  #editarReqModalOverlay .id-modal-box::-webkit-scrollbar-thumb{
     background:rgba(0,0,0,0.15); border-radius:999px;
   }
   #registroModalOverlay #formRegistroUsuario .form-field,
@@ -98,6 +147,7 @@
   }
   #screen-equipos .equipo-badge.disponible{ background:#dcfce7; color:#15803d; }
   #screen-equipos .equipo-badge.no-disponible{ background:#fee2e2; color:#b91c1c; }
+  #screen-equipos .equipo-badge.prestado-otro{ background:#f1f5f9; color:#64748b; white-space:nowrap; }
 </style>
 <div class="id-modal-overlay hidden" id="registroModalOverlay">
   <div class="id-modal-box" style="max-width:480px;">
@@ -501,6 +551,7 @@
         <button class="btn-contact" id="btnContact">
           <i class="fa-solid fa-paper-plane"></i> Contáctanos
         </button>
+        <div class="version-footer">© 2026 Montacargas AM&amp;M. TIC v1.0.0</div>
       </div>
     </aside>
 

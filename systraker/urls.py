@@ -28,5 +28,7 @@ urlpatterns = [
 
 ]
 
-if settings.DEBUG:
-    urlpatterns += static(settings.MEDIA_URL, document_root=settings.MEDIA_ROOT)
+# Sirve los archivos de MEDIA_ROOT (ej. adjuntos de requerimientos) siempre,
+# sin importar DEBUG — antes solo se servían con DEBUG=True, así que en
+# producción (DEBUG=False) cualquier adjunto devolvía 404 al descargarlo.
+urlpatterns += static(settings.MEDIA_URL, document_root=settings.MEDIA_ROOT)

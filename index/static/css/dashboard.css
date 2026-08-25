@@ -132,6 +132,10 @@
     .date-info i{color:var(--primary-light);font-size:16px;}
     .date-label{font-size:11px;color:var(--text-light);font-weight:600;text-transform:uppercase;letter-spacing:.5px;}
     .date-value{font-size:14px;color:var(--text-primary);font-weight:700;margin-top:2px;}
+    .version-footer{
+      margin-top:14px;text-align:center;font-size:10.5px;font-weight:500;color:var(--text-light);
+      letter-spacing:.2px;line-height:1.4;
+    }
 
     /* CONTENT */
     .content-area{background:var(--bg-card);border-radius:var(--radius-xl);padding:32px;box-shadow:var(--shadow-lg);min-height:600px;}
@@ -198,7 +202,7 @@
     .dot-habilitado{background:#22c55e;box-shadow:0 0 0 2px #bbf7d0;}
     .dot-inhabilitado{background:#ef4444;box-shadow:0 0 0 2px #fecaca;}
     .dot-asignado{background:#1B4698;box-shadow:0 0 0 2px #bfdbfe;}
-    .tbl-actions{display:flex;gap:6px;align-items:center;}
+    .tbl-actions{display:flex;gap:6px;align-items:center;justify-content:center;}
     .tbl-btn{width:32px;height:32px;border:2px solid var(--border);background:white;border-radius:var(--radius-sm);cursor:pointer;display:flex;align-items:center;justify-content:center;font-size:13px;transition:all .2s;color:var(--text-secondary);}
     .tbl-btn:hover{transform:translateY(-1px);box-shadow:var(--shadow-sm);}
     .tbl-btn.info:hover{border-color:var(--primary);color:var(--primary);background:#f0f5ff;}
@@ -980,6 +984,8 @@ a.nav-btn.active {
 .bell-item-icon.sin_asignar{background:#b91c1c;}
 .bell-item-icon.aprobacion{background:#7c3aed;}
 .bell-item-icon.licencia{background:#f59e0b;}
+.bell-item-icon.nuevo{background:#2563eb;}
+.bell-item-icon.prestamo{background:#0d9488;}
 .bell-item-body{flex:1;min-width:0;}
 .bell-item-title{font-size:12.5px;font-weight:700;color:var(--text-primary);}
 .bell-item-msg{font-size:12px;color:var(--text-secondary);margin-top:2px;line-height:1.4;}

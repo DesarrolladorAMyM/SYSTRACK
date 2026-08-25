@@ -159,6 +159,11 @@
   }
   .btn-contact:hover{transform:translateY(-2px);box-shadow:0 8px 20px rgba(27,70,152,0.38);}
 
+  .version-footer{
+    text-align:center;font-size:10.5px;font-weight:500;color:var(--text-light);
+    letter-spacing:.2px;line-height:1.4;font-family:'DM Sans',sans-serif;
+  }
+
   /* ===== CONTENT AREA ===== */
   .content-area{background:var(--bg-card);border-radius:var(--radius-xl);padding:32px;box-shadow:var(--shadow-lg);min-width:0;overflow-x:hidden;}
 

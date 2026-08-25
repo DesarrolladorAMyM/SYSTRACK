@@ -10,7 +10,7 @@ from django.http import JsonResponse
 from django.views.decorators.http import require_GET, require_POST
 from django.views.decorators.csrf import csrf_exempt
 
-from requerimientos.models import Equipo, EstadoGeneral, Usuario
+from requerimientos.models import Equipo, EstadoGeneral, Usuario, HistorialPrestamo
 
 DB = 'requerimientos'
 
@@ -115,3 +115,31 @@ def api_equipo_admin_eliminar(request, pk):
         return JsonResponse({'ok': False, 'error': 'El equipo no existe.'}, status=404)
     equipo.delete(using=DB)
     return JsonResponse({'ok': True})
+
+
+@require_GET
+def api_equipo_admin_historial(request, pk):
+    """Historial completo de préstamos de un equipo (todas las filas de
+    mv_HistorialPrestamos para ese IdEquipo), para el modal de 'Ver
+    historial' — evita tener que consultar la base de datos directamente."""
+    if not Equipo.objects.using(DB).filter(IdEquipo=pk).exists():
+        return JsonResponse({'ok': False, 'error': 'El equipo no existe.'}, status=404)
+
+    historial = (
+        HistorialPrestamo.objects.using(DB)
+        .filter(IdEquipo_id=pk)
+        .order_by('-FechaPrestamo')
+    )
+    data = [{
+        'id':                        h.IdPrestamo,
+        'cedula':                    h.Cedula,
+        'solicitante':               h.NombreSolicitante,
+        'area':                      h.Area or '—',
+        'fecha_prestamo':            h.FechaPrestamo.strftime('%d/%m/%Y %H:%M') if h.FechaPrestamo else '—',
+        'fecha_estimada_devolucion': h.FechaEstimadaDevolucion.strftime('%d/%m/%Y') if h.FechaEstimadaDevolucion else '—',
+        'fecha_devolucion_real':     h.FechaDevolucionReal.strftime('%d/%m/%Y %H:%M') if h.FechaDevolucionReal else None,
+        'observaciones':             h.Observaciones or '',
+        'activo':                    h.FechaDevolucionReal is None,
+    } for h in historial]
+
+    return JsonResponse({'ok': True, 'historial': data, 'total': len(data)})

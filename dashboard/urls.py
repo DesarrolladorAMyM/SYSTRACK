@@ -86,5 +86,6 @@ urlpatterns = [
      path('api/prestamo-equipos/catalogos/',       views_prestamo_equipos.api_equipos_admin_catalogos, name='api_equipos_admin_catalogos'),
      path('api/prestamo-equipos/guardar/',         views_prestamo_equipos.api_equipo_admin_guardar,    name='api_equipo_admin_guardar'),
      path('api/prestamo-equipos/<int:pk>/eliminar/', views_prestamo_equipos.api_equipo_admin_eliminar, name='api_equipo_admin_eliminar'),
+     path('api/prestamo-equipos/<int:pk>/historial/', views_prestamo_equipos.api_equipo_admin_historial, name='api_equipo_admin_historial'),
 
 ]

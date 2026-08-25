@@ -134,6 +134,37 @@
   </div>
 </div>
 
+<!-- ═══════════════════════════ MODAL RECHAZAR REQUERIMIENTO ═══════════════════════════ -->
+<div class="modal-overlay" id="modalRechazarReq">
+  <div class="modal-confirm-box">
+    <div class="confirm-header">
+      <div class="confirm-icon danger"><i class="fas fa-ban"></i></div>
+      <div>
+        <div class="confirm-title">Rechazar requerimiento</div>
+        <div class="confirm-sub" id="rechazar-sub">¿Por qué se rechaza este requerimiento?</div>
+      </div>
+    </div>
+    <div class="confirm-body">
+      <label style="display:block;font-size:11px;font-weight:700;color:var(--text-light);
+                    text-transform:uppercase;letter-spacing:.4px;margin-bottom:6px;">Descripción del requerimiento</label>
+      <div id="rechazar-descripcion" style="background:#f8fafc;border:1.5px solid var(--border);border-radius:8px;
+           padding:10px 12px;font-size:13px;color:var(--text-secondary);margin-bottom:16px;
+           max-height:110px;overflow-y:auto;line-height:1.5;"></div>
+
+      <label style="display:block;font-size:11px;font-weight:700;color:var(--text-light);
+                    text-transform:uppercase;letter-spacing:.4px;margin-bottom:6px;">Motivo del rechazo</label>
+      <textarea id="rechazar-motivo" rows="4"
+        placeholder="Ej: la descripción no se entiende, falta información para poder atenderlo..."
+        style="width:100%;box-sizing:border-box;border:1.5px solid var(--border);border-radius:8px;
+               padding:10px 12px;font-family:'DM Sans',sans-serif;font-size:13.5px;resize:vertical"></textarea>
+    </div>
+    <div class="confirm-footer">
+      <button class="btn-cancel" onclick="closeModal('modalRechazarReq')">Cancelar</button>
+      <button class="btn-danger" id="btnConfirmRechazar"><i class="fas fa-ban"></i> Rechazar</button>
+    </div>
+  </div>
+</div>
+
 <!-- ═══════════════════════════ MODAL NUEVO HISTORIAL ═══════════════════════════ -->
 <div class="modal-overlay" id="modalHistForm">
   <div class="modal-hist-box">
@@ -494,7 +525,7 @@
             <span class="bell-badge" id="bellBadge"></span>
           </button>
           <div class="bell-panel hidden" id="bellPanel">
-            <div class="bell-panel-header">Requerimientos vencidos</div>
+            <div class="bell-panel-header">Notificaciones</div>
             <div class="bell-panel-list" id="bellPanelList"></div>
           </div>
         </div>
@@ -646,6 +677,17 @@
           // viene marcada active por defecto en el HTML), lo mandamos a la
           // primera pantalla que sí tiene permitida.
           document.addEventListener('DOMContentLoaded', function () {
+            // Link directo desde los correos de requerimientos
+            // (?ir=mis-requerimientos) — abre esa pantalla de una,
+            // sin pasar por la lógica de pantalla-por-defecto de abajo.
+            const params = new URLSearchParams(window.location.search);
+            const irA = params.get('ir');
+            if (irA) {
+              showScreen(irA);
+              window.history.replaceState({}, '', window.location.pathname);
+              return;
+            }
+
             if (!window.SCREENS_PERMITIDAS.includes('dashboard') && window.SCREENS_PERMITIDAS.length > 0) {
               // Prioriza "mis-requerimientos" si la tiene; si no, la primera de su lista
               const preferida = window.SCREENS_PERMITIDAS.includes('mis-requerimientos')
@@ -664,6 +706,7 @@
             <div class="date-value" id="sidebar-fecha-corte">Cargando...</div>
           </div>
         </div>
+        <div class="version-footer">© 2026 Montacargas AM&amp;M. TIC v1.0.0</div>
       </div>
     </aside>
 

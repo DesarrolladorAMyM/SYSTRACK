@@ -136,6 +136,11 @@ class Requerimiento(models.Model):
     Costo            = models.DecimalField(max_digits=12, decimal_places=2, null=True, blank=True)
     TokenAprobacion  = models.CharField(max_length=64, null=True, blank=True)
     FechaAprobacion  = models.DateTimeField(null=True, blank=True)
+    # Motivo por el que un técnico rechazó el requerimiento (estado 9 =
+    # "Rechazado - Requiere Corrección"). Se conserva incluso después de que
+    # el solicitante lo corrija y vuelva a estado Asignado, para que quede
+    # visible en la línea de tiempo que en algún momento fue rechazado.
+    MotivoRechazo    = models.TextField(null=True, blank=True)
 
     class Meta:
         managed  = False

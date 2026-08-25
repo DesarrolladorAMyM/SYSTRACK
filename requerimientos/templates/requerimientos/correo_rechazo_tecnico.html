@@ -1,0 +1,88 @@
+<!DOCTYPE html>
+<html>
+<head>
+  <meta charset="UTF-8">
+</head>
+<body style="margin:0; padding:0; background:#f3f4f6; font-family:Arial, Helvetica, sans-serif;">
+  <table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="background:#f3f4f6; padding:24px 0;">
+    <tr>
+      <td align="center">
+        <table role="presentation" width="560" cellpadding="0" cellspacing="0"
+               style="background:#ffffff; border-radius:12px; overflow:hidden; box-shadow:0 1px 4px rgba(0,0,0,.08);">
+
+          <!-- Encabezado -->
+          <tr>
+            <td style="background:#1e3a8a; padding:20px 32px;">
+              <span style="color:#ffffff; font-size:18px; font-weight:bold;">Systraker · Requerimiento rechazado</span>
+            </td>
+          </tr>
+
+          <!-- Cuerpo -->
+          <tr>
+            <td style="padding:28px 32px 8px 32px;">
+              <p style="color:#1f2937; font-size:15px; line-height:1.5; margin:0 0 16px 0;">
+                Hola <strong>{{ req.NombreUsuario }}</strong>, tu requerimiento <strong>{{ req.codigo }}</strong>
+                fue rechazado por <strong>{{ req.NombreUsuariAsig|default:"el técnico asignado" }}</strong>.
+                Corrígelo con la información que falta para que pueda continuar su atención.
+              </p>
+            </td>
+          </tr>
+
+          <!-- Motivo -->
+          <tr>
+            <td style="padding:0 32px;">
+              <table role="presentation" width="100%" cellpadding="0" cellspacing="0"
+                     style="border:1px solid #fecaca; background:#fef2f2; border-radius:8px; font-size:14px;">
+                <tr>
+                  <td style="padding:10px 14px; color:#6b7280; width:150px; border-bottom:1px solid #fecaca;">Código</td>
+                  <td style="padding:10px 14px; color:#111827; border-bottom:1px solid #fecaca;"><strong>{{ req.codigo }}</strong></td>
+                </tr>
+                <tr>
+                  <td style="padding:10px 14px; color:#6b7280;">Motivo del rechazo</td>
+                  <td style="padding:10px 14px; color:#111827;">{{ motivo }}</td>
+                </tr>
+              </table>
+            </td>
+          </tr>
+
+          <!-- Botón -->
+          <tr>
+            <td align="center" style="padding:24px 32px 8px 32px;">
+              <table role="presentation" cellpadding="0" cellspacing="0">
+                <tr>
+                  <td style="border-radius:8px; background:#355EAB;">
+                    <a href="{{ link_corregir }}"
+                       style="display:inline-block; padding:13px 32px; font-size:14px; font-weight:bold;
+                              color:#ffffff; text-decoration:none;">
+                      Corregir requerimiento
+                    </a>
+                  </td>
+                </tr>
+              </table>
+            </td>
+          </tr>
+
+          <tr>
+            <td style="padding:8px 32px 0 32px;">
+              <p style="color:#4b5563; font-size:13px; line-height:1.5; margin:0;">
+                Si el botón no funciona, copia y pega esta URL en tu navegador:<br>
+                <span style="color:#6b7280;">{{ link_corregir }}</span>
+              </p>
+            </td>
+          </tr>
+
+          <!-- Pie -->
+          <tr>
+            <td style="padding:24px 32px 24px 32px;">
+              <p style="font-size:12px; color:#9ca3af; margin:0; line-height:1.4;">
+                Este es un mensaje automático de Systraker, no respondas a este correo.
+              </p>
+            </td>
+          </tr>
+
+        </table>
+      </td>
+    </tr>
+  </table>
+</body>
+</html>

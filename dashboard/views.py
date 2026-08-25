@@ -24,7 +24,7 @@ from .models import (
     TipoNovedad, Operador, Dispositivo, CaracteristicaPC,
     CaracteristicaMovil, CaracteristicaPantalla, CaracteristicaImpresora,
     CaracteristicaPeriferico, CaracteristicaLicencia,
-    DispositivoInactivo, HistorialEquipo, Colaborador,
+    HistorialEquipo, Colaborador,
     AsignacionColaborador, Acta, ActaDispositivo, CentroCosto, TipoImpresora,
     RAM, TipoDisco ,CaracteristicasVideoBeam,TipoActa, NotificacionBellLeida
 )
@@ -43,6 +43,10 @@ from email.mime.base       import MIMEBase
 from email                 import encoders
 from xhtml2pdf import pisa
 from io import BytesIO
+
+# Estados de Dispositivo que se consideran "inactivos": estos equipos se
+# excluyen del Inventario activo y se listan en la pantalla de Inactivos.
+ESTADOS_INACTIVOS = ('ELIMINADO', 'OBSOLETO', 'DEVUELTO')
 
 
 # VISTA PRINCIPAL  Renderiza el dashboard HTML
@@ -192,7 +196,7 @@ def api_dispositivos(request):
     qs = Dispositivo.objects.select_related(
         'g212_tipo', 'g212_marca', 'g212_propietario',
         'g212_estado', 'g212_co', 'g212_departamento', 'g212_municipio'
-    )
+    ).exclude(g212_estado__g201_descripcion__in=ESTADOS_INACTIVOS)
 
     q = request.GET.get('q', '').strip()
     if q:
@@ -619,6 +623,7 @@ def api_dispositivo_editar(request, pk):
 
     try:
         with transaction.atomic():
+            estado_anterior_desc = d.g212_estado.g201_descripcion if d.g212_estado else None
             nuevo_serial = _normalizar_serial(body.get('serial', d.g212_serial))
             if (nuevo_serial and nuevo_serial.lower() != d.g212_serial.lower()
                     and Dispositivo.objects.filter(g212_serial__iexact=nuevo_serial).exclude(pk=d.pk).exists()):
@@ -644,13 +649,15 @@ def api_dispositivo_editar(request, pk):
             d.g212_observaciones = body.get('observaciones', d.g212_observaciones)
             d.save()
             _save_caracteristicas(d, body)
+            responsable = request.user.get_full_name() or request.user.username
             _registrar_historial_auto(
                 dispositivo    = d,
                 nombre_novedad = 'EDICIÓN',
-                responsable    = request.user.get_full_name() or request.user.username,
+                responsable    = responsable,
                 observaciones  = 'Dispositivo editado desde Inventario.',
                 co             = d.g212_co,
             )
+            _registrar_transicion_inactivo(d, estado_anterior_desc, responsable, co=d.g212_co)
     except Exception as e:
         return _json_err(str(e))
 
@@ -930,6 +937,33 @@ def _registrar_historial_auto(dispositivo, nombre_novedad, responsable, observac
     )
 
 
+def _registrar_transicion_inactivo(dispositivo, estado_anterior_desc, responsable, co=None):
+    """
+    Si el dispositivo entró o salió del grupo de estados inactivos
+    (ESTADOS_INACTIVOS), registra el movimiento en Historial de Equipo.
+    Se llama después de guardar el nuevo estado en `dispositivo`.
+    """
+    estado_nuevo_desc = dispositivo.g212_estado.g201_descripcion if dispositivo.g212_estado else None
+    era_inactivo = estado_anterior_desc in ESTADOS_INACTIVOS
+    es_inactivo  = estado_nuevo_desc in ESTADOS_INACTIVOS
+    if era_inactivo == es_inactivo:
+        return
+    if es_inactivo:
+        _registrar_historial_auto(
+            dispositivo    = dispositivo,
+            nombre_novedad = f'PASÓ A INACTIVO ({estado_nuevo_desc})',
+            responsable    = responsable,
+            observaciones  = f'El dispositivo cambió de estado "{estado_anterior_desc or "—"}" a "{estado_nuevo_desc}" y salió del Inventario activo.',
+            co             = co,
+        )
+    else:
+        _registrar_historial_auto(
+            dispositivo    = dispositivo,
+            nombre_novedad = 'REACTIVADO',
+            responsable    = responsable,
+            observaciones  = f'El dispositivo cambió de estado "{estado_anterior_desc}" a "{estado_nuevo_desc or "—"}" y volvió al Inventario activo.',
+            co             = co,
+        )
 
 
 
@@ -1145,55 +1179,58 @@ def api_centro_operaciones(request):
 @login_required(login_url='login')
 @require_http_methods(['GET'])
 def api_inactivos(request):
-    """Lista de dispositivos inactivos con filtros opcionales."""
-    qs = DispositivoInactivo.objects.select_related(
-        'g213_tipo', 'g213_marca', 'g213_propietario',
-        'g213_estado', 'g213_co'
-    )
+    """
+    Lista de dispositivos inactivos (Estado = Eliminado/Obsoleto/Devuelto)
+    con filtros opcionales. Lee directamente de Dispositivo: un dispositivo
+    inactivo sigue siendo el mismo registro, solo se excluye del Inventario
+    activo mientras tenga uno de estos estados (ver api_dispositivos).
+    """
+    base_qs = Dispositivo.objects.filter(g212_estado__g201_descripcion__in=ESTADOS_INACTIVOS)
+
+    qs = base_qs.select_related('g212_tipo', 'g212_marca', 'g212_propietario', 'g212_estado', 'g212_co')
 
     q = request.GET.get('q', '').strip()
     if q:
         qs = qs.filter(
-            Q(g213_serial__icontains=q) |
-            Q(g213_propietario__g203_propietario__icontains=q) |
-            Q(g213_marca__g202_marca__icontains=q)
+            Q(g212_serial__icontains=q) |
+            Q(g212_propietario__g203_propietario__icontains=q) |
+            Q(g212_marca__g202_marca__icontains=q)
         )
 
     tipo_id = request.GET.get('tipo_id')
     if tipo_id:
-        qs = qs.filter(g213_tipo_id=tipo_id)
+        qs = qs.filter(g212_tipo_id=tipo_id)
 
     estado_id = request.GET.get('estado_id')
     if estado_id:
-        qs = qs.filter(g213_estado_id=estado_id)
+        qs = qs.filter(g212_estado_id=estado_id)
 
     inactivos = []
-    for d in qs.order_by('g213_serial'):
+    for d in qs.order_by('g212_serial'):
         inactivos.append({
-            'id':          d.g213_id,
-            'serial':      d.g213_serial or '—',
-            'tipo':        d.g213_tipo.g200_tipo_dispositivo if d.g213_tipo else '—',
-            'tipo_id':     d.g213_tipo_id,
-            'marca':       d.g213_marca.g202_marca if d.g213_marca else '—',
-            'marca_id':    d.g213_marca_id,
-            'modelo':      d.g213_modelo or '—',
-            'propietario': d.g213_propietario.g203_propietario if d.g213_propietario else '—',
-            'propietario_id': d.g213_propietario_id,
-            'estado':      d.g213_estado.g201_descripcion if d.g213_estado else '—',
-            'estado_id':   d.g213_estado_id,
-            'co':          f"{d.g213_co.g207_co} — {d.g213_co.g207_descripcion_co}" if d.g213_co else '—',
-            'co_id':       d.g213_co_id,
-            'observaciones': d.g213_observaciones or '',
-            'fecha_registro': d.g213_fecha_registro.strftime('%d/%m/%Y'),
+            'id':          d.g212_id,
+            'serial':      d.g212_serial or '—',
+            'tipo':        d.g212_tipo.g200_tipo_dispositivo if d.g212_tipo else '—',
+            'tipo_id':     d.g212_tipo_id,
+            'marca':       d.g212_marca.g202_marca if d.g212_marca else '—',
+            'marca_id':    d.g212_marca_id,
+            'modelo':      d.g212_nombre_equipo or '—',
+            'propietario': d.g212_propietario.g203_propietario if d.g212_propietario else '—',
+            'propietario_id': d.g212_propietario_id,
+            'estado':      d.g212_estado.g201_descripcion if d.g212_estado else '—',
+            'estado_id':   d.g212_estado_id,
+            'co':          f"{d.g212_co.g207_co} — {d.g212_co.g207_descripcion_co}" if d.g212_co else '—',
+            'co_id':       d.g212_co_id,
+            'observaciones': d.g212_observaciones or '',
+            'fecha_registro': d.g212_fecha_registro.strftime('%d/%m/%Y'),
         })
 
     # Stats
-    total = DispositivoInactivo.objects.count()
     stats = {
-        'total':     total,
-        'eliminados': DispositivoInactivo.objects.filter(g213_estado__g201_descripcion='ELIMINADO').count(),
-        'obsoletos':  DispositivoInactivo.objects.filter(g213_estado__g201_descripcion='OBSOLETO').count(),
-        'devueltos':  DispositivoInactivo.objects.filter(g213_estado__g201_descripcion='DEVUELTO').count(),
+        'total':      base_qs.count(),
+        'eliminados': base_qs.filter(g212_estado__g201_descripcion='ELIMINADO').count(),
+        'obsoletos':  base_qs.filter(g212_estado__g201_descripcion='OBSOLETO').count(),
+        'devueltos':  base_qs.filter(g212_estado__g201_descripcion='DEVUELTO').count(),
     }
 
     return _json_ok({'inactivos': inactivos, 'stats': stats})
@@ -1201,8 +1238,11 @@ def api_inactivos(request):
 @login_required(login_url='login')
 @require_http_methods(['PUT'])
 def api_inactivo_editar(request, pk):
-    """Edita un dispositivo inactivo."""
-    d = get_object_or_404(DispositivoInactivo, pk=pk)
+    """
+    Edita un dispositivo inactivo. Es el mismo registro de Dispositivo: si
+    aquí le cambian el Estado a uno activo, vuelve a aparecer en Inventario.
+    """
+    d = get_object_or_404(Dispositivo, pk=pk)
     try:
         body = json.loads(request.body)
     except json.JSONDecodeError:
@@ -1213,16 +1253,28 @@ def api_inactivo_editar(request, pk):
         if not body.get(f):
             return _json_err(f'Campo requerido: {f}')
 
-    d.g213_serial       = body.get('serial', d.g213_serial)
-    d.g213_tipo_id      = body.get('tipo_id') or None
-    d.g213_marca_id     = body.get('marca_id') or None
-    d.g213_propietario_id = body['propietario_id']
-    d.g213_estado_id    = body['estado_id']
-    d.g213_co_id        = body.get('co_id') or None
-    d.g213_observaciones = body.get('observaciones', '')
+    estado_anterior_desc = d.g212_estado.g201_descripcion if d.g212_estado else None
+
+    d.g212_serial       = body.get('serial', d.g212_serial)
+    d.g212_tipo_id      = body.get('tipo_id') or None
+    d.g212_marca_id     = body.get('marca_id') or None
+    d.g212_propietario_id = body['propietario_id']
+    d.g212_estado_id    = body['estado_id']
+    d.g212_co_id        = body.get('co_id') or None
+    d.g212_observaciones = body.get('observaciones', '')
     d.save()
 
-    return _json_ok({'id': d.g213_id})
+    responsable = request.user.get_full_name() or request.user.username
+    _registrar_historial_auto(
+        dispositivo    = d,
+        nombre_novedad = 'EDICIÓN',
+        responsable    = responsable,
+        observaciones  = 'Dispositivo editado desde Inactivos.',
+        co             = d.g212_co,
+    )
+    _registrar_transicion_inactivo(d, estado_anterior_desc, responsable, co=d.g212_co)
+
+    return _json_ok({'id': d.g212_id})
 
 
 
@@ -2433,6 +2485,7 @@ def api_dashboard_stats(request):
         row['g212_tipo__g200_tipo_dispositivo']: row['value']
         for row in (
             Dispositivo.objects
+            .exclude(g212_estado__g201_descripcion__in=ESTADOS_INACTIVOS)
             .values('g212_tipo__g200_tipo_dispositivo')
             .annotate(value=Count('g212_id'))
         )
@@ -2449,13 +2502,14 @@ def api_dashboard_stats(request):
     ]
 
     # Activos e inactivos totales
-    activos_total   = Dispositivo.objects.count()
-    inactivos_total = DispositivoInactivo.objects.count()
+    activos_total   = Dispositivo.objects.exclude(g212_estado__g201_descripcion__in=ESTADOS_INACTIVOS).count()
+    inactivos_total = Dispositivo.objects.filter(g212_estado__g201_descripcion__in=ESTADOS_INACTIVOS).count()
 
     # Ubicaciones para el mapa: usa coordenadas de la BD
     ubicaciones_raw = (
         Dispositivo.objects
         .select_related('g212_municipio', 'g212_tipo')
+        .exclude(g212_estado__g201_descripcion__in=ESTADOS_INACTIVOS)
         .exclude(g212_municipio=None)
         .exclude(g212_municipio__g205_latitud=None)
         .exclude(g212_municipio__g205_longitud=None)
@@ -3140,7 +3194,8 @@ def api_mis_req_tic(request):
     if not user_id:
         return _json_err('Tu usuario no está vinculado a la BD de requerimientos', 403)
 
-    ESTADOS       = {1:'Abierto', 2:'Asignado', 3:'En Proceso', 4:'Cerrado', 5:'Eliminado', 6:'Calificado'}
+    ESTADOS       = {1:'Abierto', 2:'Asignado', 3:'En Proceso', 4:'Cerrado', 5:'Eliminado', 6:'Calificado',
+                     7:'Pendiente Aprobación', 8:'Rechazado', 9:'Requiere corrección'}
     PRIORIDADES   = {p.IdPrioridad: p.Descripcion for p in Prioridad.objects.using('requerimientos').all()}
     CATEGORIAS    = {c.IdCategoria: c.Descripcion for c in Categoria.objects.using('requerimientos').all()}
     SUBCATEGORIAS = {s.IdSubCategoria: s.Descripcion for s in SubCategoria.objects.using('requerimientos').all()}
@@ -3215,13 +3270,14 @@ def api_mis_req_tic(request):
 @require_http_methods(['POST'])
 def api_req_tic_accion(request, req_id):
     """
-    Actualiza plan de acción, reasignación o solución de un requerimiento.
+    Actualiza plan de acción, reasignación, solución o rechazo de un requerimiento.
     body = {
-      accion: 'plan' | 'reasignar' | 'solucionar',
+      accion: 'plan' | 'reasignar' | 'solucionar' | 'rechazar',
       plan_accion: '...',
       id_usuario_asig: 5,       (solo para reasignar)
       solucion: '...',          (solo para solucionar)
       fecha_solucion: 'YYYY-MM-DD'
+      motivo: '...',            (solo para rechazar)
     }
     """
     user_id = request.session.get('req_user_id')
@@ -3286,8 +3342,28 @@ def api_req_tic_accion(request, req_id):
 
         r.save(using='requerimientos')
 
+    elif accion == 'rechazar':
+        # Solo se puede rechazar un requerimiento que ya tiene técnico
+        # asignado — si no, al corregirse no habría a quién avisarle.
+        if not r.IdUsuarioAsig:
+            return _json_err('Este requerimiento no tiene técnico asignado — asígnalo primero antes de poder rechazarlo.')
+
+        motivo = body.get('motivo', '').strip()
+        if not motivo:
+            return _json_err('El motivo del rechazo no puede estar vacío')
+
+        r.MotivoRechazo = motivo
+        r.IdEstado      = 9  # Requiere corrección
+        r.save(using='requerimientos')
+
+        # No hay señal (Signals.py) que reaccione a este estado, así que el
+        # correo se dispara explícitamente aquí, igual que en el rechazo de
+        # aprobación (requerimientos/views.py:_enviar_correo_rechazo).
+        from requerimientos.views import _enviar_correo_rechazo_tecnico
+        _enviar_correo_rechazo_tecnico(r, motivo)
+
     else:
-        return _json_err('Acción no válida. Use: plan | reasignar | solucionar')
+        return _json_err('Acción no válida. Use: plan | reasignar | solucionar | rechazar')
 
     return _json_ok({'codigo': r.codigo(), 'estado_id': r.IdEstado})
 
@@ -3295,13 +3371,16 @@ def api_req_tic_accion(request, req_id):
 @login_required(login_url='login')
 @require_http_methods(['GET'])
 def api_todos_req_tic(request):
-    """Todos los requerimientos pendientes/en curso, para la pantalla de Asignar/Plan/Solución."""
+    """Requerimientos SIN ASIGNAR todavía, para la pantalla de Asignar
+    Requerimientos — es una cola de pendientes por tomar: en cuanto alguien
+    se asigna uno, desaparece de aquí y pasa a su "Mis Requerimientos"."""
     from requerimientos.models import (
         Cargo as CargoReq, TipoRequerimiento, Clasificacion as ClasificacionReq,
         ImagenAdjunta, CentroOperacion as CentroOperacionReq,
     )
 
-    ESTADOS       = {1:'Abierto', 2:'Asignado', 3:'En Proceso', 4:'Cerrado', 5:'Eliminado', 6:'Calificado'}
+    ESTADOS       = {1:'Abierto', 2:'Asignado', 3:'En Proceso', 4:'Cerrado', 5:'Eliminado', 6:'Calificado',
+                     7:'Pendiente Aprobación', 8:'Rechazado', 9:'Requiere corrección'}
     PRIORIDADES   = {p.IdPrioridad: p.Descripcion for p in Prioridad.objects.using('requerimientos').all()}
     CATEGORIAS    = {c.IdCategoria: c.Descripcion for c in Categoria.objects.using('requerimientos').all()}
     SUBCATEGORIAS = {s.IdSubCategoria: s.Descripcion for s in SubCategoria.objects.using('requerimientos').all()}
@@ -3314,6 +3393,7 @@ def api_todos_req_tic(request):
 
     qs = (Requerimiento.objects
           .using('requerimientos')
+          .filter(IdUsuarioAsig__isnull=True)
           .exclude(IdEstado__in=[4, 5, 6])
           .order_by('-Fecha'))
 
@@ -3475,9 +3555,58 @@ def api_notificaciones_bell(request):
         'fecha_estimada': r.FechaEstiSoluci.strftime('%d/%m/%Y') if r.FechaEstiSoluci else '',
     } for r in sin_asignar_qs]
 
+    # Recién creados sin asignar — aviso temprano, ANTES de que se venzan.
+    # Se excluyen los que ya están vencidos (esos ya salen en
+    # vencidos_sin_asignar) para no mostrar el mismo requerimiento dos veces.
+    nuevos_qs = (
+        Requerimiento.objects
+        .using('requerimientos')
+        .filter(IdUsuarioAsig__isnull=True, IdEstado=1)
+        .filter(Q(FechaEstiSoluci__gte=hoy) | Q(FechaEstiSoluci__isnull=True))
+        .order_by('-Fecha')
+    )
+    nuevos_sin_asignar = []
+    for r in nuevos_qs:
+        fecha_str = r.Fecha.strftime('%d/%m/%Y') if r.Fecha else ''
+        if ('nuevo', r.Codigo, fecha_str) in leidas:
+            continue
+        nuevos_sin_asignar.append({
+            'id':          r.Codigo,
+            'codigo':      r.codigo(),
+            'descripcion': (r.Requerimiento or '')[:120],
+            'solicitante': r.NombreUsuario or '—',
+            'fecha':       fecha_str,
+        })
+
+    # Préstamos de equipos hechos en el Portal (autoservicio) — avisa que
+    # se realizó uno, mientras siga activo (no devuelto) y no se haya
+    # marcado como leído. No es una alerta de "vencido": solo informa que
+    # ocurrió el préstamo.
+    from requerimientos.models import HistorialPrestamo
+    prestamos_qs = (
+        HistorialPrestamo.objects
+        .using('requerimientos')
+        .select_related('IdEquipo')
+        .filter(FechaDevolucionReal__isnull=True)
+        .order_by('-FechaPrestamo')
+    )
+    prestamos_realizados = []
+    for p in prestamos_qs:
+        fecha_str = p.FechaPrestamo.strftime('%d/%m/%Y %H:%M') if p.FechaPrestamo else ''
+        if ('prestamo', p.IdPrestamo, fecha_str) in leidas:
+            continue
+        prestamos_realizados.append({
+            'id':          p.IdPrestamo,
+            'equipo':      p.IdEquipo.NombreEquipo if p.IdEquipo else '—',
+            'solicitante': p.NombreSolicitante or '—',
+            'area':        p.Area or '',
+            'fecha':       fecha_str,
+        })
+
     total_alertas = (
         len(vencidos) + len(licencias_por_vencer)
         + len(pendientes_aprobacion) + len(vencidos_sin_asignar)
+        + len(nuevos_sin_asignar) + len(prestamos_realizados)
     )
 
     return _json_ok({
@@ -3485,6 +3614,8 @@ def api_notificaciones_bell(request):
         'licencias_por_vencer':  licencias_por_vencer,
         'pendientes_aprobacion': pendientes_aprobacion,
         'vencidos_sin_asignar':  vencidos_sin_asignar,
+        'nuevos_sin_asignar':    nuevos_sin_asignar,
+        'prestamos_realizados':  prestamos_realizados,
         'total_alertas':         total_alertas,
     })
 
@@ -3493,8 +3624,8 @@ def api_notificaciones_bell(request):
 @require_http_methods(['POST'])
 def api_notificacion_bell_marcar_leida(request):
     """
-    Marca como leída una alerta de la campanita (solo 'licencia' o
-    'aprobacion' — las otras dos no son marcables, ver api_notificaciones_bell).
+    Marca como leída una alerta de la campanita (solo 'licencia', 'aprobacion',
+    'nuevo' o 'prestamo' — 'vencido'/'sin_asignar' no son marcables, ver api_notificaciones_bell).
     Body: {tipo, referencia_id, referencia_fecha}
     """
     req_user_id = request.session.get('req_user_id')
@@ -3510,7 +3641,7 @@ def api_notificacion_bell_marcar_leida(request):
     referencia_id    = body.get('referencia_id')
     referencia_fecha = body.get('referencia_fecha')
 
-    if tipo not in ('licencia', 'aprobacion') or not referencia_id or not referencia_fecha:
+    if tipo not in ('licencia', 'aprobacion', 'nuevo', 'prestamo') or not referencia_id or not referencia_fecha:
         return _json_err('Datos incompletos.')
 
     NotificacionBellLeida.objects.get_or_create(
@@ -3551,8 +3682,11 @@ def api_historial_req_tic(request):
     Todos los requerimientos, sin importar el estado (incluye Cerrado
     y Calificado), para la pantalla de Historial de Requerimientos.
     """
+    from requerimientos.models import Clasificacion as ClasificacionReq
+
     ESTADOS = {1: 'PENDIENTE', 2: 'ASIGNADO', 3: 'EN PROCESO', 4: 'CERRADO', 5: 'ELIMINADO', 6: 'CALIFICADO'}
     PRIORIDADES = {1: 'ALTA', 2: 'MEDIA', 3: 'BAJA'}
+    CLASIFICAC  = {c.IdClasificacion: c.Clasificacion for c in ClasificacionReq.objects.using('requerimientos').all()}
 
     qs = (Requerimiento.objects
           .using('requerimientos')
@@ -3570,7 +3704,7 @@ def api_historial_req_tic(request):
             'descripcion':         r.Requerimiento or '',
             'prioridad':           PRIORIDADES.get(r.IdPrioridad, ''),
             'asignado':            r.NombreUsuariAsig or '',
-            'clasificacion':       str(r.Clasificacion) if r.Clasificacion else '',
+            'clasificacion':       CLASIFICAC.get(r.Clasificacion, ''),
             'plan_accion':         r.PlanAccion or '',
             'hora_requerimiento':  _fmt_fecha_hora(r.Fecha)['hora'],
             'fecha_solucion':      _fmt_fecha_hora(r.FechaRealSoluci)['fecha'],

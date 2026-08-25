@@ -43,7 +43,7 @@ function showNotif(title, msg, type = 'success', duration = 3500) {
   };
 
   const FULL_WIDTH_FIELDS = new Set(['requerimiento','plan_accion','solucion']);
-  const PEND_ESTADOS = ['Abierto','Asignado','En Proceso','Pendiente Aprobación'];
+  const PEND_ESTADOS = ['Abierto','Asignado','En Proceso','Pendiente Aprobación','Requiere corrección'];
   const SOL_ESTADOS  = ['Cerrado', 'Calificado'];
   let tab = 'pendientes', page = 1, size = 10, q = '';
 
@@ -164,16 +164,20 @@ function showNotif(title, msg, type = 'success', duration = 3500) {
     const list = document.getElementById('bellPanelList');
     const items = [];
 
+    // Orden a propósito: primero lo procesable/nuevo (pendiente por
+    // calificar, notificaciones reales), y AL FINAL lo vencido — ya
+    // siempre está ahí hasta que se resuelva, no hace falta que compita
+    // por el primer lugar con las demás alertas.
     requerimientosPendientesCalificar().forEach(r => items.push({
       tipo: 'pendiente_calificar', codigo: r.codigo, titulo: `${r.codigo} pendiente por calificar`,
       mensaje: 'Ya fue solucionado. Califica la atención recibida.', fecha: r.fecha_solucion || '', leida: true,
     }));
+    NOTIF.notificaciones.forEach(n => items.push({
+      tipo: n.tipo, codigo: n.codigo, titulo: n.titulo, mensaje: n.mensaje, fecha: n.fecha, leida: n.leida, id: n.id,
+    }));
     NOTIF.vencidos.forEach(v => items.push({
       tipo: 'vencido', codigo: v.codigo, titulo: `${v.codigo} está vencido`,
       mensaje: `Debió resolverse antes del ${v.fecha_estimada}.`, fecha: v.fecha_estimada, leida: true,
-    }));
-    NOTIF.notificaciones.forEach(n => items.push({
-      tipo: n.tipo, codigo: n.codigo, titulo: n.titulo, mensaje: n.mensaje, fecha: n.fecha, leida: n.leida, id: n.id,
     }));
 
     if(items.length === 0){
@@ -291,7 +295,14 @@ function showNotif(title, msg, type = 'success', duration = 3500) {
       const cls = (val===undefined || val===null || val==='') ? ' class="muted"' : '';
       tds += `<td${cls}>${(val===undefined||val===null||val==='') ? '—' : val}</td>`;
     });
-    tds += `<td><button class="req-action-btn" title="Ver seguimiento" data-codigo="${r.codigo}"><i class="fa-solid fa-magnifying-glass"></i></button></td>`;
+    tds += `<td>
+      <div style="display:flex;gap:8px;align-items:center">
+        <button class="req-action-btn" title="Ver seguimiento" data-codigo="${r.codigo}"><i class="fa-solid fa-magnifying-glass"></i></button>
+        ${r.estado === 'Requiere corrección'
+          ? `<button class="req-action-btn" title="Corregir" data-editar="${r.id}" style="color:#dc2626"><i class="fa-solid fa-pen-to-square"></i></button>`
+          : ''}
+      </div>
+    </td>`;
     return `<tr>${tds}</tr>`;
   }
 
@@ -315,8 +326,11 @@ function showNotif(title, msg, type = 'success', duration = 3500) {
     } else {
       empty.style.display='none';
       tbody.innerHTML = rows.map(r => renderTableRow(r)).join('');
-      tbody.querySelectorAll('.req-action-btn').forEach(btn=>{
+      tbody.querySelectorAll('.req-action-btn[data-codigo]').forEach(btn=>{
         btn.addEventListener('click', () => abrirTripModal(btn.dataset.codigo));
+      });
+      tbody.querySelectorAll('.req-action-btn[data-editar]').forEach(btn=>{
+        btn.addEventListener('click', () => abrirModalEditarRequerimiento(btn.dataset.editar));
       });
     }
 
@@ -1597,6 +1611,103 @@ function showNotif(title, msg, type = 'success', duration = 3500) {
   })();
 
 
+  /* ===== Corregir requerimiento rechazado (modal de edición) =====
+     Se abre desde el botón "Corregir requerimiento" del correo de rechazo
+     (?corregir=123, el Codigo numérico) o desde el ícono de editar en
+     "Mis Requerimientos" cuando el estado es "Requiere corrección". */
+  const editReqOverlay   = document.getElementById('editarReqModalOverlay');
+  const editReqForm      = document.getElementById('formEditarReq');
+  const editReqError     = document.getElementById('editreqModalError');
+
+  // Categoría/Subcategoría/Centro/Correo NO se editan aquí — el backend ya
+  // devuelve el texto resuelto (categoria_texto/subcategoria_texto), así
+  // que no hace falta cargar catálogos ni combos buscables para este modal.
+  // Solo la Descripción es editable (para eso existe esta pantalla).
+  async function abrirModalEditarRequerimiento(codigo){
+    const doc = getDocumento();
+    if(!doc) return;
+
+    editReqError.classList.remove('show');
+    const r    = await fetch(`/SYSTRACK/requerimiento/api/corregir/${codigo}/?cedula=${encodeURIComponent(doc)}`);
+    const resp = await r.json();
+    if(!resp.ok){
+      showNotif('No se pudo abrir', resp.error || 'No se pudo cargar el requerimiento', 'warning');
+      return;
+    }
+
+    document.getElementById('editreq_codigo').value       = codigo;
+    document.getElementById('editreq-codigo-label').textContent = resp.codigo;
+    document.getElementById('editreq-quien-rechazo').textContent = resp.rechazado_por || 'el técnico asignado';
+    document.getElementById('editreq-motivo-texto').textContent  = resp.motivo_rechazo || '(sin detalle)';
+
+    document.getElementById('f_edit_centro').value       = resp.id_co || '';
+    document.getElementById('f_edit_correo').value       = resp.correo_electronico || '';
+    document.getElementById('f_edit_categoria').value    = resp.id_categoria || '';
+    document.getElementById('f_edit_subcategoria').value = resp.id_subcategoria || '';
+    document.getElementById('editreq-categoria-txt').textContent    = resp.categoria_texto || '—';
+    document.getElementById('editreq-subcategoria-txt').textContent = resp.subcategoria_texto || '—';
+    document.getElementById('f_edit_descripcion').value  = resp.descripcion || '';
+
+    editReqOverlay.classList.remove('hidden');
+  }
+
+  function cerrarModalEditarReq(){
+    editReqOverlay.classList.add('hidden');
+  }
+  document.getElementById('editarReqModalClose').addEventListener('click', cerrarModalEditarReq);
+  editReqOverlay.addEventListener('click', (e) => { if(e.target === editReqOverlay) cerrarModalEditarReq(); });
+
+  editReqForm.addEventListener('submit', async (e) => {
+    e.preventDefault();
+    const codigo = document.getElementById('editreq_codigo').value;
+    const body = {
+      cedula:              getDocumento(),
+      id_co:               document.getElementById('f_edit_centro').value,
+      id_categoria:        document.getElementById('f_edit_categoria').value,
+      id_subcategoria:     document.getElementById('f_edit_subcategoria').value,
+      correo_electronico:  document.getElementById('f_edit_correo').value.trim(),
+      descripcion:         document.getElementById('f_edit_descripcion').value.trim(),
+    };
+    const btn = editReqForm.querySelector('.btn-submit');
+    btn.disabled = true; btn.textContent = 'Guardando...';
+    try {
+      const r    = await fetch(`/SYSTRACK/requerimiento/api/corregir/${codigo}/`, {
+        method: 'POST', headers: {'Content-Type':'application/json'}, body: JSON.stringify(body),
+      });
+      const resp = await r.json();
+      if(!resp.ok){
+        editReqError.textContent = resp.error || 'No se pudo guardar la corrección.';
+        editReqError.classList.add('show');
+        return;
+      }
+      cerrarModalEditarReq();
+      showNotif('Corregido', `${resp.codigo} fue corregido y notificado al técnico.`, 'success');
+      const doc = getDocumento();
+      if(doc) cargarMisRequerimientos(doc);
+    } catch(e){
+      editReqError.textContent = 'Error de conexión. Intenta de nuevo.';
+      editReqError.classList.add('show');
+    } finally {
+      btn.disabled = false; btn.textContent = 'GUARDAR CORRECCIÓN';
+    }
+  });
+
+  /* ===== Abrir el modal de corrección directo desde el correo (?corregir=123) ===== */
+  (function manejarLinkCorregir(){
+    const params = new URLSearchParams(window.location.search);
+    const codigoCorregir = params.get('corregir');
+    if(!codigoCorregir) return;
+
+    function abrir(){
+      irAVista('mis-req');
+      abrirModalEditarRequerimiento(codigoCorregir);
+      window.history.replaceState({}, '', window.location.pathname);
+    }
+
+    if(getDocumento()){ abrir(); } else { pedirDocumento(abrir); }
+  })();
+
+
   /* ===== Abrir seguimiento directo desde el correo (?seg=REQ-0001) ===== */
   (function manejarLinkSeguimiento(){
     const params = new URLSearchParams(window.location.search);
@@ -1623,7 +1734,8 @@ function showNotif(title, msg, type = 'success', duration = 3500) {
 
   async function cargarEquipos(){
     try {
-      const r    = await fetch('/SYSTRACK/requerimiento/api/equipos/');
+      const doc = getDocumento();
+      const r    = await fetch('/SYSTRACK/requerimiento/api/equipos/?cedula=' + encodeURIComponent(doc || ''));
       const resp = await r.json();
       if(resp.ok){
         EQUIPOS = resp.equipos;
@@ -1663,7 +1775,9 @@ function showNotif(title, msg, type = 'success', duration = 3500) {
       <td>
         ${eq.disponible
           ? `<button class="req-action-btn btn-prestar-equipo" data-id="${eq.id_equipo}" data-nombre="${eq.nombre}" title="Prestar equipo"><i class="fa-solid fa-right-left"></i></button>`
-          : `<button class="req-action-btn btn-devolver-equipo" data-id="${eq.id_equipo}" data-nombre="${eq.nombre}" title="Registrar devolución"><i class="fa-solid fa-rotate-left"></i></button>`
+          : eq.es_mio
+            ? `<button class="req-action-btn btn-devolver-equipo" data-id="${eq.id_equipo}" data-nombre="${eq.nombre}" title="Registrar devolución"><i class="fa-solid fa-rotate-left"></i></button>`
+            : `<span class="equipo-badge prestado-otro" title="Solo quien lo pidió puede devolverlo"><i class="fa-solid fa-lock"></i> Prestado</span>`
         }
       </td>
     </tr>
@@ -1809,7 +1923,7 @@ function showNotif(title, msg, type = 'success', duration = 3500) {
       fetch('/SYSTRACK/requerimiento/api/equipos/devolver/', {
         method: 'POST',
         headers: {'Content-Type': 'application/json'},
-        body: JSON.stringify({id_equipo: idEquipo})
+        body: JSON.stringify({id_equipo: idEquipo, cedula: getDocumento()})
       })
       .then(r => r.json())
       .then(data => {

@@ -2,7 +2,7 @@ import json, uuid, unicodedata, datetime, logging, hashlib, os, time
 import requests
 from django.shortcuts import render
 from django.http import JsonResponse, HttpResponse
-from django.views.decorators.http import require_POST, require_GET
+from django.views.decorators.http import require_POST, require_GET, require_http_methods
 from django.views.decorators.csrf import csrf_exempt
 from django.core.mail import send_mail
 from django.template.loader import render_to_string
@@ -219,7 +219,7 @@ def mis_requerimientos(request):
         return JsonResponse({'ok': False, 'error': 'Cedula requerida.'}, status=400)
 
     ESTADOS = {1: 'Abierto', 2: 'Asignado', 3: 'En Proceso', 4: 'Cerrado', 5: 'Eliminado', 6: 'Calificado',
-           7: 'Pendiente Aprobación', 8: 'Rechazado'}
+           7: 'Pendiente Aprobación', 8: 'Rechazado', 9: 'Requiere corrección'}
 
     qs = (Requerimiento.objects
           .using(DB)
@@ -264,6 +264,7 @@ def mis_requerimientos(request):
     data = []
     for r in reqs:
         data.append({
+            'id':              r.Codigo,
             'codigo':          r.codigo(),
             'documento':       r.CedulaUsuario,
             'fecha_creacion':  r.Fecha.strftime('%d/%m/%Y') if r.Fecha else '',
@@ -487,6 +488,110 @@ def crear_requerimiento(request):
         return JsonResponse({'ok': False, 'error': str(e)}, status=500)
 
 
+@csrf_exempt
+@require_http_methods(['GET', 'POST'])
+def api_corregir_requerimiento(request, codigo):
+    """
+    Editar un requerimiento que un técnico rechazó (IdEstado=9, ver
+    dashboard.api_req_tic_accion accion='rechazar').
+
+    GET  ?cedula=X  -> datos actuales, para precargar el modal de edición.
+    POST {cedula, id_co, co_texto, id_categoria, id_subcategoria,
+          correo_electronico, descripcion} -> guarda la corrección.
+
+    En ambos casos se exige que el requerimiento sea de esa cédula Y que
+    siga en estado 9 — así nadie puede ver/editar un requerimiento ajeno,
+    ni reeditar uno que ya fue corregido (evita reenvíos duplicados del
+    correo al técnico si alguien reabre el link del correo más tarde).
+    """
+    cedula = str(request.GET.get('cedula') or json.loads(request.body or '{}').get('cedula') or '').strip()
+    if not cedula:
+        return JsonResponse({'ok': False, 'error': 'Cédula requerida.'}, status=400)
+
+    try:
+        req = Requerimiento.objects.using(DB).get(Codigo=codigo, CedulaUsuario=cedula, IdEstado=9)
+    except Requerimiento.DoesNotExist:
+        return JsonResponse({
+            'ok': False,
+            'error': 'Este requerimiento no existe, no te pertenece, o ya no requiere corrección.'
+        }, status=404)
+
+    if request.method == 'GET':
+        # Categoría/Subcategoría se muestran de solo lectura en el modal
+        # (no se pueden cambiar al corregir) — se resuelve el texto acá
+        # para que el frontend no tenga que cargar catálogos.
+        categoria_texto = ''
+        if req.IdCategoria:
+            cat = Categoria.objects.using(DB).filter(IdCategoria=req.IdCategoria).first()
+            categoria_texto = cat.Descripcion if cat else ''
+        subcategoria_texto = ''
+        if req.IdSubCategoria:
+            sub = SubCategoria.objects.using(DB).filter(IdSubCategoria=req.IdSubCategoria).first()
+            subcategoria_texto = sub.Descripcion if sub else ''
+
+        return JsonResponse({
+            'ok': True,
+            'codigo':              req.codigo(),
+            'id_co':               req.CO or '',
+            'id_categoria':        req.IdCategoria,
+            'categoria_texto':     categoria_texto,
+            'id_subcategoria':     req.IdSubCategoria,
+            'subcategoria_texto':  subcategoria_texto,
+            'correo_electronico':  req.Email or '',
+            'descripcion':         req.Requerimiento or '',
+            'motivo_rechazo':      req.MotivoRechazo or '',
+            'rechazado_por':       req.NombreUsuariAsig or '',
+        })
+
+    # POST — guardar la corrección
+    try:
+        data = json.loads(request.body)
+    except json.JSONDecodeError:
+        return JsonResponse({'ok': False, 'error': 'JSON inválido.'}, status=400)
+
+    descripcion = str(data.get('descripcion', '')).strip()
+    correo      = str(data.get('correo_electronico', '')).strip()
+    id_co       = str(data.get('id_co', '')).strip()
+    id_cat      = data.get('id_categoria')
+    id_sub      = data.get('id_subcategoria')
+
+    faltantes = []
+    if not id_co: faltantes.append('Centro de operación')
+    if not id_cat: faltantes.append('Categoría')
+    if not id_sub: faltantes.append('Subcategoría')
+    if not correo: faltantes.append('Correo electrónico')
+    if not descripcion: faltantes.append('Descripción')
+    if faltantes:
+        return JsonResponse({
+            'ok': False, 'error': 'Faltan campos obligatorios: ' + ', '.join(faltantes) + '.'
+        }, status=400)
+
+    # Fecha estimada de solución fresca — el técnico recupera el tiempo
+    # completo de atención de la subcategoría, en vez de heredar una fecha
+    # que ya estaba vencida cuando rechazó (lo penalizaría injustamente).
+    tiempo_dias = None
+    try:
+        sub = SubCategoria.objects.using(DB).get(IdSubCategoria=id_sub)
+        tiempo_dias = sub.TiempoDias
+    except SubCategoria.DoesNotExist:
+        pass
+
+    req.CO              = id_co
+    req.IdCategoria     = id_cat
+    req.IdSubCategoria  = id_sub
+    req.Email           = correo
+    req.Requerimiento   = descripcion
+    req.FechaEstiSoluci = (
+        datetime.date.today() + datetime.timedelta(days=tiempo_dias) if tiempo_dias else req.FechaEstiSoluci
+    )
+    req.IdEstado        = 2  # Asignado — vuelve directo al mismo técnico (IdUsuarioAsig no se toca)
+    req.save(using=DB)
+
+    _enviar_correo_correccion_tecnico(req)
+
+    return JsonResponse({'ok': True, 'codigo': req.codigo()})
+
+
 def _enviar_correo_aprobacion(request, req, area):
     if not area.CorreoJefe:
         logger.error(
@@ -688,6 +793,54 @@ def _enviar_correo_solucion(req):
         )
 
 
+def _enviar_correo_rechazo_tecnico(req, motivo):
+    """Avisa al solicitante que el técnico asignado rechazó su requerimiento
+    por necesitar corrección (estado -> 9, Requiere corrección).
+
+    A diferencia de _enviar_correo_solucion/_enviar_correo_asignacion, este
+    NO se dispara desde una señal (Signals.py solo reacciona a IdEstado=4 o
+    a cambios de IdUsuarioAsig) — se llama explícitamente desde
+    dashboard.views.api_req_tic_accion al procesar la acción 'rechazar'."""
+    if not req.Email:
+        logger.warning(
+            "No se envió correo de rechazo: Requerimiento %s no tiene Email.",
+            req.codigo()
+        )
+        return
+
+    base_url = _obtener_link_base()
+    # ?corregir= (no ?seg=) — este link debe abrir directo el modal de
+    # edición, no la vista de seguimiento (ver manejarLinkCorregir en
+    # requerimientos.js). Usa el Codigo numérico, no el "REQ-0001" formateado.
+    link_corregir = f"{base_url}{PREFIJO_APP}/requerimiento/?corregir={req.Codigo}"
+
+    asunto = f"Requerimiento rechazado — {req.codigo()}"
+    cuerpo_html = render_to_string('requerimientos/correo_rechazo_tecnico.html', {
+        'req': req, 'motivo': motivo, 'link_corregir': link_corregir,
+    })
+
+    try:
+        enviados = send_mail(
+            subject=asunto,
+            message=(f"Tu requerimiento {req.codigo()} fue rechazado por "
+                      f"{req.NombreUsuariAsig or 'el técnico asignado'}. Motivo: {motivo}. "
+                      f"Corrígelo aquí: {link_corregir}"),
+            from_email=settings.DEFAULT_FROM_EMAIL,
+            recipient_list=[req.Email],
+            html_message=cuerpo_html,
+            fail_silently=False,
+        )
+        logger.info(
+            "Correo de rechazo -> %s (Requerimiento %s): send_mail devolvió %s",
+            req.Email, req.codigo(), enviados
+        )
+    except Exception:
+        logger.exception(
+            "FALLÓ el envío del correo de rechazo a %s para el requerimiento %s",
+            req.Email, req.codigo()
+        )
+
+
 def _enviar_correo_asignacion(req, es_reasignacion=False):
     """Notifica al técnico que se le asignó (o reasignó) un requerimiento.
     Se dispara desde Signals.py (post_save), por eso NO recibe request."""
@@ -711,7 +864,9 @@ def _enviar_correo_asignacion(req, es_reasignacion=False):
         return
 
     base_url = _obtener_link_base()
-    link_ver = f"{base_url}{PREFIJO_APP}/inventario/"
+    # ?ir=mis-requerimientos abre el Dashboard directo en "Mis Requerimientos"
+    # (ver dashboard.html) en vez de dejarlo en la pantalla de inicio.
+    link_ver = f"{base_url}{PREFIJO_APP}/inventario/?ir=mis-requerimientos"
 
     asunto = (f"Requerimiento reasignado — {req.codigo()}" if es_reasignacion
               else f"Nuevo requerimiento asignado — {req.codigo()}")
@@ -736,6 +891,61 @@ def _enviar_correo_asignacion(req, es_reasignacion=False):
     except Exception:
         logger.exception(
             "FALLÓ el envío del correo de asignación a %s para el requerimiento %s",
+            tecnico.Email, req.codigo()
+        )
+
+
+def _enviar_correo_correccion_tecnico(req):
+    """Avisa al técnico (IdUsuarioAsig) que el solicitante ya corrigió el
+    requerimiento que él había rechazado (estado -> 2, Asignado de nuevo).
+    Se dispara explícitamente desde api_corregir_requerimiento, no desde
+    una señal — igual que _enviar_correo_rechazo_tecnico."""
+    if not req.IdUsuarioAsig:
+        return
+
+    try:
+        tecnico = Usuario.objects.using(DB).get(IdUsuario=req.IdUsuarioAsig)
+    except Usuario.DoesNotExist:
+        logger.warning(
+            "No se envió correo de corrección: Usuario IdUsuario=%s no existe (Requerimiento %s).",
+            req.IdUsuarioAsig, req.codigo()
+        )
+        return
+
+    if not tecnico.Email:
+        logger.warning(
+            "No se envió correo de corrección: técnico %s (IdUsuario=%s) no tiene Email (Requerimiento %s).",
+            tecnico.NombreCompleto, tecnico.IdUsuario, req.codigo()
+        )
+        return
+
+    base_url = _obtener_link_base()
+    # ?ir=mis-requerimientos abre el Dashboard directo en "Mis Requerimientos"
+    # (ver dashboard.html) en vez de dejarlo en la pantalla de inicio.
+    link_ver = f"{base_url}{PREFIJO_APP}/inventario/?ir=mis-requerimientos"
+
+    asunto = f"Requerimiento corregido — {req.codigo()}"
+    cuerpo_html = render_to_string('requerimientos/correo_correccion.html', {
+        'req': req, 'tecnico': tecnico, 'link_ver': link_ver,
+    })
+
+    try:
+        enviados = send_mail(
+            subject=asunto,
+            message=(f"El solicitante ya corrigió el requerimiento {req.codigo()} que habías rechazado. "
+                      f"Ver: {link_ver}"),
+            from_email=settings.DEFAULT_FROM_EMAIL,
+            recipient_list=[tecnico.Email],
+            html_message=cuerpo_html,
+            fail_silently=False,
+        )
+        logger.info(
+            "Correo de corrección -> %s (Requerimiento %s): send_mail devolvió %s",
+            tecnico.Email, req.codigo(), enviados
+        )
+    except Exception:
+        logger.exception(
+            "FALLÓ el envío del correo de corrección a %s para el requerimiento %s",
             tecnico.Email, req.codigo()
         )
 
@@ -1007,6 +1217,7 @@ def api_req_tipos_usuario(request):
 ESTADOS_PUBLICO = {
     1: 'Abierto', 2: 'Asignado', 3: 'En Proceso', 4: 'Cerrado',
     5: 'Eliminado', 6: 'Calificado', 7: 'Pendiente Aprobación', 8: 'Rechazado',
+    9: 'Requiere corrección',
 }
 
 

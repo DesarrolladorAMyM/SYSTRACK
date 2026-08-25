@@ -19,7 +19,14 @@ def api_equipos_lista(request):
     Lista de equipos para el módulo Préstamo de Equipos, con el nombre del
     estado (desde la tabla compartida t100_mm_estados) y el nombre del
     responsable actual (si tiene) ya resueltos, listos para pintar en tabla.
+
+    ?cedula=X (opcional): si se manda, cada equipo trae 'es_mio' — indica
+    si el equipo está prestado justo a esa cédula, para que el frontend
+    solo muestre "Devolver" a quien realmente lo tiene (y no a cualquier
+    usuario que entre y vea la lista).
     """
+    cedula = (request.GET.get('cedula') or '').strip()
+
     equipos = list(Equipo.objects.using(DB).values(
         'IdEquipo', 'NombreEquipo', 'Descripcion', 'IdResponsable', 'IdEstado'
     ))
@@ -30,11 +37,10 @@ def api_equipos_lista(request):
     }
 
     ids_responsables = {e['IdResponsable'] for e in equipos if e['IdResponsable']}
-    responsables = {
-        u['IdUsuario']: u['NombreCompleto']
-        for u in Usuario.objects.using(DB).filter(IdUsuario__in=ids_responsables)
-                                 .values('IdUsuario', 'NombreCompleto')
-    }
+    responsables_qs = Usuario.objects.using(DB).filter(IdUsuario__in=ids_responsables) \
+        .values('IdUsuario', 'NombreCompleto', 'Cedula')
+    responsables      = {u['IdUsuario']: u['NombreCompleto'] for u in responsables_qs}
+    cedula_responsable = {u['IdUsuario']: u['Cedula'] for u in responsables_qs}
 
     data = []
     for e in equipos:
@@ -45,6 +51,7 @@ def api_equipos_lista(request):
             'responsable':  responsables.get(e['IdResponsable'], '—') if e['IdResponsable'] else '—',
             'estado':       estados.get(e['IdEstado'], 'Desconocido'),
             'disponible':   e['IdEstado'] == ESTADO_DISPONIBLE,
+            'es_mio':       bool(cedula) and cedula_responsable.get(e['IdResponsable']) == cedula,
         })
 
     return JsonResponse({'ok': True, 'equipos': data})
@@ -104,6 +111,11 @@ def api_equipos_devolver(request):
     Registra la devolución del equipo: cierra el préstamo activo en
     mv_HistorialPrestamos (le pone FechaDevolucionReal) y pasa el equipo
     de vuelta a 'Disponible' (IdEstado=3).
+
+    Requiere 'cedula' en el body y valida que sea justo quien tiene el
+    préstamo activo — antes cualquier usuario logueado podía devolver
+    equipos de otras personas con solo saber el id_equipo, sin ninguna
+    validación de quién lo estaba pidiendo.
     """
     try:
         body = json.loads(request.body)
@@ -111,8 +123,11 @@ def api_equipos_devolver(request):
         return JsonResponse({'ok': False, 'error': 'Datos inválidos.'}, status=400)
 
     id_equipo = body.get('id_equipo')
+    cedula    = (body.get('cedula') or '').strip()
     if not id_equipo:
         return JsonResponse({'ok': False, 'error': 'Falta el equipo.'}, status=400)
+    if not cedula:
+        return JsonResponse({'ok': False, 'error': 'Cédula requerida.'}, status=400)
 
     equipo = Equipo.objects.using(DB).filter(IdEquipo=id_equipo).first()
     if not equipo:
@@ -124,9 +139,16 @@ def api_equipos_devolver(request):
         .order_by('-FechaPrestamo')
         .first()
     )
-    if prestamo:
-        prestamo.FechaDevolucionReal = timezone.now()
-        prestamo.save(using=DB)
+    if not prestamo:
+        return JsonResponse({'ok': False, 'error': 'Este equipo no tiene un préstamo activo.'}, status=400)
+    if prestamo.Cedula != cedula:
+        return JsonResponse({
+            'ok': False,
+            'error': 'Este equipo está prestado a otra persona — solo quien lo tiene puede registrar la devolución.'
+        }, status=403)
+
+    prestamo.FechaDevolucionReal = timezone.now()
+    prestamo.save(using=DB)
 
     equipo.IdResponsable = None
     equipo.IdEstado = ESTADO_DISPONIBLE
