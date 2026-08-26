@@ -36,6 +36,32 @@ const API = {
   notificacionesBell: `${BASE}/inventario/api/notificaciones-bell/`,
   marcarLeidaBell:    `${BASE}/inventario/api/notificaciones-bell/marcar-leida/`,
 
+  // ── Checklist de Inventario ──
+  checklistStats:        `${BASE}/inventario/api/checklist/stats/`,
+  checklistTiposDisponibles: `${BASE}/inventario/api/checklist/tipos-disponibles/`,
+  checklistDispositivos: `${BASE}/inventario/api/checklist/dispositivos/`,
+  checklistDispositivoGuardar: (pk) => `${BASE}/inventario/api/checklist/dispositivos/${pk}/guardar/`,
+  checklist:          `${BASE}/inventario/api/checklist/`,
+  checklistDetalle:   (pk) => `${BASE}/inventario/api/checklist/${pk}/`,
+  checklistEditar:    (pk) => `${BASE}/inventario/api/checklist/${pk}/editar/`,
+  checklistPdf:       (pk) => `${BASE}/inventario/api/checklist/${pk}/pdf/`,
+  checklistColaboradorBuscar: `${BASE}/inventario/api/checklist/colaborador-buscar/`,
+  checklistMiResponsable: `${BASE}/inventario/api/checklist/mi-responsable/`,
+  checklistItems:     `${BASE}/inventario/api/checklist/items/`,
+  checklistItemCrear: `${BASE}/inventario/api/checklist/items/crear/`,
+  checklistItemEditar:(pk) => `${BASE}/inventario/api/checklist/items/${pk}/editar/`,
+
+  // ── Novedades Generales ──
+  novedadesTipos:       `${BASE}/inventario/api/novedades/tipos/`,
+  novedadesTipoCrear:   `${BASE}/inventario/api/novedades/tipos/crear/`,
+  novedadesTipoEditar:  (pk) => `${BASE}/inventario/api/novedades/tipos/${pk}/editar/`,
+  novedadesCampos:      `${BASE}/inventario/api/novedades/campos/`,
+  novedadesCampoCrear:  `${BASE}/inventario/api/novedades/campos/crear/`,
+  novedadesCampoEditar: (pk) => `${BASE}/inventario/api/novedades/campos/${pk}/editar/`,
+  novedadesLista:       `${BASE}/inventario/api/novedades/`,
+  novedadesGuardar:     `${BASE}/inventario/api/novedades/guardar/`,
+  novedadesDetalle:     (pk) => `${BASE}/inventario/api/novedades/${pk}/`,
+
   // ── Préstamo de Equipos ──
   equiposAdmin:        `${BASE}/inventario/api/prestamo-equipos/`,
   equiposAdminCat:     `${BASE}/inventario/api/prestamo-equipos/catalogos/`,
@@ -67,6 +93,10 @@ let carouselIdx = 0, carouselTimer = null;
 const CPSLIDE = 3;
 
 let sigPads = {};
+
+let _chkRespuestas = {};
+let _chkTextos = {};
+const ESTADOS_INACTIVOS_UI = ['ELIMINADO', 'OBSOLETO', 'DEVUELTO'];
 
 // ============================================================
 // FETCH HELPERS
@@ -165,6 +195,8 @@ const FILTROS_SECCION = {
   'gestion-usuarios':         { inputs: ['usr-search'], onReset: () => { usrPage = 1; } },
   'asignar-requerimientos':   { inputs: ['asig-search'], onReset: () => { asigPage = 1; } },
   'historial-requerimientos': { inputs: ['hreq-search'], onReset: () => { hreqPage = 1; } },
+  'checklist':                { inputs: [], onReset: () => { _resetChecklistScreen(); } },
+  'novedades':                { inputs: ['nov-search', 'nov-filter-tipo', 'nov-filter-desde', 'nov-filter-hasta'], onReset: () => { novPage = 1; } },
 };
 
 function resetFiltrosSeccion(id) {
@@ -226,6 +258,7 @@ function showScreen(id) {
   if (id === 'prestamo-equipos')        loadEquiposAdmin();
   if (id === 'centro-costo')            resetCC();
   if (id === 'historial-equipo')        resetHistorialEquipo();
+  if (id === 'novedades')               loadNovedades();
 }
 
 // Reinicia filtros y resultados de Centro de Costos al entrar a la pantalla,
@@ -289,7 +322,7 @@ function poblarSelects() {
 
   const tipoOpts = CAT.tipos_dispositivo || [];
   ['f-tipo', 'hf-tipo', 'inac-f-tipo', 'as-tipo-device',
-   'inv-filter-tipo', 'inac-filter-tipo', 'hist-tipo', 'cc-tipo',
+   'inv-filter-tipo', 'inac-filter-tipo', 'hist-tipo', 'cc-tipo', 'chk-item-tipo',
   ].forEach(id => _fillSilent(id, tipoOpts, 'g200_id', 'g200_tipo_dispositivo'));
 
   const mapaFiltroEl = document.getElementById('mapaFiltro');
@@ -725,6 +758,7 @@ function openCreateModal() {
 
 async function openEdit(id) {
   editingId = id;
+  _hideChecklistEditSection();
   const res = await apiFetch(API.dispositivo(id));
   if (!res.ok) { showNotif('Error', 'No se pudo cargar el dispositivo', 'warning'); return; }
   const d = res.data;
@@ -770,6 +804,7 @@ function clearForm() {
   const obs = document.getElementById('f-obs');
   if (obs) obs.value = '';
   renderCaracteristicas('');
+  _hideChecklistEditSection();
 }
 
 async function saveDevice() {
@@ -813,6 +848,9 @@ async function saveDevice() {
     observaciones:       document.getElementById('f-obs').value,
     caract:              buildCaracteristicasBody(),
   };
+  if (editingId && document.getElementById('chkSectionEdit')?.style.display !== 'none') {
+    body.checklist = _buildChecklistPayload();
+  }
   const res = editingId
     ? await apiFetch(API.editarDev(editingId), 'PUT', body)
     : await apiFetch(API.crearDev, 'POST', body);
@@ -1919,6 +1957,989 @@ function exportarInactivos() {
 }
 
 // ============================================================
+// CHECKLIST DE INVENTARIO
+// ============================================================
+
+// ── Sección embebida en el modal de Editar dispositivo ──
+
+// Trae las preguntas activas que aplican a un tipo de dispositivo (las
+// genéricas + las propias de ese tipo, ej. el checklist de PORTÁTIL),
+// ya ordenadas por sección tal como las devuelve el backend.
+async function fetchChecklistItems(tipoId) {
+  const params = tipoId ? `?tipo_dispositivo_id=${tipoId}` : '';
+  const res = await apiFetch(`${API.checklistItems}${params}`);
+  return res.ok ? res.data.filter(i => i.activo) : [];
+}
+
+// Arma el HTML de una lista de preguntas agrupadas por sección, con
+// botones Sí/No. `idPrefix` evita choques de id entre las 3 pantallas
+// que usan esto (editar dispositivo, fila de Checklist, ver detalle);
+// `toggleFnName` es el nombre de la función (mismo patrón (itemId, valor)
+// en las 3) que se llama al marcar una respuesta.
+// `toggleFnName` marca Sí/No (itemId, valor); `textoFnName` guarda el valor
+// de una pregunta de texto libre (itemId, texto). Al cerrar cada sección se
+// agrega su propio campo de observaciones (no uno solo general al final).
+// Estado de cada tabla de sección ya renderizada (para poder paginarla sin
+// perder lo que el usuario ya marcó). Clave: `${idPrefix}-${índice de sección}`.
+let _chkSeccionState = {};
+
+// Arma una tabla por sección (Item / Observación / Sí / No, igual que la
+// plantilla en Excel), con paginador propio. `respuestasRef`/`textosRef` son
+// los objetos {itemId: valor} del contexto que llama (edición, ver detalle,
+// o el formulario nuevo) — se leen por referencia, así que se pintan solos
+// tanto al renderizar por primera vez como al cambiar de página.
+function _renderPreguntasAgrupadasHTML(items, idPrefix, toggleFnName, textoFnName, respuestasRef, textosRef) {
+  if (!items.length) {
+    return '<p style="margin:0;font-size:13px;color:var(--text-light);">No hay preguntas configuradas para este tipo de dispositivo. Usa "Administrar preguntas" para agregarlas.</p>';
+  }
+  const grupos = [];
+  items.forEach(it => {
+    const seccion = it.seccion || 'GENERAL';
+    let g = grupos.find(x => x.seccion === seccion);
+    if (!g) { g = { seccion, items: [] }; grupos.push(g); }
+    g.items.push(it);
+  });
+  let html = '';
+  grupos.forEach((g, idx) => {
+    const key = `${idPrefix}-${idx}`;
+    _chkSeccionState[key] = {
+      items: g.items, page: 1, pageSize: 10,
+      idPrefix, toggleFnName, textoFnName,
+      respuestasRef: respuestasRef || {}, textosRef: textosRef || {},
+    };
+    html += `<div class="chk-seccion"><div class="chk-seccion-title">${g.seccion}</div><div id="${key}-wrap">${_renderSeccionTablaHTML(key)}</div></div>`;
+  });
+  return html;
+}
+
+// Nombre de la columna/campo de texto de cada sección: solo "Controlador de
+// Dominio" usa "Observación" — las demás usan "Registro" con un placeholder
+// propio de lo que se anota ahí (correo, usuario, código, etc.).
+const CHK_CAMPO_SECCION = {
+  'CONTROLADOR DE DOMINIO': { label: 'Observación' },
+  'CORREO':                 { label: 'Registro' },
+  'ERP':                    { label: 'Registro' },
+  'APLICATIVOS':            { label: 'Registro' },
+  'IMPRESORA':              { label: 'Registro' },
+};
+const CHK_CAMPO_DEFAULT = { label: 'Registro' };
+
+// Placeholder propio de cada pregunta (no uno solo repetido por sección).
+// Si una pregunta no está en este mapa (ej. una nueva agregada desde
+// "Administrar preguntas"), usa un genérico según su sección.
+const CHK_PLACEHOLDER_POR_PREGUNTA = {
+  'NOMBRE DE PC':                          'Ej: PC-VENTAS-05',
+  'INGRESAR EQUIPO AL DOMINIO':            'Ej: fecha o novedad',
+  'CREAR USUARIO ADMINISTRADOR (LOCAL)':   'Ej: nombre del usuario local',
+  'CREAR USUARIO DEL DOMINIO':             'Ej: nombre de usuario del dominio',
+  'ASIGNAR GRUPO DE AREA':                 'Ej: nombre del grupo asignado',
+  'PERMISOS EN ARCHIVOS COMPARTIDOS':      'Ej: carpetas con acceso',
+  'CREAR CUENTA DE CORREO ELECTRONICO':    'Ej: correo@montacargasamym.com',
+  'ASIGNACION DE GRUPOS DE CORREO':        'Ej: nombre del grupo de correo',
+  'CONFIGURACION DE CONTACTO':             'Ej: datos del contacto configurado',
+  'ASIGNACION DE CLAVE':                   'Ej: clave asignada',
+  'CREACION DE USUARIO':                   'Ej: usuario ERP creado',
+  'ASIGNACION DE GRUPO ERP':               'Ej: nombre del grupo ERP',
+  'ANYDESK (CODIGO)':                      'Ej: código de AnyDesk',
+  'CLAVE DE ANYDESK':                      'Ej: clave de AnyDesk',
+  'OFFICE 365':                            'Ej: correo/licencia Office 365',
+  'SIESA':                                 'Ej: usuario SIESA',
+  'ACROBAT':                               'Ej: versión o licencia',
+  'ANTIVIRUS':                             'Ej: nombre del antivirus instalado',
+  'GOOGLE':                                'Ej: cuenta de Google',
+  'MARCADORES DE GOOGLE':                  'Ej: marcadores configurados',
+  'INSTALACION':                           'Ej: nombre o IP de la impresora',
+  'USUARIO':                               'Ej: usuario asignado',
+  'CODIGO':                                'Ej: código de la impresora',
+};
+
+function _chkPlaceholder(it, campoDefault) {
+  return CHK_PLACEHOLDER_POR_PREGUNTA[(it.pregunta || '').toUpperCase()] || `${campoDefault.label}...`;
+}
+
+function _renderSeccionTablaHTML(key) {
+  const st = _chkSeccionState[key];
+  const total   = st.items.length;
+  const maxPage = Math.max(1, Math.ceil(total / st.pageSize));
+  if (st.page > maxPage) st.page = maxPage;
+  const from  = (st.page - 1) * st.pageSize;
+  const slice = st.items.slice(from, from + st.pageSize);
+  const seccion = st.items[0]?.seccion || 'GENERAL';
+  const campo = CHK_CAMPO_SECCION[seccion] || CHK_CAMPO_DEFAULT;
+
+  const filas = slice.map(it => {
+    const esSi = st.respuestasRef[it.id] === true;
+    const esNo = st.respuestasRef[it.id] === false;
+    const obs  = st.textosRef[it.id] || '';
+    return `
+    <tr>
+      <td>${it.pregunta}</td>
+      <td><input type="text" class="form-input chk-obs-input" spellcheck="false" value="${obs.replace(/"/g, '&quot;')}" id="${st.idPrefix}-obs-${it.id}" placeholder="${_chkPlaceholder(it, campo)}" oninput="${st.textoFnName}(${it.id}, this.value)"></td>
+      <td style="text-align:center;"><button type="button" class="chk-toggle-btn ${esSi ? 'active-si' : ''}" id="${st.idPrefix}-si-${it.id}" onclick="${st.toggleFnName}(${it.id}, true)"><i class="fas fa-check"></i></button></td>
+      <td style="text-align:center;"><button type="button" class="chk-toggle-btn ${esNo ? 'active-no' : ''}" id="${st.idPrefix}-no-${it.id}" onclick="${st.toggleFnName}(${it.id}, false)"><i class="fas fa-xmark"></i></button></td>
+    </tr>`;
+  }).join('');
+
+  const pagHtml = total <= st.pageSize ? '' : `
+    <div class="pagination-wrap chk-seccion-pag">
+      <div class="pag-info">Mostrando ${total === 0 ? 0 : from + 1}–${Math.min(from + st.pageSize, total)} de ${total}</div>
+      <div class="pag-controls">
+        <button class="pag-btn" ${st.page <= 1 ? 'disabled' : ''} onclick="_chkSeccionGoPage('${key}', ${st.page - 1})"><i class="fas fa-chevron-left"></i></button>
+        <button class="pag-btn" ${st.page >= maxPage ? 'disabled' : ''} onclick="_chkSeccionGoPage('${key}', ${st.page + 1})"><i class="fas fa-chevron-right"></i></button>
+      </div>
+    </div>`;
+
+  return `
+    <table class="data-table chk-seccion-table">
+      <thead><tr><th>Item</th><th>${campo.label}</th><th style="text-align:center;width:56px;">Sí</th><th style="text-align:center;width:56px;">No</th></tr></thead>
+      <tbody>${filas}</tbody>
+    </table>${pagHtml}`;
+}
+
+function _chkSeccionGoPage(key, page) {
+  _chkSeccionState[key].page = page;
+  const wrap = document.getElementById(`${key}-wrap`);
+  wrap.innerHTML = _renderSeccionTablaHTML(key);
+  if (key.startsWith('chkdet-') && !_chkDetEditando) {
+    wrap.querySelectorAll('button, input').forEach(el => el.disabled = true);
+  }
+}
+
+function _hideChecklistEditSection() {
+  const sec = document.getElementById('chkSectionEdit');
+  if (sec) sec.style.display = 'none';
+  _chkRespuestas = {};
+  _chkTextos = {};
+}
+
+async function _onEstadoEditChange() {
+  const sel = document.getElementById('f-estado');
+  const texto = (sel.selectedOptions[0]?.textContent || '').trim().toUpperCase();
+  if (ESTADOS_INACTIVOS_UI.includes(texto)) {
+    await _showChecklistEditSection();
+  } else {
+    _hideChecklistEditSection();
+  }
+}
+
+async function _showChecklistEditSection() {
+  const tipoId = document.getElementById('f-tipo')?.value || '';
+  const items = await fetchChecklistItems(tipoId);
+  _chkRespuestas = {};
+  _chkTextos = {};
+  document.getElementById('chkEditPreguntas').innerHTML = _renderPreguntasAgrupadasHTML(items, 'chk-edit', '_toggleChkRespuesta', '_setTextoChkRespuesta', _chkRespuestas, _chkTextos);
+  document.getElementById('chkSectionEdit').style.display = '';
+}
+
+function _toggleChkRespuesta(itemId, valor) {
+  _chkRespuestas[itemId] = valor;
+  const siBtn = document.getElementById(`chk-edit-si-${itemId}`);
+  const noBtn = document.getElementById(`chk-edit-no-${itemId}`);
+  if (siBtn) siBtn.classList.toggle('active-si', valor === true);
+  if (noBtn) noBtn.classList.toggle('active-no', valor === false);
+}
+
+function _setTextoChkRespuesta(itemId, valor) {
+  _chkTextos[itemId] = valor;
+}
+
+function _buildChecklistPayload() {
+  const idsRespuestas = new Set([...Object.keys(_chkRespuestas), ...Object.keys(_chkTextos)]);
+  const respuestas = Array.from(idsRespuestas).map(itemId => ({
+    item_id: parseInt(itemId),
+    respuesta: _chkRespuestas[itemId] || false,
+    valor_texto: _chkTextos[itemId] || '',
+  }));
+  return { respuestas };
+}
+
+// ── Pantalla "Checklist" (buscar → aviso → continuar → formulario) ──
+
+let _chkResultadosData = [];
+let _chkDispositivoSeleccionado = null;
+let _chkNuevoRespuestas = {};
+let _chkNuevoTextos = {};
+
+function _resetChecklistScreen() {
+  const serialEl = document.getElementById('chk-buscar-serial');
+  const tipoEl   = document.getElementById('chk-buscar-tipo');
+  if (serialEl) serialEl.value = '';
+  if (tipoEl)   tipoEl.value = '';
+  closeModal('modalChecklistResultados');
+  _volverBusquedaChecklist();
+  cargarChecklistStats();
+  cargarChecklistTiposDisponibles();
+}
+
+async function cargarChecklistTiposDisponibles() {
+  const tipoEl = document.getElementById('chk-buscar-tipo');
+  if (!tipoEl) return;
+  const actual = tipoEl.value;
+  const res = await apiFetch(API.checklistTiposDisponibles);
+  const tipos = res.ok ? res.data : [];
+  tipoEl.innerHTML = '<option value="">Seleccione una opción</option>' +
+    tipos.map(t => `<option value="${t.id}">${t.nombre}</option>`).join('');
+  if (actual) tipoEl.value = actual;
+}
+
+async function cargarChecklistStats() {
+  const res = await apiFetch(API.checklistStats);
+  if (!res.ok) return;
+  document.getElementById('chk-stat-con').textContent  = res.data.con_checklist;
+  document.getElementById('chk-stat-pend').textContent = res.data.pendientes;
+}
+
+async function buscarChecklistDispositivo() {
+  const tipo   = document.getElementById('chk-buscar-tipo').value;
+  const serial = document.getElementById('chk-buscar-serial').value.trim();
+  if (!tipo && !serial) {
+    showNotif('Completa un filtro', 'Elige un tipo de dispositivo o escribe un serial para buscar', 'warning');
+    return;
+  }
+  const params = new URLSearchParams();
+  if (tipo)   params.set('tipo', tipo);
+  if (serial) params.set('q', serial);
+  const res = await apiFetch(`${API.checklistDispositivos}?${params}`);
+  const lista = res.ok ? res.data : [];
+  document.getElementById('chkResultadosSub').textContent = `${lista.length} dispositivo${lista.length === 1 ? '' : 's'} encontrado${lista.length === 1 ? '' : 's'}`;
+  _renderResultadosChecklist(lista);
+  document.getElementById('modalChecklistResultados').classList.add('active');
+}
+
+function _renderResultadosChecklist(lista) {
+  _chkResultadosData = lista;
+  const wrap = document.getElementById('chkResultados');
+  wrap.innerHTML = lista.length === 0
+    ? `<div class="empty-state"><i class="fas fa-magnifying-glass"></i><p>No se encontraron dispositivos con ese filtro.</p></div>`
+    : lista.map(d => `
+      <div class="chk-resultado-row">
+        <div>
+          <span class="serial-mono">${d.serial}</span>
+          <span style="margin-left:10px;color:var(--text-light);font-size:12.5px;">${d.tipo} · ${d.responsable || 'Sin asignar'}</span>
+        </div>
+        <div style="display:flex;align-items:center;gap:10px;">
+          ${badgeHTML(d.estado)}
+          <span class="chk-badge ${d.checklist_realizado ? 'chk-badge-si' : 'chk-badge-no'}">
+            <i class="fas fa-${d.checklist_realizado ? 'check' : 'xmark'}"></i> ${d.checklist_realizado ? 'Con checklist' : 'Sin checklist'}
+          </span>
+          ${d.checklist_realizado
+            ? `<div class="tbl-actions">
+                 <button type="button" class="tbl-btn info" title="Detalle del checklist" onclick="verChecklistDetalle(${d.ultimo_checklist_id})"><i class="fas fa-eye"></i></button>
+                 <button type="button" class="tbl-btn edit" title="Editar checklist" onclick="editarChecklistDirecto(${d.ultimo_checklist_id})"><i class="fas fa-edit"></i></button>
+                 <button type="button" class="tbl-btn info" title="Historial de checklists" onclick='verHistorialChecklistDispositivo(${d.id}, ${JSON.stringify(d.serial)})'><i class="fas fa-history"></i></button>
+               </div>`
+            : `<button type="button" class="btn-create" onclick="seleccionarDispositivoChecklist(${d.id})"><i class="fas fa-plus"></i> Ingresar checklist</button>`}
+        </div>
+      </div>`).join('');
+}
+
+function _dispositivoInfoHTML(d) {
+  return `
+    <div style="display:flex;align-items:center;gap:14px;padding:10px 0 14px;flex-wrap:wrap;">
+      <span class="serial-mono" style="font-size:16px;">${d.serial}</span>
+      ${badgeHTML(d.estado)}
+      <span style="color:var(--text-light);font-size:13px;">${d.tipo} · ${d.responsable || 'Sin asignar'}</span>
+    </div>`;
+}
+
+async function seleccionarDispositivoChecklist(id) {
+  const d = _chkResultadosData.find(x => x.id === id);
+  if (!d) return;
+  _chkDispositivoSeleccionado = d;
+  closeModal('modalChecklistResultados');
+
+  const items = await fetchChecklistItems(d.tipo_id);
+  _chkNuevoRespuestas = {};
+  _chkNuevoTextos = {};
+  document.getElementById('chkFormDispositivo').innerHTML = _dispositivoInfoHTML(d);
+  document.getElementById('chkFormPreguntas').innerHTML = _renderPreguntasAgrupadasHTML(items, 'chknuevo', '_toggleChkNuevoRespuesta', '_setTextoChkNuevoRespuesta', _chkNuevoRespuestas, _chkNuevoTextos);
+  _cargarHistorialAnteriorChecklist(d.id);
+  document.getElementById('chk-resp-nombre').value = '';
+  document.getElementById('chk-resp-cedula').value = '';
+  document.getElementById('chk-resp-area').value   = '';
+  document.getElementById('chk-resp-cargo').value  = '';
+  document.getElementById('chk-nuevo-obs').value   = '';
+  _precargarMiResponsable();
+  const btnGuardar = document.getElementById('btnGuardarChecklistNuevo');
+  if (btnGuardar) { btnGuardar.disabled = false; btnGuardar.innerHTML = '<i class="fas fa-save"></i> Guardar checklist'; }
+  document.getElementById('modalChecklistForm').classList.add('active');
+}
+
+let _chkRespBuscadorData = [];
+
+async function chkFiltrarResponsable(prefix = 'chk-resp') {
+  const q = document.getElementById(`${prefix}-cedula`).value.trim();
+  const dd = document.getElementById(`${prefix}-dropdown`);
+  dd.style.display = 'block';
+  const res = await apiFetch(`${API.checklistColaboradorBuscar}?q=${encodeURIComponent(q)}`);
+  _chkRespBuscadorData = res.ok ? res.data : [];
+  dd.innerHTML = _chkRespBuscadorData.length
+    ? _chkRespBuscadorData.map(c => `<div class="usr-dropdown-item" onmousedown="chkSeleccionarResponsable(${c.id}, '${prefix}')">${c.documento} — ${c.nombre}</div>`).join('')
+    : `<div class="usr-dropdown-empty">Sin resultados</div>`;
+}
+
+function chkCerrarResponsableDropdown(prefix = 'chk-resp') {
+  document.getElementById(`${prefix}-dropdown`).style.display = 'none';
+}
+
+function chkSeleccionarResponsable(id, prefix = 'chk-resp') {
+  const c = _chkRespBuscadorData.find(x => x.id === id);
+  if (!c) return;
+  document.getElementById(`${prefix}-nombre`).value = c.nombre;
+  document.getElementById(`${prefix}-cedula`).value = c.documento;
+  document.getElementById(`${prefix}-area`).value   = c.area;
+  document.getElementById(`${prefix}-cargo`).value  = c.cargo;
+  chkCerrarResponsableDropdown(prefix);
+}
+
+// El login usa la cédula como usuario, así que casi siempre coincide con un
+// Colaborador — se precarga solo, pero se puede cambiar buscando otra cédula
+// si el responsable real es otra persona.
+async function _precargarMiResponsable() {
+  const res = await apiFetch(API.checklistMiResponsable);
+  if (!res.ok || !res.data) return;
+  const c = res.data;
+  document.getElementById('chk-resp-nombre').value = c.nombre;
+  document.getElementById('chk-resp-cedula').value = c.documento;
+  document.getElementById('chk-resp-area').value   = c.area;
+  document.getElementById('chk-resp-cargo').value  = c.cargo;
+}
+
+async function _cargarHistorialAnteriorChecklist(dispositivoId) {
+  const wrap = document.getElementById('chkHistorialAnterior');
+  wrap.innerHTML = '';
+  const res = await apiFetch(`${API.checklist}?dispositivo_id=${dispositivoId}`);
+  const lista = res.ok ? res.data : [];
+  if (lista.length === 0) return;
+  wrap.innerHTML = `
+    <div class="form-section-title" style="margin-bottom:8px;"><i class="fas fa-clock-rotate-left"></i> Checklists generados</div>
+    <table class="data-table chk-mini-table"><thead><tr><th>Fecha</th><th>Responsable</th><th></th></tr></thead>
+    <tbody>${lista.map(c => `
+      <tr>
+        <td>${c.fecha}</td>
+        <td>${c.responsable}</td>
+        <td><div class="tbl-actions">
+          <button class="tbl-btn edit" onclick="verChecklistDetalle(${c.id})" title="Ver detalle"><i class="fas fa-eye"></i></button>
+        </div></td>
+      </tr>`).join('')}</tbody></table>`;
+}
+
+function _volverBusquedaChecklist() {
+  closeModal('modalChecklistForm');
+  _chkDispositivoSeleccionado = null;
+}
+
+function _toggleChkNuevoRespuesta(itemId, valor) {
+  _chkNuevoRespuestas[itemId] = valor;
+  const siBtn = document.getElementById(`chknuevo-si-${itemId}`);
+  const noBtn = document.getElementById(`chknuevo-no-${itemId}`);
+  if (siBtn) siBtn.classList.toggle('active-si', valor === true);
+  if (noBtn) noBtn.classList.toggle('active-no', valor === false);
+}
+
+function _setTextoChkNuevoRespuesta(itemId, valor) {
+  _chkNuevoTextos[itemId] = valor;
+}
+
+async function guardarChecklistNuevo() {
+  const d = _chkDispositivoSeleccionado;
+  if (!d) return;
+  const idsRespuestas = new Set([...Object.keys(_chkNuevoRespuestas), ...Object.keys(_chkNuevoTextos)]);
+  const respuestas = Array.from(idsRespuestas).map(itemId => ({
+    item_id: parseInt(itemId),
+    respuesta: _chkNuevoRespuestas[itemId] || false,
+    valor_texto: _chkNuevoTextos[itemId] || '',
+  }));
+  const body = {
+    respuestas,
+    observaciones: document.getElementById('chk-nuevo-obs').value,
+    resp_nombre:   document.getElementById('chk-resp-nombre').value,
+    resp_cedula:   document.getElementById('chk-resp-cedula').value,
+    resp_area:     document.getElementById('chk-resp-area').value,
+    resp_cargo:    document.getElementById('chk-resp-cargo').value,
+  };
+  const res = await apiFetch(API.checklistDispositivoGuardar(d.id), 'POST', body);
+  if (!res.ok) { showNotif('Error', res.error || 'No se pudo guardar el checklist', 'warning'); return; }
+  showNotif(' Guardado', `Checklist del equipo ${d.serial} guardado correctamente`, 'success');
+  const btnGuardar = document.getElementById('btnGuardarChecklistNuevo');
+  if (btnGuardar) { btnGuardar.disabled = true; btnGuardar.innerHTML = '<i class="fas fa-check"></i> Guardado'; }
+  await _cargarHistorialAnteriorChecklist(d.id);
+  cargarChecklistStats();
+}
+
+let _chkDetId = null;
+let _chkDetRespuestas = {};
+let _chkDetTextos = {};
+
+async function verChecklistDetalle(id) {
+  const res = await apiFetch(API.checklistDetalle(id));
+  if (!res.ok) { showNotif('Error', 'No se pudo cargar el checklist', 'warning'); return; }
+  closeModal('modalChecklistResultados');
+  const c = res.data;
+  const items = await fetchChecklistItems(c.tipo_dispositivo_id || '');
+
+  _chkDetId = id;
+  _chkDetRespuestas = {};
+  _chkDetTextos = {};
+  document.getElementById('chkDetalleSub').textContent = `Serial ${c.serial} — ${c.fecha} — ${c.responsable}`;
+
+  // Preguntas a mostrar: todas las activas que aplican a este tipo + cualquier
+  // respuesta guardada de una pregunta que ya no esté activa/aplique (para no
+  // perder el dato).
+  const preguntas = [...items];
+  c.respuestas.forEach(r => {
+    if (r.item_id && !preguntas.some(p => p.id === r.item_id)) {
+      preguntas.push({ id: r.item_id, pregunta: r.pregunta, seccion: '', activo: false });
+    }
+    if (r.item_id) {
+      _chkDetRespuestas[r.item_id] = r.respuesta;
+      _chkDetTextos[r.item_id] = r.valor_texto || '';
+    }
+  });
+
+  document.getElementById('chkDetalleRespuestas').innerHTML = _renderPreguntasAgrupadasHTML(preguntas, 'chkdet', '_toggleChkDetRespuesta', '_setTextoChkDetRespuesta', _chkDetRespuestas, _chkDetTextos);
+
+  document.getElementById('chkdet-resp-nombre').value = c.resp_nombre || '';
+  document.getElementById('chkdet-resp-cedula').value = c.resp_cedula || '';
+  document.getElementById('chkdet-resp-area').value   = c.resp_area || '';
+  document.getElementById('chkdet-resp-cargo').value  = c.resp_cargo || '';
+  document.getElementById('chkdet-obs').value         = c.observaciones || '';
+
+  _setModoChecklistDetalle(false);
+  document.getElementById('modalChecklistDetalle').classList.add('active');
+}
+
+let _chkDetEditando = false;
+
+function _setModoChecklistDetalle(editando) {
+  _chkDetEditando = editando;
+  document.querySelectorAll('#chkDetalleRespuestas button, #chkDetalleRespuestas input').forEach(el => el.disabled = !editando);
+  document.getElementById('chkdet-resp-cedula').disabled = !editando;
+  document.getElementById('chkdet-obs').disabled = !editando;
+  document.getElementById('chkDetalleTitulo').textContent = editando ? 'Editar Checklist' : 'Detalle del Checklist';
+  document.getElementById('chkDetalleHint').textContent = editando
+    ? 'Corrige lo que necesites y da clic en "Guardar cambios".'
+    : 'Solo lectura — haz clic en "Editar checklist" para corregir algo.';
+  document.getElementById('btnChkDetalleEditar').style.display = editando ? 'none' : '';
+  document.getElementById('btnChkDetalleGuardar').style.display = editando ? '' : 'none';
+  document.getElementById('btnChkDetallePdf').style.display = 'none';
+}
+
+function _activarEdicionChecklistDetalle() {
+  _setModoChecklistDetalle(true);
+}
+
+function _toggleChkDetRespuesta(itemId, valor) {
+  _chkDetRespuestas[itemId] = valor;
+  const siBtn = document.getElementById(`chkdet-si-${itemId}`);
+  const noBtn = document.getElementById(`chkdet-no-${itemId}`);
+  if (siBtn) siBtn.classList.toggle('active-si', valor === true);
+  if (noBtn) noBtn.classList.toggle('active-no', valor === false);
+}
+
+function _setTextoChkDetRespuesta(itemId, valor) {
+  _chkDetTextos[itemId] = valor;
+}
+
+async function guardarEdicionChecklist() {
+  if (!_chkDetId) return;
+  const idsRespuestas = new Set([...Object.keys(_chkDetRespuestas), ...Object.keys(_chkDetTextos)]);
+  const respuestas = Array.from(idsRespuestas).map(itemId => ({
+    item_id: parseInt(itemId),
+    respuesta: _chkDetRespuestas[itemId] || false,
+    valor_texto: _chkDetTextos[itemId] || '',
+  }));
+  const body = {
+    respuestas,
+    observaciones: document.getElementById('chkdet-obs').value,
+    resp_nombre:   document.getElementById('chkdet-resp-nombre').value,
+    resp_cedula:   document.getElementById('chkdet-resp-cedula').value,
+    resp_area:     document.getElementById('chkdet-resp-area').value,
+    resp_cargo:    document.getElementById('chkdet-resp-cargo').value,
+  };
+
+  const res = await apiFetch(API.checklistEditar(_chkDetId), 'PUT', body);
+  if (!res.ok) { showNotif('Error', res.error || 'No se pudo guardar', 'warning'); return; }
+  showNotif(' Actualizado', 'El checklist fue corregido correctamente', 'success');
+  closeModal('modalChecklistDetalle');
+}
+
+function descargarChecklistPdf(id) {
+  const a = document.createElement('a');
+  a.href = API.checklistPdf(id || _chkDetId);
+  a.download = '';
+  document.body.appendChild(a);
+  a.click();
+  a.remove();
+}
+
+async function verVistaPreviaChecklist(id) {
+  closeModal('modalChecklistHistorialDispositivo');
+  const body = document.getElementById('chkPreviewBody');
+  body.innerHTML = `<div class="empty-state" style="color:#fff"><i class="fas fa-spinner fa-spin"></i><p>Cargando…</p></div>`;
+  document.getElementById('btnChkPreviewPdf').onclick = () => descargarChecklistPdf(id);
+  document.getElementById('modalChecklistVistaPrevia').classList.add('active');
+
+  const res = await apiFetch(API.checklistDetalle(id));
+  if (!res.ok) {
+    body.innerHTML = `<div class="empty-state" style="color:#fff"><i class="fas fa-triangle-exclamation"></i><p>No se pudo cargar el checklist.</p></div>`;
+    return;
+  }
+  body.innerHTML = _construirVistaPreviaChecklistHTML(res.data);
+}
+
+const CHK_PREVIEW_CAMPO_SECCION = { 'CONTROLADOR DE DOMINIO': 'OBSERVACIÓN' };
+
+function _construirVistaPreviaChecklistHTML(c) {
+  const seccionesMap = {};
+  const ordenSecciones = [];
+  c.respuestas.forEach(r => {
+    if (!seccionesMap[r.seccion]) { seccionesMap[r.seccion] = []; ordenSecciones.push(r.seccion); }
+    seccionesMap[r.seccion].push(r);
+  });
+
+  const seccionesHTML = ordenSecciones.map(seccion => {
+    const campo = CHK_PREVIEW_CAMPO_SECCION[seccion] || 'REGISTRO';
+    const filas = seccionesMap[seccion].map(r => `
+      <tr>
+        <td style="padding:8px 10px;border:1px solid #e5e7eb">${r.pregunta}</td>
+        <td style="padding:8px 10px;border:1px solid #e5e7eb;font-size:12px;color:#374151">${r.valor_texto || '&nbsp;'}</td>
+        <td style="padding:8px 10px;border:1px solid #e5e7eb;text-align:center;color:#15803d;font-size:15px">${r.respuesta ? '<i class="fas fa-check"></i>' : ''}</td>
+        <td style="padding:8px 10px;border:1px solid #e5e7eb;text-align:center;color:#b91c1c;font-size:15px">${!r.respuesta ? '<i class="fas fa-times"></i>' : ''}</td>
+      </tr>`).join('');
+    return `
+      <table style="width:100%;border-collapse:collapse;margin-bottom:14px;font-size:13px;table-layout:fixed">
+        <colgroup><col style="width:38%"><col style="width:37%"><col style="width:12.5%"><col style="width:12.5%"></colgroup>
+        <thead>
+          <tr style="background:#1e3a5f;color:#fff">
+            <th colspan="4" style="padding:7px 10px;text-align:left;font-size:11px;letter-spacing:.03em">${seccion}</th>
+          </tr>
+          <tr style="background:#e5edf5">
+            <th style="padding:7px 10px;text-align:left;font-size:11px;color:#374151">ITEM</th>
+            <th style="padding:7px 10px;text-align:left;font-size:11px;color:#374151">${campo}</th>
+            <th style="padding:7px 10px;text-align:center;font-size:11px;color:#374151">SI</th>
+            <th style="padding:7px 10px;text-align:center;font-size:11px;color:#374151">NO</th>
+          </tr>
+        </thead>
+        <tbody>${filas}</tbody>
+      </table>`;
+  }).join('');
+
+  return `
+    <div style="font-family:Arial,sans-serif;font-size:12px;color:#111;background:#fff;padding:36px;max-width:820px;margin:0 auto;border-radius:8px;box-sizing:border-box;">
+      <table style="width:100%;margin-bottom:6px;border-bottom:2px solid #111;padding-bottom:12px">
+        <tr>
+          <td style="width:170px;vertical-align:middle">
+            ${c.logo
+              ? `<img src="${c.logo}" style="max-height:85px;max-width:130px;display:block">`
+              : `<div style="font-size:22px;font-weight:700;color:#1e3a5f">AM&amp;M</div>`}
+          </td>
+          <td style="text-align:center;vertical-align:middle;padding:0 10px">
+            <div style="font-size:14px;font-weight:700;text-transform:uppercase">CHECKLIST DE INGRESO Y EGRESO DE EQUIPOS</div>
+            <div style="font-size:11.5px;font-weight:600;margin-top:4px">GESTIÓN DE TECNOLOGÍA DE LA INFORMACIÓN Y LA COMUNICACIÓN</div>
+          </td>
+          <td style="width:110px"></td>
+        </tr>
+      </table>
+      <table style="width:100%;margin-bottom:14px;font-size:12px">
+        <tr>
+          <td style="width:150px;padding:3px 0"><b>FECHA:</b></td>
+          <td style="padding:3px 0">${c.fecha}</td>
+          <td style="width:150px;padding:3px 0"><b>SERIAL:</b></td>
+          <td style="padding:3px 0">${c.serial}</td>
+        </tr>
+        <tr>
+          <td style="padding:3px 0"><b>TIPO DE EQUIPO:</b></td>
+          <td style="padding:3px 0">${c.tipo}</td>
+          <td style="padding:3px 0"><b>REGISTRADO POR:</b></td>
+          <td style="padding:3px 0">${c.responsable}</td>
+        </tr>
+        <tr>
+          <td style="padding:3px 0"><b>ASIGNADO A:</b></td>
+          <td colspan="3" style="padding:3px 0">${c.asignado_a}</td>
+        </tr>
+      </table>
+      ${seccionesHTML}
+      <table style="width:100%;margin-top:6px;font-size:12px">
+        <tr style="background:#1e3a5f;color:#fff">
+          <td colspan="4" style="padding:7px 10px;font-weight:700;text-align:center">DATOS DEL RESPONSABLE</td>
+        </tr>
+        <tr>
+          <td style="padding:6px 10px;border:1px solid #cbd5e1;background:#e5edf5;font-weight:700;width:22%">NOMBRE COMPLETO</td>
+          <td colspan="3" style="padding:6px 10px;border:1px solid #cbd5e1">${c.resp_nombre || '&nbsp;'}</td>
+        </tr>
+        <tr>
+          <td style="padding:6px 10px;border:1px solid #cbd5e1;background:#e5edf5;font-weight:700">CEDULA</td>
+          <td colspan="3" style="padding:6px 10px;border:1px solid #cbd5e1">${c.resp_cedula || '&nbsp;'}</td>
+        </tr>
+        <tr>
+          <td style="padding:6px 10px;border:1px solid #cbd5e1;background:#e5edf5;font-weight:700">AREA</td>
+          <td style="padding:6px 10px;border:1px solid #cbd5e1;width:33%">${c.resp_area || '&nbsp;'}</td>
+          <td style="padding:6px 10px;border:1px solid #cbd5e1;background:#e5edf5;font-weight:700;width:20%">CARGO</td>
+          <td style="padding:6px 10px;border:1px solid #cbd5e1">${c.resp_cargo || '&nbsp;'}</td>
+        </tr>
+      </table>
+      <table style="width:100%;margin-top:14px;font-size:12px">
+        <tr style="background:#1e3a5f;color:#fff">
+          <td style="padding:7px 10px;font-weight:700">OBSERVACIONES:</td>
+        </tr>
+        <tr>
+          <td style="padding:12px 10px;border:1px solid #cbd5e1;min-height:60px;vertical-align:top">${c.observaciones || '&nbsp;'}</td>
+        </tr>
+      </table>
+    </div>`;
+}
+
+async function editarChecklistDirecto(id) {
+  await verChecklistDetalle(id);
+  _activarEdicionChecklistDetalle();
+}
+
+async function verHistorialChecklistDispositivo(dispositivoId, serial) {
+  closeModal('modalChecklistResultados');
+  document.getElementById('chkHistDispSub').textContent = `Serial ${serial}`;
+  const body = document.getElementById('chkHistDispBody');
+  body.innerHTML = `<div class="empty-state"><i class="fas fa-spinner fa-spin"></i><p>Cargando…</p></div>`;
+  document.getElementById('modalChecklistHistorialDispositivo').classList.add('active');
+
+  const res = await apiFetch(`${API.checklist}?dispositivo_id=${dispositivoId}`);
+  const lista = res.ok ? res.data : [];
+  if (lista.length === 0) {
+    body.innerHTML = `<div class="empty-state"><i class="fas fa-clock-rotate-left"></i><p>Este dispositivo no tiene checklists registrados.</p></div>`;
+    return;
+  }
+  body.innerHTML = `<div class="chk-hist-list">${lista.map(c => `
+    <div class="chk-hist-item">
+      <div class="chk-hist-item-info">
+        <div class="chk-hist-item-icon"><i class="fas fa-clipboard-check"></i></div>
+        <div class="chk-hist-item-text">
+          <div class="chk-hist-item-fecha">${c.fecha}</div>
+          <div class="chk-hist-item-resp">${c.responsable}</div>
+        </div>
+      </div>
+      <div class="tbl-actions">
+        <button class="tbl-btn edit" onclick="verVistaPreviaChecklist(${c.id})" title="Vista previa del checklist"><i class="fas fa-eye"></i></button>
+      </div>
+    </div>`).join('')}</div>`;
+}
+
+// ── Administrar preguntas (catálogo) ──
+
+async function abrirAdminPreguntasChecklist() {
+  document.getElementById('chk-item-nueva').value = '';
+  document.getElementById('chk-item-seccion').value = '';
+  const tipoSelect = document.getElementById('chk-item-tipo');
+  // Hoy el checklist solo aplica a Portátil, así que se deja preseleccionado
+  // para no tener que elegirlo cada vez (se puede cambiar si hace falta).
+  const opcionPortatil = Array.from(tipoSelect.options).find(o => o.textContent.trim().toUpperCase() === 'PORTATIL');
+  tipoSelect.value = opcionPortatil ? opcionPortatil.value : '';
+  await _cargarYRenderAdminPreguntas();
+  document.getElementById('modalAdminPreguntas').classList.add('active');
+}
+
+async function _cargarYRenderAdminPreguntas() {
+  const res = await apiFetch(API.checklistItems);
+  const items = res.ok ? res.data : [];
+
+  const secciones = [...new Set(items.map(it => it.seccion).filter(Boolean))].sort();
+  document.getElementById('chk-secciones-list').innerHTML =
+    secciones.map(s => `<option value="${s}"></option>`).join('');
+
+  const wrap = document.getElementById('chk-items-lista');
+  if (items.length === 0) {
+    wrap.innerHTML = '<p style="font-size:13px;color:var(--text-light);">No hay preguntas creadas todavía.</p>';
+    return;
+  }
+  let html = '';
+  let grupoActual = null;
+  items.forEach(it => {
+    const clave = `${it.seccion || 'GENERAL'} — ${it.tipo_dispositivo_nombre || 'Todos los tipos'}`;
+    if (clave !== grupoActual) {
+      if (grupoActual !== null) html += '</div>';
+      html += `<div class="chk-seccion"><div class="chk-seccion-title">${clave}</div>`;
+      grupoActual = clave;
+    }
+    html += `
+      <div style="display:flex;align-items:center;justify-content:space-between;gap:10px;padding:8px 0;border-bottom:1px solid rgba(0,0,0,.06);">
+        <span style="font-size:13.5px;${it.activo ? '' : 'color:var(--text-light);text-decoration:line-through;'}">${it.pregunta}</span>
+        <label style="display:flex;align-items:center;gap:6px;font-size:12px;color:var(--text-light);flex-shrink:0;">
+          <input type="checkbox" ${it.activo ? 'checked' : ''} onchange="toggleItemChecklistActivo(${it.id}, this.checked)"> Activa
+        </label>
+      </div>`;
+  });
+  if (grupoActual !== null) html += '</div>';
+  wrap.innerHTML = html;
+}
+
+async function crearItemChecklist() {
+  const input = document.getElementById('chk-item-nueva');
+  const pregunta = input.value.trim();
+  if (!pregunta) { showNotif('Campo requerido', 'Escribe el texto de la pregunta', 'warning'); return; }
+  const seccion = document.getElementById('chk-item-seccion').value.trim();
+  const tipoId  = document.getElementById('chk-item-tipo').value || null;
+  const res = await apiFetch(API.checklistItemCrear, 'POST', { pregunta, seccion, tipo_dispositivo_id: tipoId });
+  if (!res.ok) { showNotif('Error', res.error || 'No se pudo crear la pregunta', 'warning'); return; }
+  input.value = '';
+  await _cargarYRenderAdminPreguntas();
+  showNotif(' Agregada', 'La pregunta fue agregada al checklist', 'success');
+}
+
+async function toggleItemChecklistActivo(id, activo) {
+  const res = await apiFetch(API.checklistItemEditar(id), 'PUT', { activo });
+  if (!res.ok) { showNotif('Error', res.error || 'No se pudo actualizar', 'warning'); return; }
+  await _cargarYRenderAdminPreguntas();
+}
+
+// ============================================================
+// NOVEDADES GENERALES — bitácora independiente (no se liga a
+// dispositivos ni colaboradores). Catálogo de tipos + campos
+// dinámicos por tipo, mismo patrón que Checklist de Inventario.
+// ============================================================
+let NOV_DATA = [];
+let novPage = 1;
+let novPageSize = 10;
+let _novCamposRespuestas = {};
+
+async function loadNovedades() {
+  await cargarNovTiposFiltro();
+  const q      = (document.getElementById('nov-search')       || {}).value || '';
+  const tipo   = (document.getElementById('nov-filter-tipo')  || {}).value || '';
+  const desde  = (document.getElementById('nov-filter-desde') || {}).value || '';
+  const hasta  = (document.getElementById('nov-filter-hasta') || {}).value || '';
+  const params = new URLSearchParams();
+  if (q)     params.set('q', q);
+  if (tipo)  params.set('tipo_id', tipo);
+  if (desde) params.set('fecha_desde', desde);
+  if (hasta) params.set('fecha_hasta', hasta);
+  const res = await apiFetch(`${API.novedadesLista}?${params}`);
+  if (!res.ok) { showNotif('Error', 'No se pudo cargar las novedades', 'warning'); return; }
+  NOV_DATA = res.data;
+  novPage = 1;
+  _renderNovTable();
+}
+
+function renderNovedades() { loadNovedades(); }
+
+async function cargarNovTiposFiltro() {
+  const sel = document.getElementById('nov-filter-tipo');
+  if (!sel) return;
+  const actual = sel.value;
+  const res = await apiFetch(API.novedadesTipos);
+  const tipos = res.ok ? res.data : [];
+  sel.innerHTML = '<option value="">Todos los tipos</option>' +
+    tipos.map(t => `<option value="${t.id}">${t.nombre}</option>`).join('');
+  if (actual) sel.value = actual;
+}
+
+function _renderNovTable() {
+  const total   = NOV_DATA.length;
+  const maxPage = Math.max(1, Math.ceil(total / novPageSize));
+  if (novPage > maxPage) novPage = 1;
+  const from  = (novPage - 1) * novPageSize;
+  const slice = NOV_DATA.slice(from, from + novPageSize);
+  document.getElementById('nov-pag-from').textContent  = total === 0 ? 0 : from + 1;
+  document.getElementById('nov-pag-to').textContent    = Math.min(from + novPageSize, total);
+  document.getElementById('nov-pag-total').textContent = total;
+  const tbody = document.getElementById('nov-tbody');
+  tbody.innerHTML = slice.length === 0
+    ? `<tr><td colspan="4"><div class="empty-state">
+         <i class="fas fa-bullhorn"></i><p>No se encontraron novedades</p>
+       </div></td></tr>`
+    : slice.map(n => `
+      <tr onclick="verNovedadDetalle(${n.id})">
+        <td><span class="serial-mono">${n.fecha}</span></td>
+        <td>${n.tipo}</td>
+        <td>${n.responsable}</td>
+        <td onclick="event.stopPropagation()">
+          <div class="tbl-actions">
+            <button class="tbl-btn info" onclick="verNovedadDetalle(${n.id})"><i class="fas fa-eye"></i></button>
+          </div>
+        </td>
+      </tr>`).join('');
+  renderNovPagination(total, maxPage);
+}
+
+function renderNovPagination(total, maxPage) {
+  const ctrl = document.getElementById('nov-pag-controls');
+  let html = `<button class="pag-btn" ${novPage <= 1 ? 'disabled' : ''} onclick="novGoPage(${novPage - 1})">
+    <i class="fas fa-chevron-left"></i></button>`;
+  buildPages(novPage, maxPage).forEach(p => {
+    html += p === '...'
+      ? `<span class="pag-btn" style="border:none;cursor:default">…</span>`
+      : `<button class="pag-btn ${p === novPage ? 'active' : ''}" onclick="novGoPage(${p})">${p}</button>`;
+  });
+  html += `<button class="pag-btn" ${novPage >= maxPage ? 'disabled' : ''} onclick="novGoPage(${novPage + 1})">
+    <i class="fas fa-chevron-right"></i></button>`;
+  ctrl.innerHTML = html;
+}
+
+function novGoPage(p) { novPage = p; _renderNovTable(); }
+function changeNovPageSize() {
+  novPageSize = parseInt(document.getElementById('nov-pag-size').value);
+  novPage = 1;
+  _renderNovTable();
+}
+
+// ── Registrar novedad ──
+
+async function abrirRegistrarNovedad() {
+  document.getElementById('nov-campos-dinamicos').innerHTML = '';
+  _novCamposRespuestas = {};
+  const sel = document.getElementById('nov-tipo');
+  const res = await apiFetch(API.novedadesTipos);
+  const tipos = (res.ok ? res.data : []).filter(t => t.activo);
+  sel.innerHTML = '<option value="">Selecciona un tipo</option>' +
+    tipos.map(t => `<option value="${t.id}">${t.nombre}</option>`).join('');
+  sel.value = '';
+  document.getElementById('modalRegistrarNovedad').classList.add('active');
+}
+
+async function _cargarCamposNovedad() {
+  const tipoId = document.getElementById('nov-tipo').value;
+  const wrap = document.getElementById('nov-campos-dinamicos');
+  _novCamposRespuestas = {};
+  if (!tipoId) { wrap.innerHTML = ''; return; }
+  const res = await apiFetch(`${API.novedadesCampos}?tipo_id=${tipoId}`);
+  const campos = res.ok ? res.data : [];
+  if (campos.length === 0) {
+    wrap.innerHTML = `<p style="font-size:12.5px;color:var(--text-light);">Este tipo de novedad no tiene campos configurados.</p>`;
+    return;
+  }
+  wrap.innerHTML = `
+    <div class="chk-seccion">
+      <div class="chk-seccion-title"><i class="fas fa-list-check"></i> Campos de la novedad</div>
+      <div class="chk-resp-body" style="display:flex;flex-direction:column;gap:12px;">
+        ${campos.map(c => `
+          <div class="form-group" style="margin:0;">
+            <label class="form-label">${c.nombre}</label>
+            <input class="form-input" type="text" placeholder="Observación..." spellcheck="false"
+              oninput="_novCamposRespuestas[${c.id}] = this.value">
+          </div>`).join('')}
+      </div>
+    </div>`;
+}
+
+async function guardarNovedad() {
+  const tipoId = document.getElementById('nov-tipo').value;
+  if (!tipoId) { showNotif('Falta el tipo', 'Elige un tipo de novedad', 'warning'); return; }
+  const campos = Object.keys(_novCamposRespuestas).map(campoId => ({
+    campo_id: parseInt(campoId),
+    observacion: _novCamposRespuestas[campoId] || '',
+  }));
+  const body = { tipo_id: tipoId, campos };
+  const res = await apiFetch(API.novedadesGuardar, 'POST', body);
+  if (!res.ok) { showNotif('Error', res.error || 'No se pudo guardar la novedad', 'warning'); return; }
+  showNotif(' Registrada', 'La novedad fue registrada correctamente', 'success');
+  closeModal('modalRegistrarNovedad');
+  loadNovedades();
+}
+
+// ── Detalle ──
+
+async function verNovedadDetalle(id) {
+  const res = await apiFetch(API.novedadesDetalle(id));
+  if (!res.ok) { showNotif('Error', 'No se pudo cargar la novedad', 'warning'); return; }
+  const n = res.data;
+  document.getElementById('nov-det-sub').textContent = `${n.tipo} — ${n.fecha} — ${n.responsable}`;
+  const wrap = document.getElementById('nov-det-campos');
+  if (n.respuestas.length === 0) {
+    wrap.innerHTML = '';
+  } else {
+    wrap.innerHTML = `
+      <div class="chk-seccion">
+        <div class="chk-seccion-title"><i class="fas fa-list-check"></i> Campos</div>
+        <table class="data-table chk-mini-table">
+          <thead><tr><th>Campo</th><th>Observación</th></tr></thead>
+          <tbody>${n.respuestas.map(r => `
+            <tr><td>${r.campo}</td><td>${r.observacion || '—'}</td></tr>`).join('')}</tbody>
+        </table>
+      </div>`;
+  }
+  document.getElementById('modalDetalleNovedad').classList.add('active');
+}
+
+// ── Administrar tipos y campos ──
+
+async function abrirAdminTiposNovedad() {
+  document.getElementById('nov-tipo-nuevo').value = '';
+  await _cargarYRenderTiposNovedad();
+  document.getElementById('modalAdminTiposNovedad').classList.add('active');
+}
+
+async function _cargarYRenderTiposNovedad() {
+  const res = await apiFetch(API.novedadesTipos);
+  const tipos = res.ok ? res.data : [];
+  const wrap = document.getElementById('nov-tipos-lista');
+  if (tipos.length === 0) {
+    wrap.innerHTML = '<p style="font-size:13px;color:var(--text-light);">No hay tipos de novedad creados todavía.</p>';
+    return;
+  }
+  const bloques = await Promise.all(tipos.map(t => _renderBloqueTipoNovedad(t)));
+  wrap.innerHTML = bloques.join('');
+}
+
+async function _renderBloqueTipoNovedad(t) {
+  const res = await apiFetch(`${API.novedadesCampos}?tipo_id=${t.id}&todos=1`);
+  const campos = res.ok ? res.data : [];
+  const camposHtml = campos.map(c => `
+    <div style="display:flex;align-items:center;justify-content:space-between;gap:10px;padding:6px 0;border-bottom:1px solid rgba(0,0,0,.06);">
+      <span style="font-size:13px;${c.activo ? '' : 'color:var(--text-light);text-decoration:line-through;'}">${c.nombre}</span>
+      <label style="display:flex;align-items:center;gap:6px;font-size:12px;color:var(--text-light);flex-shrink:0;">
+        <input type="checkbox" ${c.activo ? 'checked' : ''} onchange="toggleCampoNovedadActivo(${c.id}, this.checked)"> Activo
+      </label>
+    </div>`).join('');
+  return `
+    <div class="chk-seccion">
+      <div class="chk-seccion-title" style="display:flex;align-items:center;justify-content:space-between;">
+        <span>${t.nombre}</span>
+        <label style="display:flex;align-items:center;gap:6px;font-size:12px;font-weight:400;">
+          <input type="checkbox" ${t.activo ? 'checked' : ''} onchange="toggleTipoNovedadActivo(${t.id}, this.checked)"> Activo
+        </label>
+      </div>
+      <div class="chk-resp-body">
+        ${camposHtml || '<p style="font-size:12.5px;color:var(--text-light);margin:0 0 8px;">Sin campos todavía.</p>'}
+        <div class="form-row" style="display:flex;gap:8px;margin-top:10px;">
+          <input class="form-input" id="nov-campo-nuevo-${t.id}" type="text" placeholder="Nuevo campo..." style="flex:1;">
+          <button class="btn-save" onclick="crearCampoNovedad(${t.id})" style="white-space:nowrap;"><i class="fas fa-plus"></i> Agregar campo</button>
+        </div>
+      </div>
+    </div>`;
+}
+
+async function crearTipoNovedad() {
+  const input = document.getElementById('nov-tipo-nuevo');
+  const nombre = input.value.trim();
+  if (!nombre) { showNotif('Campo requerido', 'Escribe el nombre del tipo', 'warning'); return; }
+  const res = await apiFetch(API.novedadesTipoCrear, 'POST', { nombre });
+  if (!res.ok) { showNotif('Error', res.error || 'No se pudo crear el tipo', 'warning'); return; }
+  input.value = '';
+  await _cargarYRenderTiposNovedad();
+  showNotif(' Agregado', 'El tipo de novedad fue creado', 'success');
+}
+
+async function toggleTipoNovedadActivo(id, activo) {
+  const res = await apiFetch(API.novedadesTipoEditar(id), 'PUT', { activo });
+  if (!res.ok) { showNotif('Error', res.error || 'No se pudo actualizar', 'warning'); return; }
+  await _cargarYRenderTiposNovedad();
+}
+
+async function crearCampoNovedad(tipoId) {
+  const input = document.getElementById(`nov-campo-nuevo-${tipoId}`);
+  const nombreCampo = input.value.trim();
+  if (!nombreCampo) { showNotif('Campo requerido', 'Escribe el nombre del campo', 'warning'); return; }
+  const res = await apiFetch(API.novedadesCampoCrear, 'POST', { tipo_id: tipoId, nombre_campo: nombreCampo });
+  if (!res.ok) { showNotif('Error', res.error || 'No se pudo crear el campo', 'warning'); return; }
+  await _cargarYRenderTiposNovedad();
+  showNotif(' Agregado', 'El campo fue agregado al tipo de novedad', 'success');
+}
+
+async function toggleCampoNovedadActivo(id, activo) {
+  const res = await apiFetch(API.novedadesCampoEditar(id), 'PUT', { activo });
+  if (!res.ok) { showNotif('Error', res.error || 'No se pudo actualizar', 'warning'); return; }
+  await _cargarYRenderTiposNovedad();
+}
+
+// ============================================================
 // COLABORADORES
 // ============================================================
 let colabTotal = 0, colabTotalPages = 1;
@@ -2590,8 +3611,8 @@ async function guardarActa() {
   if (cActualizado) renderActaHist(cActualizado);
 }
 
-function initSignaturePads() {
-  ['sig-recibe', 'sig-entrega'].forEach(id => {
+function initSignaturePads(ids) {
+  (ids || ['sig-recibe', 'sig-entrega']).forEach(id => {
     const canvas = document.getElementById(id);
     if (!canvas) return;
     const wrap    = canvas.parentElement;
@@ -2902,7 +3923,7 @@ function downloadCSV(rows, filename) {
 // asignados al usuario logueado. Se refresca solo (polling) para que se
 // sienta casi en tiempo real sin necesitar WebSockets/infraestructura nueva.
 // ============================================================
-let BELL_DATA = { vencidos: [], licencias_por_vencer: [], pendientes_aprobacion: [], vencidos_sin_asignar: [], nuevos_sin_asignar: [], prestamos_realizados: [] };
+let BELL_DATA = { vencidos: [], licencias_por_vencer: [], pendientes_aprobacion: [], vencidos_sin_asignar: [], nuevos_sin_asignar: [], prestamos_realizados: [], checklist_pendiente: [] };
 
 async function cargarNotificacionesBell() {
   const res = await apiFetch(API.notificacionesBell);
@@ -2914,6 +3935,7 @@ async function cargarNotificacionesBell() {
     vencidos_sin_asignar:  res.data.vencidos_sin_asignar || [],
     nuevos_sin_asignar:    res.data.nuevos_sin_asignar || [],
     prestamos_realizados:  res.data.prestamos_realizados || [],
+    checklist_pendiente:   res.data.checklist_pendiente || [],
   };
   renderBellBadge();
   const panel = document.getElementById('bellPanel');
@@ -2936,6 +3958,9 @@ async function _bellMarcarLeida(tipo, referenciaId, referenciaFecha) {
   } else if (tipo === 'aprobacion') {
     BELL_DATA.pendientes_aprobacion = BELL_DATA.pendientes_aprobacion
       .filter(p => !(p.id === referenciaId && p.fecha === referenciaFecha));
+  } else if (tipo === 'checklist') {
+    BELL_DATA.checklist_pendiente = BELL_DATA.checklist_pendiente
+      .filter(d => !(d.id === referenciaId && d.fecha === referenciaFecha));
   }
   renderBellBadge();
   renderBellPanel();
@@ -2985,6 +4010,13 @@ function _construirBellItems() {
     fecha: `Prestado el ${p.fecha}`,
     icono: 'fa-hand-holding', onClick: () => _irAPrestamoEquipos(p.equipo),
     dismissible: true, onLeida: () => _bellMarcarLeida('prestamo', p.id, p.fecha),
+  }));
+  BELL_DATA.checklist_pendiente.forEach(d => items.push({
+    tipo: 'checklist', titulo: `Falta el checklist de ${d.serial}`,
+    mensaje: `${d.tipo} — registrado el ${d.fecha}`,
+    fecha: `Registrado el ${d.fecha}`,
+    icono: 'fa-clipboard-check', onClick: () => _irAChecklistDispositivo(d.serial),
+    dismissible: true, onLeida: () => _bellMarcarLeida('checklist', d.id, d.fecha),
   }));
   BELL_DATA.vencidos.forEach(v => items.push({
     tipo: 'vencido', titulo: `${v.codigo} está vencido`,
@@ -3038,6 +4070,16 @@ function _irADispositivo(serial) {
   setTimeout(() => {
     const buscador = document.getElementById('inv-search');
     if (buscador) { buscador.value = serial; loadInventario(); }
+  }, 500);
+}
+
+// Navega a Checklist y busca el dispositivo al que le falta el checklist.
+function _irAChecklistDispositivo(serial) {
+  cerrarBellPanel();
+  showScreen('checklist');
+  setTimeout(() => {
+    const buscador = document.getElementById('chk-buscar-serial');
+    if (buscador) { buscador.value = serial; buscarChecklistDispositivo(); }
   }, 500);
 }
 

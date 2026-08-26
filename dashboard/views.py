@@ -6,12 +6,14 @@ Todas las respuestas son JSON para consumo del frontend.
 
 import json
 import re
-from django.http import JsonResponse
+from datetime import date
+from django.http import JsonResponse, HttpResponse
 from requerimientos.models import Usuario,CentroOperacion,Cargo,TipoUsuario,Requerimiento
 
 from django.views.decorators.http import require_GET,require_POST
 from django.views.decorators.http import require_http_methods
 from django.views.decorators.csrf import csrf_exempt
+from django.views.decorators.clickjacking import xframe_options_sameorigin
 from django.shortcuts import render, get_object_or_404
 from django.db import transaction
 from django.db.models import Count, Q ,F
@@ -26,15 +28,28 @@ from .models import (
     CaracteristicaPeriferico, CaracteristicaLicencia,
     HistorialEquipo, Colaborador,
     AsignacionColaborador, Acta, ActaDispositivo, CentroCosto, TipoImpresora,
-    RAM, TipoDisco ,CaracteristicasVideoBeam,TipoActa, NotificacionBellLeida
+    RAM, TipoDisco ,CaracteristicasVideoBeam,TipoActa, NotificacionBellLeida,
+    ItemChecklist, ChecklistDispositivo, RespuestaChecklist,
+    TipoNovedadGeneral, CampoNovedadGeneral, NovedadGeneral, RespuestaNovedadGeneral
 )
 import base64
 import os
+from zoneinfo import ZoneInfo
 from django.conf import settings
 
-# ─────────────────────────────────────────────────────────────
+# El servidor guarda las fechas en UTC (TIME_ZONE='UTC' en settings), así que
+# hay que convertir a hora de Colombia antes de mostrarlas al usuario.
+COLOMBIA_TZ = ZoneInfo('America/Bogota')
+
+
+def _fecha_local_str(dt, fmt='%d/%m/%Y %H:%M'):
+    if not dt:
+        return ''
+    return timezone.localtime(dt, COLOMBIA_TZ).strftime(fmt)
+
+
 #  UTILIDADES — Generación PDF y envío de correo del Acta
-# ─────────────────────────────────────────────────────────────
+
 import smtplib
 import threading
 from email.mime.multipart import MIMEMultipart
@@ -47,6 +62,11 @@ from io import BytesIO
 # Estados de Dispositivo que se consideran "inactivos": estos equipos se
 # excluyen del Inventario activo y se listan en la pantalla de Inactivos.
 ESTADOS_INACTIVOS = ('ELIMINADO', 'OBSOLETO', 'DEVUELTO')
+
+# Fecha desde la que la campanita avisa de dispositivos sin checklist (ver
+# api_notificaciones_bell). Fecha fija a propósito: los dispositivos creados
+# antes de que el checklist existiera como función no cuentan como pendientes.
+CHECKLIST_NOTIF_DESDE = date(2026, 8, 26)
 
 
 # VISTA PRINCIPAL  Renderiza el dashboard HTML
@@ -649,7 +669,7 @@ def api_dispositivo_editar(request, pk):
             d.g212_observaciones = body.get('observaciones', d.g212_observaciones)
             d.save()
             _save_caracteristicas(d, body)
-            responsable = request.user.get_full_name() or request.user.username
+            responsable = _nombre_completo_usuario(request)
             _registrar_historial_auto(
                 dispositivo    = d,
                 nombre_novedad = 'EDICIÓN',
@@ -658,6 +678,10 @@ def api_dispositivo_editar(request, pk):
                 co             = d.g212_co,
             )
             _registrar_transicion_inactivo(d, estado_anterior_desc, responsable, co=d.g212_co)
+
+            estado_nuevo_desc = d.g212_estado.g201_descripcion if d.g212_estado else None
+            if estado_nuevo_desc in ESTADOS_INACTIVOS and body.get('checklist'):
+                _guardar_checklist_dispositivo(d, body['checklist'], responsable)
     except Exception as e:
         return _json_err(str(e))
 
@@ -906,6 +930,19 @@ def api_historial(request):
 
 
 
+def _nombre_completo_usuario(request):
+    """
+    Nombre real del usuario logueado, para dejarlo como 'Registrado por' en vez
+    de su cédula. El login usa la cédula como username, así que se busca el
+    Colaborador correspondiente; si no existe, se usa get_full_name()/username
+    como respaldo (igual que antes).
+    """
+    colaborador = Colaborador.objects.filter(g215_documento=request.user.username).first()
+    if colaborador:
+        return colaborador.g215_nombre
+    return request.user.get_full_name() or request.user.username
+
+
 #  Registrar historial automático
 
 def _registrar_historial_auto(dispositivo, nombre_novedad, responsable, observaciones='', co=None):
@@ -965,6 +1002,41 @@ def _registrar_transicion_inactivo(dispositivo, estado_anterior_desc, responsabl
             co             = co,
         )
 
+
+def _guardar_checklist_dispositivo(dispositivo, checklist_body, responsable):
+    """
+    Guarda el Checklist de Inventario de un dispositivo (cabecera + respuestas)
+    y deja constancia en Historial de Equipo. Se llama desde api_dispositivo_editar
+    cuando el dispositivo entra a un estado inactivo (ver ESTADOS_INACTIVOS).
+    """
+    tipo_nombre = dispositivo.g212_tipo.g200_tipo_dispositivo if dispositivo.g212_tipo else '—'
+    marca_nombre = dispositivo.g212_marca.g202_marca if dispositivo.g212_marca else '—'
+    cd = ChecklistDispositivo.objects.create(
+        g237_dispositivo      = dispositivo,
+        g237_dispositivo_desc = f"{dispositivo.g212_serial} — {tipo_nombre} — {marca_nombre}",
+        g237_responsable      = responsable,
+        g237_observaciones    = checklist_body.get('observaciones', ''),
+        g237_resp_nombre      = checklist_body.get('resp_nombre', ''),
+        g237_resp_cedula      = checklist_body.get('resp_cedula', ''),
+        g237_resp_area        = checklist_body.get('resp_area', ''),
+        g237_resp_cargo       = checklist_body.get('resp_cargo', ''),
+    )
+    for r in checklist_body.get('respuestas', []):
+        item = ItemChecklist.objects.filter(pk=r.get('item_id')).first()
+        RespuestaChecklist.objects.create(
+            g238_checklist   = cd,
+            g238_item        = item,
+            g238_item_desc   = item.g236_pregunta if item else (r.get('pregunta') or ''),
+            g238_respuesta   = bool(r.get('respuesta')),
+            g238_valor_texto = r.get('valor_texto') or None,
+        )
+    _registrar_historial_auto(
+        dispositivo    = dispositivo,
+        nombre_novedad = 'CHECKLIST REALIZADO',
+        responsable    = responsable,
+        observaciones  = 'Se completó el checklist de inventario al cambiar el estado del equipo.',
+        co             = dispositivo.g212_co,
+    )
 
 
 @login_required(login_url='login')
@@ -1276,6 +1348,761 @@ def api_inactivo_editar(request, pk):
 
     return _json_ok({'id': d.g212_id})
 
+
+# ═══════════════════════════════════════════════════
+#  CHECKLIST DE INVENTARIO
+# ═══════════════════════════════════════════════════
+
+@login_required(login_url='login')
+@require_http_methods(['GET'])
+def api_checklist_items(request):
+    """
+    Catálogo de preguntas del Checklist de Inventario (todas, activas e
+    inactivas), agrupadas por sección y ordenadas.
+      ?tipo_dispositivo_id=  si llega, además de todas las preguntas
+      genéricas (sin tipo asignado) incluye las propias de ese tipo
+      (ej. el checklist de PORTÁTIL).
+    """
+    items = ItemChecklist.objects.select_related('g236_tipo_dispositivo').all()
+    tipo_id = request.GET.get('tipo_dispositivo_id')
+    if tipo_id:
+        items = items.filter(Q(g236_tipo_dispositivo__isnull=True) | Q(g236_tipo_dispositivo_id=tipo_id))
+    return _json_ok([
+        {
+            'id':       i.g236_id,
+            'pregunta': i.g236_pregunta,
+            'activo':   i.g236_estado,
+            'seccion':  i.g236_seccion,
+            'orden':    i.g236_orden,
+            'es_texto': i.g236_es_texto,
+            'tipo_dispositivo_id':     i.g236_tipo_dispositivo_id,
+            'tipo_dispositivo_nombre': i.g236_tipo_dispositivo.g200_tipo_dispositivo if i.g236_tipo_dispositivo else '',
+        }
+        for i in items
+    ])
+
+
+@login_required(login_url='login')
+@require_http_methods(['POST'])
+def api_checklist_item_crear(request):
+    try:
+        body = json.loads(request.body)
+    except json.JSONDecodeError:
+        return _json_err('JSON inválido')
+    pregunta = (body.get('pregunta') or '').strip()
+    if not pregunta:
+        return _json_err('La pregunta es obligatoria')
+    item = ItemChecklist.objects.create(
+        g236_pregunta          = pregunta,
+        g236_estado            = True,
+        g236_seccion           = (body.get('seccion') or '').strip(),
+        g236_tipo_dispositivo_id = body.get('tipo_dispositivo_id') or None,
+        g236_orden             = body.get('orden') or 0,
+        g236_es_texto          = bool(body.get('es_texto')),
+    )
+    return _json_ok({'id': item.g236_id, 'pregunta': item.g236_pregunta, 'activo': item.g236_estado})
+
+
+@login_required(login_url='login')
+@require_http_methods(['PUT'])
+def api_checklist_item_editar(request, pk):
+    item = get_object_or_404(ItemChecklist, pk=pk)
+    try:
+        body = json.loads(request.body)
+    except json.JSONDecodeError:
+        return _json_err('JSON inválido')
+    pregunta = (body.get('pregunta') or '').strip()
+    if pregunta:
+        item.g236_pregunta = pregunta
+    if 'activo' in body:
+        item.g236_estado = bool(body.get('activo'))
+    if 'seccion' in body:
+        item.g236_seccion = (body.get('seccion') or '').strip()
+    if 'tipo_dispositivo_id' in body:
+        item.g236_tipo_dispositivo_id = body.get('tipo_dispositivo_id') or None
+    if 'orden' in body:
+        item.g236_orden = body.get('orden') or 0
+    if 'es_texto' in body:
+        item.g236_es_texto = bool(body.get('es_texto'))
+    item.save()
+    return _json_ok({'id': item.g236_id, 'pregunta': item.g236_pregunta, 'activo': item.g236_estado})
+
+
+@login_required(login_url='login')
+@require_http_methods(['GET'])
+def api_checklist_stats(request):
+    """Resumen para el encabezado de la pantalla de Checklist."""
+    total = Dispositivo.objects.exclude(g212_estado__g201_descripcion__in=ESTADOS_INACTIVOS).count()
+    con_checklist = ChecklistDispositivo.objects.filter(g237_dispositivo__isnull=False) \
+        .exclude(g237_dispositivo__g212_estado__g201_descripcion__in=ESTADOS_INACTIVOS) \
+        .values('g237_dispositivo_id').distinct().count()
+    return _json_ok({
+        'total': total,
+        'con_checklist': con_checklist,
+        'pendientes': max(total - con_checklist, 0),
+    })
+
+
+@login_required(login_url='login')
+@require_http_methods(['GET'])
+def api_checklist_tipos_disponibles(request):
+    """
+    Tipos de dispositivo que ya tienen preguntas de checklist configuradas
+    (para que el filtro de la pantalla Checklist no deje elegir un tipo que
+    todavía no tiene nada armado). Se actualiza solo a medida que se agregan
+    preguntas nuevas para otros tipos desde "Administrar preguntas".
+    """
+    tipo_ids = ItemChecklist.objects.filter(
+        g236_tipo_dispositivo__isnull=False, g236_estado=True
+    ).values_list('g236_tipo_dispositivo_id', flat=True).distinct()
+    tipos = TipoDispositivo.objects.filter(g200_id__in=tipo_ids).order_by('g200_tipo_dispositivo')
+    return _json_ok([{'id': t.g200_id, 'nombre': t.g200_tipo_dispositivo} for t in tipos])
+
+
+@login_required(login_url='login')
+@require_http_methods(['GET'])
+def api_checklist_dispositivos(request):
+    """
+    Lista de dispositivos para la pantalla de Checklist: además de los datos
+    del dispositivo, incluye el colaborador responsable (si está asignado) y
+    los datos del último checklist realizado (fecha, observaciones, y si ya
+    se le hizo o no), para saber de un vistazo qué falta por revisar.
+    """
+    qs = Dispositivo.objects.select_related('g212_tipo', 'g212_marca', 'g212_estado') \
+        .exclude(g212_estado__g201_descripcion__in=ESTADOS_INACTIVOS)
+
+    q = request.GET.get('q', '').strip()
+    if q:
+        qs = qs.filter(
+            Q(g212_serial__icontains=q) |
+            Q(g212_propietario__g203_propietario__icontains=q) |
+            Q(g212_marca__g202_marca__icontains=q)
+        )
+    tipo_id = request.GET.get('tipo')
+    if tipo_id:
+        qs = qs.filter(g212_tipo_id=tipo_id)
+    estado_id = request.GET.get('estado')
+    if estado_id:
+        qs = qs.filter(g212_estado_id=estado_id)
+
+    dispositivos = list(qs.order_by('g212_serial'))
+    ids = [d.g212_id for d in dispositivos]
+
+    responsables = {
+        a.g216_dispositivo_id: a.g216_colaborador.g215_nombre
+        for a in AsignacionColaborador.objects.filter(g216_dispositivo_id__in=ids)
+                                                .select_related('g216_colaborador')
+    }
+
+    ultimos = {}
+    for c in ChecklistDispositivo.objects.filter(g237_dispositivo_id__in=ids).order_by('g237_fecha'):
+        ultimos[c.g237_dispositivo_id] = c  # se queda el último por orden ascendente
+
+    resultado = []
+    for d in dispositivos:
+        ultimo = ultimos.get(d.g212_id)
+        resultado.append({
+            'id':                 d.g212_id,
+            'serial':             d.g212_serial,
+            'tipo':               d.g212_tipo.g200_tipo_dispositivo if d.g212_tipo else '—',
+            'tipo_id':            d.g212_tipo_id,
+            'estado':             d.g212_estado.g201_descripcion if d.g212_estado else '—',
+            'responsable':        responsables.get(d.g212_id, ''),
+            'observaciones':      ultimo.g237_observaciones if ultimo else '',
+            'fecha_checklist':    _fecha_local_str(ultimo.g237_fecha) if ultimo else '',
+            'checklist_realizado': bool(ultimo),
+            'ultimo_checklist_id': ultimo.g237_id if ultimo else None,
+        })
+
+    return _json_ok(resultado)
+
+
+@login_required(login_url='login')
+@require_http_methods(['POST'])
+def api_checklist_dispositivo_guardar(request, pk):
+    """
+    Guarda un checklist nuevo para un dispositivo directamente desde la
+    pantalla de Checklist (independiente de si cambia o no su Estado).
+    """
+    d = get_object_or_404(Dispositivo, pk=pk)
+    try:
+        body = json.loads(request.body)
+    except json.JSONDecodeError:
+        return _json_err('JSON inválido')
+    responsable = _nombre_completo_usuario(request)
+    _guardar_checklist_dispositivo(d, body, responsable)
+    return _json_ok({'id': d.g212_id})
+
+
+@login_required(login_url='login')
+@require_http_methods(['GET'])
+def api_checklist_lista(request):
+    """Historial de checklists ya realizados, con filtro opcional por serial."""
+    qs = ChecklistDispositivo.objects.select_related('g237_dispositivo').order_by('-g237_fecha')
+
+    dispositivo_id = request.GET.get('dispositivo_id')
+    if dispositivo_id:
+        qs = qs.filter(g237_dispositivo_id=dispositivo_id)
+
+    q = request.GET.get('q', '').strip()
+    if q:
+        qs = qs.filter(
+            Q(g237_dispositivo__g212_serial__icontains=q) |
+            Q(g237_dispositivo_desc__icontains=q)
+        )
+
+    registros = []
+    for c in qs:
+        registros.append({
+            'id':            c.g237_id,
+            'serial':        c.g237_dispositivo.g212_serial if c.g237_dispositivo else (c.g237_dispositivo_desc or '(dispositivo eliminado)'),
+            'responsable':   c.g237_responsable,
+            'observaciones': c.g237_observaciones or '',
+            'fecha':         _fecha_local_str(c.g237_fecha),
+        })
+
+    return _json_ok(registros)
+
+
+@login_required(login_url='login')
+@require_http_methods(['GET'])
+def api_checklist_detalle(request, pk):
+    """Detalle completo de un checklist realizado: respuestas y firma."""
+    c = get_object_or_404(ChecklistDispositivo.objects.select_related('g237_dispositivo__g212_tipo'), pk=pk)
+    respuestas = [
+        {
+            'item_id':     r.g238_item_id,
+            'pregunta':    r.g238_item_desc,
+            'seccion':     r.g238_item.g236_seccion if r.g238_item and r.g238_item.g236_seccion else 'GENERAL',
+            'respuesta':   r.g238_respuesta,
+            'valor_texto': r.g238_valor_texto or '',
+            'es_texto':    r.g238_item.g236_es_texto if r.g238_item else bool(r.g238_valor_texto),
+        }
+        for r in c.respuestas.all()
+    ]
+    asignado_a = None
+    if c.g237_dispositivo:
+        asign = AsignacionColaborador.objects.filter(g216_dispositivo=c.g237_dispositivo).select_related('g216_colaborador').first()
+        if asign:
+            asignado_a = asign.g216_colaborador.g215_nombre
+
+    logo_b64  = ''
+    logo_path = os.path.join(settings.BASE_DIR, 'index', 'static', 'img', 'imagen.png')
+    if os.path.exists(logo_path):
+        with open(logo_path, 'rb') as f:
+            logo_b64 = 'data:image/png;base64,' + base64.b64encode(f.read()).decode()
+
+    return _json_ok({
+        'id':            c.g237_id,
+        'dispositivo_id': c.g237_dispositivo_id,
+        'tipo_dispositivo_id': c.g237_dispositivo.g212_tipo_id if c.g237_dispositivo else None,
+        'tipo':          c.g237_dispositivo.g212_tipo.g200_tipo_dispositivo if (c.g237_dispositivo and c.g237_dispositivo.g212_tipo) else '—',
+        'serial':        c.g237_dispositivo.g212_serial if c.g237_dispositivo else (c.g237_dispositivo_desc or '(dispositivo eliminado)'),
+        'asignado_a':    asignado_a or 'Sin asignar',
+        'responsable':   c.g237_responsable,
+        'logo':          logo_b64,
+        'observaciones': c.g237_observaciones or '',
+        'resp_nombre':   c.g237_resp_nombre or '',
+        'resp_cedula':   c.g237_resp_cedula or '',
+        'resp_area':     c.g237_resp_area or '',
+        'resp_cargo':    c.g237_resp_cargo or '',
+        'fecha':         _fecha_local_str(c.g237_fecha),
+        'respuestas':    respuestas,
+    })
+
+
+@login_required(login_url='login')
+@require_http_methods(['PUT'])
+def api_checklist_editar(request, pk):
+    """
+    Corrige un checklist ya guardado: respuestas, observaciones y datos
+    del responsable. Existe para cuando quedó incompleto o con un error
+    al guardarlo la primera vez, sin tener que rehacerlo desde cero.
+    """
+    cd = get_object_or_404(ChecklistDispositivo, pk=pk)
+    try:
+        body = json.loads(request.body)
+    except json.JSONDecodeError:
+        return _json_err('JSON inválido')
+
+    if 'observaciones' in body:
+        cd.g237_observaciones = body.get('observaciones', '')
+    if 'resp_nombre' in body:
+        cd.g237_resp_nombre = body.get('resp_nombre', '')
+    if 'resp_cedula' in body:
+        cd.g237_resp_cedula = body.get('resp_cedula', '')
+    if 'resp_area' in body:
+        cd.g237_resp_area = body.get('resp_area', '')
+    if 'resp_cargo' in body:
+        cd.g237_resp_cargo = body.get('resp_cargo', '')
+    cd.save()
+
+    for r in body.get('respuestas', []):
+        item_id = r.get('item_id')
+        if not item_id:
+            continue
+        item = ItemChecklist.objects.filter(pk=item_id).first()
+        RespuestaChecklist.objects.update_or_create(
+            g238_checklist=cd, g238_item_id=item_id,
+            defaults={
+                'g238_item_desc':   item.g236_pregunta if item else (r.get('pregunta') or ''),
+                'g238_respuesta':   bool(r.get('respuesta')),
+                'g238_valor_texto': r.get('valor_texto') or None,
+            }
+        )
+
+    if cd.g237_dispositivo:
+        _registrar_historial_auto(
+            dispositivo    = cd.g237_dispositivo,
+            nombre_novedad = 'CHECKLIST CORREGIDO',
+            responsable    = _nombre_completo_usuario(request),
+            observaciones  = 'Se corrigió/completó el checklist de inventario guardado previamente.',
+            co             = cd.g237_dispositivo.g212_co,
+        )
+
+    return _json_ok({'id': cd.g237_id})
+
+
+@login_required(login_url='login')
+@require_http_methods(['GET'])
+def api_checklist_colaborador_buscar(request):
+    """
+    Búsqueda liviana de colaboradores por cédula, para autocompletar
+    "Datos del Responsable" (Nombre / Cédula / Área / Cargo) del Checklist.
+    """
+    q = request.GET.get('q', '').strip()
+    qs = Colaborador.objects.select_related('g215_Area')
+    if q:
+        qs = qs.filter(g215_documento__icontains=q)
+    qs = qs.order_by('g215_documento')[:15]
+    return _json_ok([
+        {
+            'id':        c.g215_id,
+            'nombre':    c.g215_nombre,
+            'documento': c.g215_documento,
+            'area':      c.g215_Area.g228_nombre if c.g215_Area else '',
+            'cargo':     c.g215_cargo,
+        }
+        for c in qs
+    ])
+
+
+@login_required(login_url='login')
+@require_http_methods(['GET'])
+def api_checklist_mi_responsable(request):
+    """
+    El login del Dashboard usa la cédula como username, así que casi siempre
+    coincide con un registro de Colaborador. Se usa para precargar "Datos
+    del Responsable" con los datos del usuario que inició sesión, sin que
+    tenga que buscarse a sí mismo. Si no hay coincidencia, devuelve null.
+    """
+    c = Colaborador.objects.select_related('g215_Area').filter(g215_documento=request.user.username).first()
+    if not c:
+        return _json_ok(None)
+    return _json_ok({
+        'id':        c.g215_id,
+        'nombre':    c.g215_nombre,
+        'documento': c.g215_documento,
+        'area':      c.g215_Area.g228_nombre if c.g215_Area else '',
+        'cargo':     c.g215_cargo,
+    })
+
+
+@login_required(login_url='login')
+@require_http_methods(['GET'])
+@xframe_options_sameorigin
+def api_checklist_pdf(request, pk):
+    """Genera el PDF de un checklist ya guardado, con el mismo estilo que las Actas."""
+    cd = get_object_or_404(
+        ChecklistDispositivo.objects.select_related('g237_dispositivo__g212_tipo', 'g237_dispositivo__g212_co'),
+        pk=pk
+    )
+    respuestas = list(cd.respuestas.all().order_by('g238_id'))
+
+    colaborador = None
+    if cd.g237_dispositivo:
+        asign = AsignacionColaborador.objects.filter(g216_dispositivo=cd.g237_dispositivo).select_related('g216_colaborador').first()
+        if asign:
+            colaborador = asign.g216_colaborador
+
+    logo_b64  = ''
+    logo_path = os.path.join(settings.BASE_DIR, 'index', 'static', 'img', 'imagen.png')
+    if os.path.exists(logo_path):
+        with open(logo_path, 'rb') as f:
+            logo_b64 = 'data:image/png;base64,' + base64.b64encode(f.read()).decode()
+
+    html_checklist = _construir_html_checklist(cd, respuestas, colaborador, logo_b64)
+    buffer = BytesIO()
+    pisa.CreatePDF(html_checklist, dest=buffer)
+    pdf_bytes = buffer.getvalue()
+
+    serial = cd.g237_dispositivo.g212_serial if cd.g237_dispositivo else (cd.g237_dispositivo_desc or 'dispositivo')
+    nombre_archivo = f"Checklist_{serial}_{cd.g237_id}.pdf"
+    disposicion = 'inline' if request.GET.get('inline') else 'attachment'
+    response = HttpResponse(pdf_bytes, content_type='application/pdf')
+    response['Content-Disposition'] = f'{disposicion}; filename="{nombre_archivo}"'
+    return response
+
+
+def _construir_html_checklist(cd, respuestas, colaborador, logo_b64):
+    """Arma el HTML del PDF del Checklist de Inventario, agrupado por sección
+    (mismo formato que la plantilla en Excel que ya se usaba manualmente)."""
+    d = cd.g237_dispositivo
+    serial = d.g212_serial if d else (cd.g237_dispositivo_desc or '—')
+    tipo   = d.g212_tipo.g200_tipo_dispositivo if d and d.g212_tipo else '—'
+
+    # Solo "Controlador de Dominio" usa la columna "Observación" — las demás
+    # secciones usan "Registro" (mismo criterio que en la pantalla).
+    columna_por_seccion = {'CONTROLADOR DE DOMINIO': 'OBSERVACIÓN'}
+
+    # Cada sección arma su PROPIA tabla completa (encabezado + filas), en vez de
+    # compartir una sola tabla larga con filas de colspan intercaladas: xhtml2pdf
+    # calcula mal el ancho de columnas cuando una tabla mezcla filas con colspan
+    # y filas normales, y las columnas SI/NO terminaban aplastadas/cortadas.
+    def _tabla_seccion(seccion, filas_seccion):
+        columna = columna_por_seccion.get(seccion, 'REGISTRO')
+        return f"""
+        <div style="background:#1e3a5f;color:#ffffff;padding:3px 8px;font-weight:bold;font-size:9.5px;border:1px solid #1e3a5f">{seccion}</div>
+        <table style="width:460pt;border-collapse:collapse;margin-bottom:5px;font-size:9px">
+          <colgroup>
+            <col style="width:190pt"/>
+            <col style="width:200pt"/>
+            <col style="width:60pt"/>
+          </colgroup>
+          <thead>
+            <tr style="background:#e5edf5">
+              <th style="padding:2px 8px;border:1px solid #cbd5e1;text-align:left">ITEM</th>
+              <th style="padding:2px 8px;border:1px solid #cbd5e1;text-align:left">{columna}</th>
+              <th style="padding:2px 6px;border:1px solid #cbd5e1;text-align:center">RESULTADO</th>
+            </tr>
+          </thead>
+          <tbody>{filas_seccion}</tbody>
+        </table>"""
+
+    secciones_html = ''
+    seccion_actual = None
+    filas_seccion = ''
+    for r in respuestas:
+        seccion = r.g238_item.g236_seccion if r.g238_item and r.g238_item.g236_seccion else 'GENERAL'
+        if seccion != seccion_actual:
+            if seccion_actual is not None:
+                secciones_html += _tabla_seccion(seccion_actual, filas_seccion)
+            seccion_actual = seccion
+            filas_seccion = ''
+
+        if r.g238_respuesta:
+            resultado = '<span style="color:#15803d">&#10003; SI</span>'
+        else:
+            resultado = '<span style="color:#b91c1c">X NO</span>'
+        filas_seccion += f"""
+        <tr>
+          <td style="padding:2px 8px;border:1px solid #e5e7eb">{r.g238_item_desc}</td>
+          <td style="padding:2px 8px;border:1px solid #e5e7eb;font-size:9px">{r.g238_valor_texto or '&nbsp;'}</td>
+          <td style="padding:2px 6px;border:1px solid #e5e7eb;text-align:center;font-weight:bold">{resultado}</td>
+        </tr>"""
+
+    if seccion_actual is not None:
+        secciones_html += _tabla_seccion(seccion_actual, filas_seccion)
+
+    if not secciones_html:
+        secciones_html = '<p style="text-align:center;color:#6b7280">Sin respuestas registradas</p>'
+
+    logo_html  = f'<img src="{logo_b64}" style="max-height:85px;max-width:130px"/>' if logo_b64 else '<b style="font-size:16px;color:#1e3a5f">AM&amp;M</b>'
+
+    resp_nombre = cd.g237_resp_nombre or ''
+    resp_cedula = cd.g237_resp_cedula or ''
+    resp_area   = cd.g237_resp_area or ''
+    resp_cargo  = cd.g237_resp_cargo or ''
+
+    return f"""<!DOCTYPE html>
+<html>
+<head>
+<meta charset="utf-8"/>
+<style>
+  body {{ margin:0; padding:0; font-family: Arial, sans-serif; font-size: 11px; color: #111; }}
+  @page {{ margin: 10mm 12mm 10mm 12mm; }}
+  table {{ border-collapse: collapse; width: 100%; }}
+  td, th {{ font-size: 11px; }}
+</style>
+</head>
+<body>
+
+<table style="width:100%;margin-bottom:6px;border-bottom:2px solid #111;padding-bottom:6px">
+  <tr>
+    <td style="width:140px;vertical-align:middle">{logo_html}</td>
+    <td style="text-align:center;vertical-align:middle;padding:0 10px">
+      <div style="font-size:13px;font-weight:bold;text-transform:uppercase">CHECKLIST DE INGRESO Y EGRESO DE EQUIPOS</div>
+      <div style="font-size:11px;font-weight:bold;margin-top:3px">GESTIÓN DE TECNOLOGÍA DE LA INFORMACIÓN Y LA COMUNICACIÓN</div>
+    </td>
+    <td style="width:110px"></td>
+  </tr>
+</table>
+
+<table style="width:100%;margin-bottom:10px;font-size:11px">
+  <tr>
+    <td style="width:130px;padding:2px 0"><b>FECHA:</b></td>
+    <td style="padding:2px 0">{_fecha_local_str(cd.g237_fecha)}</td>
+    <td style="width:130px;padding:2px 0"><b>SERIAL:</b></td>
+    <td style="padding:2px 0">{serial}</td>
+  </tr>
+  <tr>
+    <td style="padding:2px 0"><b>TIPO DE EQUIPO:</b></td>
+    <td style="padding:2px 0">{tipo}</td>
+    <td style="padding:2px 0"><b>REGISTRADO POR:</b></td>
+    <td style="padding:2px 0">{cd.g237_responsable}</td>
+  </tr>
+  <tr>
+    <td style="padding:2px 0"><b>ASIGNADO A:</b></td>
+    <td colspan="3" style="padding:2px 0">{colaborador.g215_nombre if colaborador else 'Sin asignar'}</td>
+  </tr>
+</table>
+
+{secciones_html}
+
+<table style="width:100%;margin-top:10px;font-size:10.5px">
+  <tr style="background:#1e3a5f;color:#ffffff">
+    <td colspan="4" style="padding:5px 8px;border:1px solid #1e3a5f;font-weight:bold;text-align:center">DATOS DEL RESPONSABLE</td>
+  </tr>
+  <tr>
+    <td style="padding:4px 8px;border:1px solid #cbd5e1;background:#e5edf5;font-weight:bold;width:20%">NOMBRE COMPLETO</td>
+    <td colspan="3" style="padding:4px 8px;border:1px solid #cbd5e1">{resp_nombre or '&nbsp;'}</td>
+  </tr>
+  <tr>
+    <td style="padding:4px 8px;border:1px solid #cbd5e1;background:#e5edf5;font-weight:bold">CEDULA</td>
+    <td colspan="3" style="padding:4px 8px;border:1px solid #cbd5e1">{resp_cedula or '&nbsp;'}</td>
+  </tr>
+  <tr>
+    <td style="padding:4px 8px;border:1px solid #cbd5e1;background:#e5edf5;font-weight:bold">AREA</td>
+    <td style="padding:4px 8px;border:1px solid #cbd5e1;width:30%">{resp_area or '&nbsp;'}</td>
+    <td style="padding:4px 8px;border:1px solid #cbd5e1;background:#e5edf5;font-weight:bold;width:20%">CARGO</td>
+    <td style="padding:4px 8px;border:1px solid #cbd5e1">{resp_cargo or '&nbsp;'}</td>
+  </tr>
+</table>
+
+<table style="width:100%;margin-top:10px;font-size:10.5px">
+  <tr style="background:#1e3a5f;color:#ffffff">
+    <td style="padding:5px 8px;border:1px solid #1e3a5f;font-weight:bold">OBSERVACIONES:</td>
+  </tr>
+  <tr>
+    <td style="padding:10px 8px;border:1px solid #cbd5e1;min-height:60px;height:60px;vertical-align:top">{cd.g237_observaciones or '&nbsp;'}</td>
+  </tr>
+</table>
+
+</body>
+</html>"""
+
+
+# ═══════════════════════════════════════════════════════════════
+# NOVEDADES GENERALES — bitácora independiente (no se liga a
+# dispositivos ni colaboradores). Catálogo de tipos + campos
+# dinámicos por tipo, igual patrón que Checklist de Inventario.
+# ═══════════════════════════════════════════════════════════════
+
+@login_required(login_url='login')
+@require_http_methods(['GET'])
+def api_novedades_tipos(request):
+    """Catálogo de tipos de novedad (todos, activos e inactivos)."""
+    tipos = TipoNovedadGeneral.objects.all()
+    return _json_ok([
+        {'id': t.g239_id, 'nombre': t.g239_nombre, 'activo': t.g239_estado}
+        for t in tipos
+    ])
+
+
+@login_required(login_url='login')
+@require_http_methods(['POST'])
+def api_novedades_tipo_crear(request):
+    try:
+        body = json.loads(request.body)
+    except json.JSONDecodeError:
+        return _json_err('JSON inválido')
+    nombre = (body.get('nombre') or '').strip()
+    if not nombre:
+        return _json_err('El nombre del tipo es obligatorio')
+    tipo = TipoNovedadGeneral.objects.create(g239_nombre=nombre, g239_estado=True)
+    return _json_ok({'id': tipo.g239_id, 'nombre': tipo.g239_nombre, 'activo': tipo.g239_estado})
+
+
+@login_required(login_url='login')
+@require_http_methods(['PUT'])
+def api_novedades_tipo_editar(request, pk):
+    tipo = get_object_or_404(TipoNovedadGeneral, pk=pk)
+    try:
+        body = json.loads(request.body)
+    except json.JSONDecodeError:
+        return _json_err('JSON inválido')
+    nombre = (body.get('nombre') or '').strip()
+    if nombre:
+        tipo.g239_nombre = nombre
+    if 'activo' in body:
+        tipo.g239_estado = bool(body.get('activo'))
+    tipo.save()
+    return _json_ok({'id': tipo.g239_id, 'nombre': tipo.g239_nombre, 'activo': tipo.g239_estado})
+
+
+@login_required(login_url='login')
+@require_http_methods(['GET'])
+def api_novedades_campos(request):
+    """
+    Campos configurados para un tipo de novedad.
+      ?tipo_id=      obligatorio.
+      ?todos=1       incluye también los campos inactivos (para
+                     administrarlos); sin esto, solo devuelve los activos
+                     (para armar el formulario de "Registrar novedad").
+    """
+    tipo_id = request.GET.get('tipo_id')
+    if not tipo_id:
+        return _json_err('Falta tipo_id')
+    campos = CampoNovedadGeneral.objects.filter(g240_tipo_novedad_id=tipo_id)
+    if not request.GET.get('todos'):
+        campos = campos.filter(g240_estado=True)
+    return _json_ok([
+        {
+            'id':     c.g240_id,
+            'nombre': c.g240_nombre_campo,
+            'orden':  c.g240_orden,
+            'activo': c.g240_estado,
+            'tipo_id': c.g240_tipo_novedad_id,
+        }
+        for c in campos
+    ])
+
+
+@login_required(login_url='login')
+@require_http_methods(['POST'])
+def api_novedades_campo_crear(request):
+    try:
+        body = json.loads(request.body)
+    except json.JSONDecodeError:
+        return _json_err('JSON inválido')
+    tipo_id = body.get('tipo_id')
+    nombre_campo = (body.get('nombre_campo') or '').strip()
+    if not tipo_id or not nombre_campo:
+        return _json_err('El tipo y el nombre del campo son obligatorios')
+    campo = CampoNovedadGeneral.objects.create(
+        g240_tipo_novedad_id=tipo_id,
+        g240_nombre_campo=nombre_campo,
+        g240_orden=body.get('orden') or 0,
+        g240_estado=True,
+    )
+    return _json_ok({'id': campo.g240_id, 'nombre': campo.g240_nombre_campo, 'activo': campo.g240_estado})
+
+
+@login_required(login_url='login')
+@require_http_methods(['PUT'])
+def api_novedades_campo_editar(request, pk):
+    campo = get_object_or_404(CampoNovedadGeneral, pk=pk)
+    try:
+        body = json.loads(request.body)
+    except json.JSONDecodeError:
+        return _json_err('JSON inválido')
+    nombre_campo = (body.get('nombre_campo') or '').strip()
+    if nombre_campo:
+        campo.g240_nombre_campo = nombre_campo
+    if 'activo' in body:
+        campo.g240_estado = bool(body.get('activo'))
+    if 'orden' in body:
+        campo.g240_orden = body.get('orden') or 0
+    campo.save()
+    return _json_ok({'id': campo.g240_id, 'nombre': campo.g240_nombre_campo, 'activo': campo.g240_estado})
+
+
+@login_required(login_url='login')
+@require_http_methods(['GET'])
+def api_novedades_lista(request):
+    """
+    Lista de novedades registradas, con filtros opcionales:
+      ?q=          busca en tipo, responsable y observaciones.
+      ?tipo_id=
+      ?fecha_desde=  ?fecha_hasta=   (formato YYYY-MM-DD)
+    Paginación es del lado del frontend, igual que Inventario.
+    """
+    qs = NovedadGeneral.objects.select_related('g241_tipo').prefetch_related('respuestas')
+
+    q = request.GET.get('q', '').strip()
+    if q:
+        qs = qs.filter(
+            Q(g241_tipo_desc__icontains=q) |
+            Q(g241_responsable__icontains=q) |
+            Q(g241_observaciones__icontains=q)
+        )
+    tipo_id = request.GET.get('tipo_id')
+    if tipo_id:
+        qs = qs.filter(g241_tipo_id=tipo_id)
+    fecha_desde = request.GET.get('fecha_desde')
+    if fecha_desde:
+        qs = qs.filter(g241_fecha__date__gte=fecha_desde)
+    fecha_hasta = request.GET.get('fecha_hasta')
+    if fecha_hasta:
+        qs = qs.filter(g241_fecha__date__lte=fecha_hasta)
+
+    registros = []
+    for n in qs:
+        detalle = ' · '.join(
+            f"{r.g242_campo_desc}: {r.g242_observacion}"
+            for r in n.respuestas.all() if r.g242_observacion
+        )
+        registros.append({
+            'id':            n.g241_id,
+            'tipo_id':       n.g241_tipo_id,
+            'tipo':          n.g241_tipo_desc or (n.g241_tipo.g239_nombre if n.g241_tipo else '—'),
+            'responsable':   n.g241_responsable,
+            'observaciones': n.g241_observaciones or '',
+            'detalle':       detalle,
+            'fecha':         _fecha_local_str(n.g241_fecha),
+        })
+    return _json_ok(registros)
+
+
+@login_required(login_url='login')
+@require_http_methods(['POST'])
+def api_novedades_guardar(request):
+    """Crea un registro nuevo de Novedad General con sus campos."""
+    try:
+        body = json.loads(request.body)
+    except json.JSONDecodeError:
+        return _json_err('JSON inválido')
+    tipo_id = body.get('tipo_id')
+    if not tipo_id:
+        return _json_err('Debes elegir un tipo de novedad')
+    tipo = get_object_or_404(TipoNovedadGeneral, pk=tipo_id)
+
+    novedad = NovedadGeneral.objects.create(
+        g241_tipo          = tipo,
+        g241_tipo_desc      = tipo.g239_nombre,
+        g241_responsable    = _nombre_completo_usuario(request),
+        g241_observaciones  = body.get('observaciones', ''),
+    )
+    for c in body.get('campos', []):
+        campo_id = c.get('campo_id')
+        campo = CampoNovedadGeneral.objects.filter(pk=campo_id).first()
+        RespuestaNovedadGeneral.objects.create(
+            g242_novedad     = novedad,
+            g242_campo       = campo,
+            g242_campo_desc  = campo.g240_nombre_campo if campo else (c.get('nombre') or ''),
+            g242_observacion = c.get('observacion') or '',
+        )
+    return _json_ok({'id': novedad.g241_id})
+
+
+@login_required(login_url='login')
+@require_http_methods(['GET'])
+def api_novedades_detalle(request, pk):
+    n = get_object_or_404(NovedadGeneral.objects.select_related('g241_tipo'), pk=pk)
+    respuestas = [{
+        'campo_id':    r.g242_campo_id,
+        'campo':       r.g242_campo_desc,
+        'observacion': r.g242_observacion or '',
+    } for r in n.respuestas.all()]
+    return _json_ok({
+        'id':            n.g241_id,
+        'tipo_id':       n.g241_tipo_id,
+        'tipo':          n.g241_tipo_desc or (n.g241_tipo.g239_nombre if n.g241_tipo else '—'),
+        'responsable':   n.g241_responsable,
+        'observaciones': n.g241_observaciones or '',
+        'fecha':         _fecha_local_str(n.g241_fecha),
+        'respuestas':    respuestas,
+    })
 
 
 # COLABORADORES
@@ -3603,10 +4430,44 @@ def api_notificaciones_bell(request):
             'fecha':       fecha_str,
         })
 
+    # Dispositivos de Inventario creados DE HOY EN ADELANTE (fecha fija, no
+    # recalculada cada día) que todavía no tienen checklist hecho — solo de
+    # los tipos que ya tienen preguntas configuradas (hoy: Portátil). Los
+    # dispositivos creados antes de esta fecha quedan fuera a propósito: ya
+    # existían antes de que el checklist fuera una función del sistema, así
+    # que no cuentan como pendientes "nuevos".
+    tipos_con_checklist = ItemChecklist.objects.filter(
+        g236_tipo_dispositivo__isnull=False, g236_estado=True
+    ).values_list('g236_tipo_dispositivo_id', flat=True).distinct()
+    dispositivos_con_checklist = ChecklistDispositivo.objects.filter(
+        g237_dispositivo__isnull=False
+    ).values_list('g237_dispositivo_id', flat=True).distinct()
+    checklist_pendiente_qs = (
+        Dispositivo.objects
+        .exclude(g212_estado__g201_descripcion__in=ESTADOS_INACTIVOS)
+        .filter(g212_tipo_id__in=tipos_con_checklist)
+        .filter(g212_fecha_registro__date__gte=CHECKLIST_NOTIF_DESDE)
+        .exclude(g212_id__in=dispositivos_con_checklist)
+        .select_related('g212_tipo')
+        .order_by('-g212_fecha_registro')
+    )
+    checklist_pendiente = []
+    for d in checklist_pendiente_qs:
+        fecha_str = d.g212_fecha_registro.strftime('%d/%m/%Y') if d.g212_fecha_registro else ''
+        if ('checklist', d.g212_id, fecha_str) in leidas:
+            continue
+        checklist_pendiente.append({
+            'id':     d.g212_id,
+            'serial': d.g212_serial,
+            'tipo':   d.g212_tipo.g200_tipo_dispositivo if d.g212_tipo else '—',
+            'fecha':  fecha_str,
+        })
+
     total_alertas = (
         len(vencidos) + len(licencias_por_vencer)
         + len(pendientes_aprobacion) + len(vencidos_sin_asignar)
         + len(nuevos_sin_asignar) + len(prestamos_realizados)
+        + len(checklist_pendiente)
     )
 
     return _json_ok({
@@ -3616,6 +4477,7 @@ def api_notificaciones_bell(request):
         'vencidos_sin_asignar':  vencidos_sin_asignar,
         'nuevos_sin_asignar':    nuevos_sin_asignar,
         'prestamos_realizados':  prestamos_realizados,
+        'checklist_pendiente':   checklist_pendiente,
         'total_alertas':         total_alertas,
     })
 
@@ -3625,7 +4487,7 @@ def api_notificaciones_bell(request):
 def api_notificacion_bell_marcar_leida(request):
     """
     Marca como leída una alerta de la campanita (solo 'licencia', 'aprobacion',
-    'nuevo' o 'prestamo' — 'vencido'/'sin_asignar' no son marcables, ver api_notificaciones_bell).
+    'nuevo', 'prestamo' o 'checklist' — 'vencido'/'sin_asignar' no son marcables, ver api_notificaciones_bell).
     Body: {tipo, referencia_id, referencia_fecha}
     """
     req_user_id = request.session.get('req_user_id')
@@ -3641,7 +4503,7 @@ def api_notificacion_bell_marcar_leida(request):
     referencia_id    = body.get('referencia_id')
     referencia_fecha = body.get('referencia_fecha')
 
-    if tipo not in ('licencia', 'aprobacion', 'nuevo', 'prestamo') or not referencia_id or not referencia_fecha:
+    if tipo not in ('licencia', 'aprobacion', 'nuevo', 'prestamo', 'checklist') or not referencia_id or not referencia_fecha:
         return _json_err('Datos incompletos.')
 
     NotificacionBellLeida.objects.get_or_create(

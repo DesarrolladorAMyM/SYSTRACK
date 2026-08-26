@@ -29,11 +29,37 @@ urlpatterns = [
     #  Centro de operaciones 
     path('api/centro-operaciones/',                 views.api_centro_operaciones, name='api_centro_operaciones'),
 
-    #  Inactivos 
+    #  Inactivos
     path('api/inactivos/',                    views.api_inactivos,               name='api_inactivos'),
     path('api/inactivos/<int:pk>/editar/',    views.api_inactivo_editar,         name='api_inactivo_editar'),
 
-    #  Colaboradores 
+    #  Checklist de Inventario
+    path('api/checklist/stats/',                    views.api_checklist_stats,         name='api_checklist_stats'),
+    path('api/checklist/tipos-disponibles/',        views.api_checklist_tipos_disponibles, name='api_checklist_tipos_disponibles'),
+    path('api/checklist/dispositivos/',             views.api_checklist_dispositivos,  name='api_checklist_dispositivos'),
+    path('api/checklist/dispositivos/<int:pk>/guardar/', views.api_checklist_dispositivo_guardar, name='api_checklist_dispositivo_guardar'),
+    path('api/checklist/',                        views.api_checklist_lista,         name='api_checklist_lista'),
+    path('api/checklist/<int:pk>/',                views.api_checklist_detalle,       name='api_checklist_detalle'),
+    path('api/checklist/<int:pk>/editar/',          views.api_checklist_editar,        name='api_checklist_editar'),
+    path('api/checklist/<int:pk>/pdf/',             views.api_checklist_pdf,           name='api_checklist_pdf'),
+    path('api/checklist/colaborador-buscar/',       views.api_checklist_colaborador_buscar, name='api_checklist_colaborador_buscar'),
+    path('api/checklist/mi-responsable/',           views.api_checklist_mi_responsable, name='api_checklist_mi_responsable'),
+    path('api/checklist/items/',                   views.api_checklist_items,         name='api_checklist_items'),
+    path('api/checklist/items/crear/',              views.api_checklist_item_crear,    name='api_checklist_item_crear'),
+    path('api/checklist/items/<int:pk>/editar/',    views.api_checklist_item_editar,   name='api_checklist_item_editar'),
+
+    #  Novedades Generales
+    path('api/novedades/tipos/',                    views.api_novedades_tipos,         name='api_novedades_tipos'),
+    path('api/novedades/tipos/crear/',               views.api_novedades_tipo_crear,    name='api_novedades_tipo_crear'),
+    path('api/novedades/tipos/<int:pk>/editar/',     views.api_novedades_tipo_editar,   name='api_novedades_tipo_editar'),
+    path('api/novedades/campos/',                    views.api_novedades_campos,        name='api_novedades_campos'),
+    path('api/novedades/campos/crear/',              views.api_novedades_campo_crear,   name='api_novedades_campo_crear'),
+    path('api/novedades/campos/<int:pk>/editar/',    views.api_novedades_campo_editar,  name='api_novedades_campo_editar'),
+    path('api/novedades/',                          views.api_novedades_lista,         name='api_novedades_lista'),
+    path('api/novedades/guardar/',                   views.api_novedades_guardar,       name='api_novedades_guardar'),
+    path('api/novedades/<int:pk>/',                  views.api_novedades_detalle,       name='api_novedades_detalle'),
+
+    #  Colaboradores
     path('api/colaboradores/',                views.api_colaboradores,           name='api_colaboradores'),
     path('api/colaboradores/crear/',           views.api_colaborador_crear,       name='api_colaborador_crear'),
     path('api/colaboradores/cargos/',          views.api_colaboradores_cargos,    name='api_colaboradores_cargos'),

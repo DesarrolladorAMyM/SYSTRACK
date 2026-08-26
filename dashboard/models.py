@@ -809,6 +809,210 @@ class NotificacionBellLeida(models.Model):
         return f"Acta #{self.g234_acta_id} ← {self.g234_dispositivo.g212_serial}"
 
 
+# j236 — ITEM CHECKLIST
+# Catálogo de preguntas del Checklist de Inventario, editable desde la app
+# (a diferencia de otros catálogos como TipoNovedad/TipoActa, que hoy solo
+# se administran por fuera de la app).
+
+class ItemChecklist(models.Model):
+    g236_id       = models.AutoField(primary_key=True)
+    g236_pregunta = models.CharField(max_length=200)
+    g236_estado   = models.BooleanField(default=True)
+    # Agrupa las preguntas en secciones dentro del formulario/PDF
+    # (ej. "CONTROLADOR DE DOMINIO", "CORREO", "ERP"...).
+    g236_seccion  = models.CharField(max_length=100, blank=True, default='')
+    # Si es null, la pregunta aplica a CUALQUIER tipo de dispositivo.
+    # Si tiene valor, solo aplica a ese tipo (ej. checklist propio de PORTÁTIL).
+    g236_tipo_dispositivo = models.ForeignKey(
+        TipoDispositivo, on_delete=models.CASCADE,
+        null=True, blank=True, db_column='g236_tipo_dispositivo_id'
+    )
+    g236_orden = models.PositiveIntegerField(default=0)
+    # Si es True, la pregunta se responde con texto libre (ej. el correo
+    # electrónico creado) en vez de con los botones Sí/No.
+    g236_es_texto = models.BooleanField(default=False)
+
+    class Meta:
+        db_table = 'j236_item_checklist'
+        verbose_name = 'Pregunta de Checklist'
+        verbose_name_plural = 'Preguntas de Checklist'
+        # Por 'g236_orden' (no por sección) para que las secciones salgan en
+        # el orden real del checklist (Controlador de Dominio, Correo, ERP...)
+        # y no alfabético; las preguntas de una misma sección quedan juntas
+        # porque se les asigna un rango de 'orden' consecutivo al crearlas.
+        ordering = ['g236_orden', 'g236_id']
+
+    def __str__(self):
+        return self.g236_pregunta
+
+
+# j237 — CHECKLIST DISPOSITIVO
+# Cabecera: un checklist realizado a un dispositivo (se crea automáticamente
+# al cambiar su Estado a Eliminado/Obsoleto/Devuelto desde el modal de edición).
+
+class ChecklistDispositivo(models.Model):
+    g237_id          = models.AutoField(primary_key=True)
+    g237_dispositivo = models.ForeignKey(
+        Dispositivo, on_delete=models.SET_NULL,
+        null=True, db_column='g237_dispositivo_id', related_name='checklists'
+    )
+    # Instantánea de texto, mismo motivo que g214_dispositivo_desc en
+    # HistorialEquipo: que el registro se pueda seguir leyendo aunque el
+    # dispositivo se elimine permanentemente con el botón "Eliminar".
+    g237_dispositivo_desc = models.CharField(max_length=200, blank=True, null=True)
+    # Quién diligenció el checklist (usuario del Dashboard).
+    g237_responsable      = models.CharField(max_length=150)
+    # Observación general de todo el checklist (además de la que puede
+    # llevar cada pregunta individualmente).
+    g237_observaciones    = models.TextField(blank=True, null=True)
+    # "Datos del responsable" del equipo (Colaborador) — instantánea de
+    # texto tomada al guardar, igual criterio que g237_dispositivo_desc.
+    g237_resp_nombre      = models.CharField(max_length=200, blank=True, null=True)
+    g237_resp_cedula      = models.CharField(max_length=20, blank=True, null=True)
+    g237_resp_area        = models.CharField(max_length=150, blank=True, null=True)
+    g237_resp_cargo       = models.CharField(max_length=150, blank=True, null=True)
+    g237_fecha            = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        db_table = 'j237_checklist_dispositivo'
+        verbose_name = 'Checklist de Dispositivo'
+        verbose_name_plural = 'Checklists de Dispositivo'
+
+    def __str__(self):
+        return f"Checklist {self.g237_dispositivo_desc or self.g237_dispositivo_id} — {self.g237_fecha:%d/%m/%Y}"
+
+
+# j238 — RESPUESTA CHECKLIST
+# Detalle: cada pregunta respondida (Sí/No) dentro de un ChecklistDispositivo.
+
+class RespuestaChecklist(models.Model):
+    g238_id        = models.AutoField(primary_key=True)
+    g238_checklist = models.ForeignKey(
+        ChecklistDispositivo, on_delete=models.CASCADE,
+        db_column='g238_checklist_id', related_name='respuestas'
+    )
+    g238_item      = models.ForeignKey(
+        ItemChecklist, on_delete=models.SET_NULL,
+        null=True, db_column='g238_item_id'
+    )
+    # Instantánea del texto de la pregunta, por si luego se edita/desactiva
+    # en el catálogo — la respuesta histórica debe seguir siendo legible tal
+    # como se preguntó en su momento.
+    g238_item_desc = models.CharField(max_length=200, blank=True, null=True)
+    g238_respuesta = models.BooleanField(default=False)
+    # Solo se usa cuando la pregunta es de texto libre (ItemChecklist.g236_es_texto),
+    # ej. el correo electrónico creado. En preguntas Sí/No queda vacío.
+    g238_valor_texto = models.CharField(max_length=300, blank=True, null=True)
+
+    class Meta:
+        db_table = 'j238_respuesta_checklist'
+        verbose_name = 'Respuesta de Checklist'
+        verbose_name_plural = 'Respuestas de Checklist'
+
+    def __str__(self):
+        return f"{self.g238_item_desc}: {'Sí' if self.g238_respuesta else 'No'}"
+
+
+# ══════════════════════════════════════════════
+# j239 — TIPO DE NOVEDAD GENERAL
+# Catálogo de tipos de novedad para la bitácora de "Novedades Generales"
+# (ej. "Corte de energía", "Mantenimiento") — administrado dinámicamente
+# desde el botón "Agregar tipo de novedades". No tiene relación con
+# TipoNovedad (j220), que es el catálogo de eventos de Historial de Equipo.
+# ══════════════════════════════════════════════
+
+class TipoNovedadGeneral(models.Model):
+    g239_id     = models.AutoField(primary_key=True)
+    g239_nombre = models.CharField(max_length=150)
+    g239_estado = models.BooleanField(default=True)
+
+    class Meta:
+        db_table = 'j239_tipo_novedad_general'
+        verbose_name = 'Tipo de Novedad General'
+        verbose_name_plural = 'Tipos de Novedad General'
+        ordering = ['g239_nombre']
+
+    def __str__(self):
+        return self.g239_nombre
+
+
+# j240 — CAMPO DE NOVEDAD GENERAL
+# Los campos que se llenan al registrar una novedad de un tipo dado
+# (ej. para "Corte de energía": "Duración", "Área afectada"). Cada uno se
+# responde con una Observación de texto libre.
+
+class CampoNovedadGeneral(models.Model):
+    g240_id           = models.AutoField(primary_key=True)
+    g240_tipo_novedad = models.ForeignKey(
+        TipoNovedadGeneral, on_delete=models.CASCADE,
+        db_column='g240_tipo_novedad_id', related_name='campos'
+    )
+    g240_nombre_campo = models.CharField(max_length=150)
+    g240_orden        = models.PositiveIntegerField(default=0)
+    g240_estado       = models.BooleanField(default=True)
+
+    class Meta:
+        db_table = 'j240_campo_novedad_general'
+        verbose_name = 'Campo de Novedad General'
+        verbose_name_plural = 'Campos de Novedad General'
+        ordering = ['g240_orden', 'g240_id']
+
+    def __str__(self):
+        return self.g240_nombre_campo
+
+
+# j241 — NOVEDAD GENERAL
+# Cabecera: un registro de la bitácora de Novedades Generales. No se liga a
+# ningún dispositivo ni colaborador — es un registro independiente.
+
+class NovedadGeneral(models.Model):
+    g241_id   = models.AutoField(primary_key=True)
+    g241_tipo = models.ForeignKey(
+        TipoNovedadGeneral, on_delete=models.SET_NULL,
+        null=True, db_column='g241_tipo_id', related_name='novedades'
+    )
+    # Instantánea de texto, mismo criterio que en Checklist: que el registro
+    # se pueda seguir leyendo aunque el tipo se desactive/edite después.
+    g241_tipo_desc     = models.CharField(max_length=150, blank=True, null=True)
+    g241_responsable   = models.CharField(max_length=150)
+    g241_observaciones = models.TextField(blank=True, null=True)
+    g241_fecha         = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        db_table = 'j241_novedad_general'
+        verbose_name = 'Novedad General'
+        verbose_name_plural = 'Novedades Generales'
+        ordering = ['-g241_fecha']
+
+    def __str__(self):
+        return f"{self.g241_tipo_desc} — {self.g241_fecha:%d/%m/%Y}"
+
+
+# j242 — RESPUESTA DE NOVEDAD GENERAL
+# Detalle: la Observación escrita en cada campo, dentro de una NovedadGeneral.
+
+class RespuestaNovedadGeneral(models.Model):
+    g242_id      = models.AutoField(primary_key=True)
+    g242_novedad = models.ForeignKey(
+        NovedadGeneral, on_delete=models.CASCADE,
+        db_column='g242_novedad_id', related_name='respuestas'
+    )
+    g242_campo   = models.ForeignKey(
+        CampoNovedadGeneral, on_delete=models.SET_NULL,
+        null=True, db_column='g242_campo_id'
+    )
+    g242_campo_desc  = models.CharField(max_length=150, blank=True, null=True)
+    g242_observacion = models.TextField(blank=True, null=True)
+
+    class Meta:
+        db_table = 'j242_respuesta_novedad_general'
+        verbose_name = 'Respuesta de Novedad General'
+        verbose_name_plural = 'Respuestas de Novedad General'
+
+    def __str__(self):
+        return f"{self.g242_campo_desc}: {self.g242_observacion or ''}"
+
+
 #CENTRO DE COSTOS
 
 class CentroCosto(models.Model):

@@ -59,9 +59,16 @@
           </div>
           <div class="form-group">
             <label class="form-label">Estado <span class="req">*</span></label>
-            <select class="form-select" id="f-estado"><option value="">Seleccione</option></select>
+            <select class="form-select" id="f-estado" onchange="_onEstadoEditChange()"><option value="">Seleccione</option></select>
           </div>
         </div>
+      </div>
+      <div id="chkSectionEdit" class="form-section" style="display:none;border:1px solid #f59e0b;background:#fffbeb;">
+        <div class="form-section-title"><i class="fas fa-clipboard-check"></i> Checklist de Inventario</div>
+        <p style="margin:0 0 12px;font-size:12.5px;color:var(--text-light);">
+          El equipo va a salir del Inventario activo. Completa el checklist antes de guardar.
+        </p>
+        <div id="chkEditPreguntas"></div>
       </div>
       <div id="charSection"></div>
       <div class="form-section">
@@ -290,6 +297,303 @@
     <div class="modal-form-footer">
       <button class="btn-cancel" onclick="closeModal('modalInacForm')"><i class="fas fa-arrow-left"></i> Regresar</button>
       <button class="btn-save" onclick="saveInactivo()"><i class="fas fa-save"></i> Guardar cambios</button>
+    </div>
+  </div>
+</div>
+
+<!-- ══════════ CHECKLIST — DETALLE ══════════ -->
+<div class="modal-overlay" id="modalChecklistDetalle">
+  <div class="modal-form">
+    <div class="modal-form-header">
+      <div class="modal-form-icon"><i class="fas fa-clipboard-check"></i></div>
+      <div>
+        <div class="modal-form-title" id="chkDetalleTitulo">Detalle del Checklist</div>
+        <div class="modal-form-sub" id="chkDetalleSub">—</div>
+      </div>
+      <button class="modal-close-btn" onclick="closeModal('modalChecklistDetalle')"><i class="fas fa-times"></i></button>
+    </div>
+    <div class="modal-form-body">
+      <div class="form-section">
+        <div class="form-section-title"><i class="fas fa-list-check"></i> Respuestas</div>
+        <p style="margin:0 0 8px;font-size:12px;color:var(--text-light);" id="chkDetalleHint">Solo lectura — haz clic en "Editar checklist" para corregir algo.</p>
+        <div id="chkDetalleRespuestas"></div>
+      </div>
+      <div class="chk-seccion" style="margin-top:18px;">
+        <div class="chk-seccion-title"><i class="fas fa-id-card"></i> Datos del Responsable</div>
+        <div class="chk-resp-body">
+          <div class="form-row cols2">
+            <div class="form-group" style="position:relative;">
+              <label class="form-label">Cédula</label>
+              <div class="chk-input-icon-wrap">
+                <i class="fas fa-magnifying-glass"></i>
+                <input class="form-input" id="chkdet-resp-cedula" type="text" placeholder="Escribe la cédula..." autocomplete="off"
+                  oninput="chkFiltrarResponsable('chkdet-resp')" onfocus="chkFiltrarResponsable('chkdet-resp')" onblur="setTimeout(()=>chkCerrarResponsableDropdown('chkdet-resp'),200)">
+              </div>
+              <div id="chkdet-resp-dropdown" class="usr-dropdown" style="display:none;"></div>
+            </div>
+            <div class="form-group">
+              <label class="form-label">Nombre completo</label>
+              <input class="form-input chk-input-readonly" id="chkdet-resp-nombre" type="text" placeholder="Se completa al elegir la cédula" readonly>
+            </div>
+          </div>
+          <div class="form-row cols2" style="margin-top:12px;">
+            <div class="form-group">
+              <label class="form-label">Área</label>
+              <input class="form-input chk-input-readonly" id="chkdet-resp-area" type="text" placeholder="Se completa al elegir la cédula" readonly>
+            </div>
+            <div class="form-group">
+              <label class="form-label">Cargo</label>
+              <input class="form-input chk-input-readonly" id="chkdet-resp-cargo" type="text" placeholder="Se completa al elegir la cédula" readonly>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <div class="chk-seccion" style="margin-bottom:0;">
+        <div class="chk-seccion-title"><i class="fas fa-comment-alt"></i> Observaciones</div>
+        <div class="chk-resp-body">
+          <textarea class="form-textarea" id="chkdet-obs" placeholder="Observación general del checklist..." style="min-height:72px;resize:none;" spellcheck="false"></textarea>
+        </div>
+      </div>
+    </div>
+    <div class="modal-form-footer">
+      <button class="btn-cancel" onclick="closeModal('modalChecklistDetalle')"><i class="fas fa-arrow-left"></i> Cerrar</button>
+      <button class="btn-export" id="btnChkDetallePdf" style="display:none;" onclick="descargarChecklistPdf()"><i class="fas fa-file-pdf"></i> Descargar PDF</button>
+      <button class="btn-save" id="btnChkDetalleEditar" onclick="_activarEdicionChecklistDetalle()"><i class="fas fa-edit"></i> Editar checklist</button>
+      <button class="btn-save" id="btnChkDetalleGuardar" style="display:none;" onclick="guardarEdicionChecklist()"><i class="fas fa-save"></i> Guardar cambios</button>
+    </div>
+  </div>
+</div>
+
+<!-- ══════════ CHECKLIST — HISTORIAL DE UN DISPOSITIVO ══════════ -->
+<div class="modal-overlay" id="modalChecklistHistorialDispositivo">
+  <div class="modal-form" style="width:560px;">
+    <div class="modal-form-header">
+      <div class="modal-form-icon"><i class="fas fa-clock-rotate-left"></i></div>
+      <div>
+        <div class="modal-form-title">Historial de Checklists</div>
+        <div class="modal-form-sub" id="chkHistDispSub">—</div>
+      </div>
+      <button class="modal-close-btn" onclick="closeModal('modalChecklistHistorialDispositivo')"><i class="fas fa-times"></i></button>
+    </div>
+    <div class="modal-form-body">
+      <div id="chkHistDispBody"></div>
+    </div>
+    <div class="modal-form-footer">
+      <button class="btn-cancel" onclick="closeModal('modalChecklistHistorialDispositivo')"><i class="fas fa-arrow-left"></i> Cerrar</button>
+    </div>
+  </div>
+</div>
+
+<!-- ══════════ CHECKLIST — VISTA PREVIA (igual que Vista de Acta) ══════════ -->
+<div class="modal-overlay" id="modalChecklistVistaPrevia">
+  <div class="chk-preview-box">
+    <div class="chk-preview-header">
+      <span><i class="fas fa-clipboard-check"></i> Vista de Checklist</span>
+      <div class="chk-preview-header-actions">
+        <button id="btnChkPreviewPdf" class="chk-preview-pdf-btn"><i class="fas fa-download"></i> Descargar PDF</button>
+        <button class="chk-preview-close-btn" onclick="closeModal('modalChecklistVistaPrevia')"><i class="fas fa-times"></i></button>
+      </div>
+    </div>
+    <div id="chkPreviewBody" class="chk-preview-body"></div>
+  </div>
+</div>
+
+<!-- ══════════ CHECKLIST — FORMULARIO ══════════ -->
+<div class="modal-overlay" id="modalChecklistForm">
+  <div class="modal-form" style="width:920px;">
+    <div class="modal-form-header">
+      <div class="modal-form-icon"><i class="fas fa-clipboard-check"></i></div>
+      <div>
+        <div class="modal-form-title">Checklist de Inventario</div>
+        <div class="modal-form-sub">Completa el checklist del equipo</div>
+      </div>
+      <button class="modal-close-btn" onclick="_volverBusquedaChecklist()"><i class="fas fa-times"></i></button>
+    </div>
+    <div class="modal-form-body">
+      <div id="chkFormDispositivo" style="margin-bottom:10px;"></div>
+      <div id="chkHistorialAnterior" style="margin-bottom:16px;"></div>
+      <div id="chkFormPreguntas"></div>
+
+      <div class="chk-seccion" style="margin-top:18px;">
+        <div class="chk-seccion-title"><i class="fas fa-id-card"></i> Datos del Responsable</div>
+        <div class="chk-resp-body">
+          <div class="form-row cols2">
+            <div class="form-group" style="position:relative;">
+              <label class="form-label">Cédula</label>
+              <div class="chk-input-icon-wrap">
+                <i class="fas fa-magnifying-glass"></i>
+                <input class="form-input" id="chk-resp-cedula" type="text" placeholder="Escribe la cédula..." autocomplete="off"
+                  oninput="chkFiltrarResponsable()" onfocus="chkFiltrarResponsable()" onblur="setTimeout(()=>chkCerrarResponsableDropdown(),200)">
+              </div>
+              <div id="chk-resp-dropdown" class="usr-dropdown" style="display:none;"></div>
+            </div>
+            <div class="form-group">
+              <label class="form-label">Nombre completo</label>
+              <input class="form-input chk-input-readonly" id="chk-resp-nombre" type="text" placeholder="Se completa al elegir la cédula" readonly>
+            </div>
+          </div>
+          <div class="form-row cols2" style="margin-top:12px;">
+            <div class="form-group">
+              <label class="form-label">Área</label>
+              <input class="form-input chk-input-readonly" id="chk-resp-area" type="text" placeholder="Se completa al elegir la cédula" readonly>
+            </div>
+            <div class="form-group">
+              <label class="form-label">Cargo</label>
+              <input class="form-input chk-input-readonly" id="chk-resp-cargo" type="text" placeholder="Se completa al elegir la cédula" readonly>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <div class="chk-seccion" style="margin-bottom:0;">
+        <div class="chk-seccion-title"><i class="fas fa-comment-alt"></i> Observaciones</div>
+        <div class="chk-resp-body">
+          <textarea class="form-textarea" id="chk-nuevo-obs" placeholder="Observación general del checklist..." style="min-height:72px;resize:none;" spellcheck="false"></textarea>
+        </div>
+      </div>
+    </div>
+    <div class="modal-form-footer">
+      <button class="btn-cancel" onclick="_volverBusquedaChecklist()"><i class="fas fa-arrow-left"></i> Cancelar</button>
+      <button class="btn-save" id="btnGuardarChecklistNuevo" onclick="guardarChecklistNuevo()"><i class="fas fa-save"></i> Guardar checklist</button>
+    </div>
+  </div>
+</div>
+
+<!-- ══════════ CHECKLIST — RESULTADOS DE BÚSQUEDA ══════════ -->
+<div class="modal-overlay" id="modalChecklistResultados">
+  <div class="modal-form">
+    <div class="modal-form-header">
+      <div class="modal-form-icon"><i class="fas fa-magnifying-glass"></i></div>
+      <div>
+        <div class="modal-form-title">Resultados de la búsqueda</div>
+        <div class="modal-form-sub" id="chkResultadosSub">—</div>
+      </div>
+      <button class="modal-close-btn" onclick="closeModal('modalChecklistResultados')"><i class="fas fa-times"></i></button>
+    </div>
+    <div class="modal-form-body">
+      <div id="chkResultados"></div>
+    </div>
+    <div class="modal-form-footer">
+      <button class="btn-cancel" onclick="closeModal('modalChecklistResultados')"><i class="fas fa-arrow-left"></i> Cerrar</button>
+    </div>
+  </div>
+</div>
+
+<!-- ══════════ CHECKLIST — ADMINISTRAR PREGUNTAS ══════════ -->
+<div class="modal-overlay" id="modalAdminPreguntas">
+  <div class="modal-form">
+    <div class="modal-form-header">
+      <div class="modal-form-icon"><i class="fas fa-list-check"></i></div>
+      <div>
+        <div class="modal-form-title">Administrar preguntas</div>
+        <div class="modal-form-sub">Catálogo de preguntas del Checklist de Inventario</div>
+      </div>
+      <button class="modal-close-btn" onclick="closeModal('modalAdminPreguntas')"><i class="fas fa-times"></i></button>
+    </div>
+    <div class="modal-form-body">
+      <div class="form-section">
+        <div class="form-section-title"><i class="fas fa-plus"></i> Nueva pregunta</div>
+        <div class="form-row cols2">
+          <div class="form-group">
+            <label class="form-label">Sección</label>
+            <input class="form-input" id="chk-item-seccion" type="text" list="chk-secciones-list" placeholder="Elige una existente o escribe una nueva" autocomplete="off">
+            <datalist id="chk-secciones-list"></datalist>
+          </div>
+          <div class="form-group">
+            <label class="form-label">Aplica a</label>
+            <select class="form-select" id="chk-item-tipo"><option value="">Todos los tipos de dispositivo</option></select>
+          </div>
+        </div>
+        <div class="form-row" style="display:flex;gap:8px;">
+          <input class="form-input" id="chk-item-nueva" type="text" placeholder="Escribe la pregunta..." style="flex:1;">
+          <button class="btn-save" onclick="crearItemChecklist()" style="white-space:nowrap;"><i class="fas fa-plus"></i> Agregar</button>
+        </div>
+      </div>
+      <div class="form-section" style="margin-bottom:0">
+        <div class="form-section-title"><i class="fas fa-list"></i> Preguntas existentes</div>
+        <div id="chk-items-lista"></div>
+      </div>
+    </div>
+    <div class="modal-form-footer">
+      <button class="btn-cancel" onclick="closeModal('modalAdminPreguntas')"><i class="fas fa-arrow-left"></i> Cerrar</button>
+    </div>
+  </div>
+</div>
+
+<!-- ══════════ NOVEDADES — REGISTRAR ══════════ -->
+<div class="modal-overlay" id="modalRegistrarNovedad">
+  <div class="modal-form">
+    <div class="modal-form-header">
+      <div class="modal-form-icon"><i class="fas fa-bullhorn"></i></div>
+      <div>
+        <div class="modal-form-title">Registrar Novedad</div>
+        <div class="modal-form-sub">Bitácora de novedades generales</div>
+      </div>
+      <button class="modal-close-btn" onclick="closeModal('modalRegistrarNovedad')"><i class="fas fa-times"></i></button>
+    </div>
+    <div class="modal-form-body">
+      <div class="form-section">
+        <div class="form-group">
+          <label class="form-label">Tipo de novedad <span class="req">*</span></label>
+          <select class="form-select" id="nov-tipo" onchange="_cargarCamposNovedad()"><option value="">Selecciona un tipo</option></select>
+        </div>
+      </div>
+      <div id="nov-campos-dinamicos" style="margin-bottom:0;"></div>
+    </div>
+    <div class="modal-form-footer">
+      <button class="btn-cancel" onclick="closeModal('modalRegistrarNovedad')"><i class="fas fa-arrow-left"></i> Cancelar</button>
+      <button class="btn-save" onclick="guardarNovedad()"><i class="fas fa-save"></i> Guardar novedad</button>
+    </div>
+  </div>
+</div>
+
+<!-- ══════════ NOVEDADES — DETALLE ══════════ -->
+<div class="modal-overlay" id="modalDetalleNovedad">
+  <div class="modal-form">
+    <div class="modal-form-header">
+      <div class="modal-form-icon"><i class="fas fa-bullhorn"></i></div>
+      <div>
+        <div class="modal-form-title">Detalle de Novedad</div>
+        <div class="modal-form-sub" id="nov-det-sub">—</div>
+      </div>
+      <button class="modal-close-btn" onclick="closeModal('modalDetalleNovedad')"><i class="fas fa-times"></i></button>
+    </div>
+    <div class="modal-form-body">
+      <div id="nov-det-campos" style="margin-bottom:0;"></div>
+    </div>
+    <div class="modal-form-footer">
+      <button class="btn-cancel" onclick="closeModal('modalDetalleNovedad')"><i class="fas fa-arrow-left"></i> Cerrar</button>
+    </div>
+  </div>
+</div>
+
+<!-- ══════════ NOVEDADES — ADMINISTRAR TIPOS ══════════ -->
+<div class="modal-overlay" id="modalAdminTiposNovedad">
+  <div class="modal-form">
+    <div class="modal-form-header">
+      <div class="modal-form-icon"><i class="fas fa-gear"></i></div>
+      <div>
+        <div class="modal-form-title">Administrar tipos de novedad</div>
+        <div class="modal-form-sub">Catálogo de tipos y sus campos</div>
+      </div>
+      <button class="modal-close-btn" onclick="closeModal('modalAdminTiposNovedad')"><i class="fas fa-times"></i></button>
+    </div>
+    <div class="modal-form-body">
+      <div class="form-section">
+        <div class="form-section-title"><i class="fas fa-plus"></i> Nuevo tipo de novedad</div>
+        <div class="form-row" style="display:flex;gap:8px;">
+          <input class="form-input" id="nov-tipo-nuevo" type="text" placeholder="Ej: Corte de energía..." style="flex:1;">
+          <button class="btn-save" onclick="crearTipoNovedad()" style="white-space:nowrap;"><i class="fas fa-plus"></i> Agregar</button>
+        </div>
+      </div>
+      <div class="form-section" style="margin-bottom:0">
+        <div class="form-section-title"><i class="fas fa-list"></i> Tipos existentes</div>
+        <div id="nov-tipos-lista"></div>
+      </div>
+    </div>
+    <div class="modal-form-footer">
+      <button class="btn-cancel" onclick="closeModal('modalAdminTiposNovedad')"><i class="fas fa-arrow-left"></i> Cerrar</button>
     </div>
   </div>
 </div>
@@ -582,7 +886,7 @@
         {% endif %}
  
         {# ── SEGUIMIENTO (submenú) — solo se muestra el botón padre si al menos un hijo es visible ── #}
-        {% if 'centro-costo' in screens_permitidas or 'historial-equipo' in screens_permitidas or 'inactivos' in screens_permitidas or 'colaboradores' in screens_permitidas or 'prestamo-equipos' in screens_permitidas %}
+        {% if 'centro-costo' in screens_permitidas or 'historial-equipo' in screens_permitidas or 'inactivos' in screens_permitidas or 'colaboradores' in screens_permitidas or 'prestamo-equipos' in screens_permitidas or 'checklist' in screens_permitidas %}
         <button class="nav-btn" id="btnSeguimiento" onclick="toggleSubmenu('submenuSeg','btnSeguimiento')">
           <i class="fas fa-route nav-icon"></i>
           <span class="nav-label">Seguimiento</span>
@@ -614,9 +918,23 @@
             <i class="fas fa-circle"></i> Préstamo de Equipos
           </button>
           {% endif %}
+          {% if 'checklist' in screens_permitidas %}
+          <button class="sub-btn" data-screen="checklist" onclick="showScreen('checklist')">
+            <i class="fas fa-circle"></i> Checklist
+          </button>
+          {% endif %}
         </div>
         {% endif %}
- 
+
+        {# ── NOVEDADES ── #}
+        {% if 'novedades' in screens_permitidas %}
+        <button class="nav-btn" data-screen="novedades" onclick="showScreen('novedades')">
+          <i class="fas fa-bullhorn nav-icon"></i>
+          <span class="nav-label">Novedades</span>
+          {% if 'novedades' in screens_solo_lectura %}<i class="fas fa-eye" title="Solo lectura" style="margin-left:auto;opacity:.6;"></i>{% endif %}
+        </button>
+        {% endif %}
+
         {# ── LABEL REQUERIMIENTOS — solo si al menos una pantalla del bloque es visible ── #}
         {% if 'gestion-usuarios' in screens_permitidas or 'mis-requerimientos' in screens_permitidas or 'asignar-requerimientos' in screens_permitidas or 'historial-requerimientos' in screens_permitidas or 'indicadores' in screens_permitidas %}
         <div style="margin:10px 0 4px;padding:0 4px;font-size:10.5px;font-weight:700;
@@ -811,6 +1129,53 @@
         </div>
       </section>
 
+      <!-- ══════════ NOVEDADES ══════════ -->
+      <section class="screen" id="screen-novedades">
+        <div class="screen-header">
+          <div class="screen-icon"><i class="fas fa-bullhorn"></i></div>
+          <div>
+            <h2 class="screen-title">Novedades</h2>
+            <p class="screen-desc">Bitácora de novedades generales</p>
+          </div>
+          <div class="screen-actions">
+            <button class="btn-cancel" onclick="abrirAdminTiposNovedad()"><i class="fas fa-gear"></i> Administrar tipos</button>
+            <button class="btn-create" onclick="abrirRegistrarNovedad()"><i class="fas fa-plus"></i> Registrar novedad</button>
+          </div>
+        </div>
+        <div class="inv-toolbar">
+          <div class="inv-search">
+            <i class="fas fa-search"></i>
+            <input type="text" id="nov-search" placeholder="Buscar por tipo, responsable u observación..." oninput="renderNovedades()">
+          </div>
+          <select class="inv-filter" id="nov-filter-tipo" onchange="renderNovedades()"><option value="">Todos los tipos</option></select>
+          <input type="date" class="inv-filter" id="nov-filter-desde" onchange="renderNovedades()" title="Desde">
+          <input type="date" class="inv-filter" id="nov-filter-hasta" onchange="renderNovedades()" title="Hasta">
+        </div>
+        <div class="inv-table-wrap">
+          <table class="data-table">
+            <thead><tr>
+              <th>Fecha</th>
+              <th>Tipo de novedad</th>
+              <th>Responsable</th>
+              <th>Acciones</th>
+            </tr></thead>
+            <tbody id="nov-tbody"></tbody>
+          </table>
+          <div class="pagination-wrap">
+            <div class="pag-info">
+              Mostrando <span id="nov-pag-from">—</span>–<span id="nov-pag-to">—</span>
+              de <span id="nov-pag-total">—</span> novedades
+              <select class="pag-size" id="nov-pag-size" onchange="changeNovPageSize()">
+                <option value="5">5 por página</option>
+                <option value="10" selected>10 por página</option>
+                <option value="20">20 por página</option>
+              </select>
+            </div>
+            <div class="pag-controls" id="nov-pag-controls"></div>
+          </div>
+        </div>
+      </section>
+
       <!-- ══════════ CENTRO DE COSTO ══════════ -->
       <section class="screen" id="screen-centro-costo">
         <div class="screen-header">
@@ -980,6 +1345,57 @@
             </div>
             <div class="pag-controls" id="inac-pag-controls"></div>
           </div>
+        </div>
+      </section>
+
+      <!-- ══════════ CHECKLIST DE INVENTARIO ══════════ -->
+      <section class="screen" id="screen-checklist">
+        <div class="screen-header">
+          <div class="screen-icon"><i class="fas fa-clipboard-check"></i></div>
+          <div>
+            <h2 class="screen-title">Checklist</h2>
+            <p class="screen-desc">Busca un dispositivo por tipo y serial para hacerle el checklist</p>
+          </div>
+          <div class="screen-actions">
+            <button class="btn-create" onclick="abrirAdminPreguntasChecklist()">
+              <i class="fas fa-list-check"></i> Administrar preguntas
+            </button>
+          </div>
+        </div>
+
+        <div class="inv-stats">
+          <div class="inv-stat-card" style="border-left:3px solid #16a34a">
+            <div class="inv-stat-icon success"><i class="fas fa-circle-check"></i></div>
+            <div><div class="inv-stat-val" id="chk-stat-con">—</div><div class="inv-stat-lbl">Con checklist</div></div>
+          </div>
+          <div class="inv-stat-card" style="border-left:3px solid #d97706">
+            <div class="inv-stat-icon warning"><i class="fas fa-triangle-exclamation"></i></div>
+            <div><div class="inv-stat-val" id="chk-stat-pend">—</div><div class="inv-stat-lbl">Pendientes por revisar</div></div>
+          </div>
+        </div>
+
+        <!-- Paso 1: filtro (mismo diseño que Historial de Equipo) -->
+        <div class="hist-search-panel" id="chkBuscarPanel">
+          <div class="hist-panel-title"><i class="fas fa-magnifying-glass"></i> Buscar dispositivo</div>
+          <div class="hist-search-grid">
+            <div class="hist-field-group">
+              <label class="hist-field-label">Tipo de dispositivo</label>
+              <select class="hist-field-select" id="chk-buscar-tipo"><option value="">Seleccione una opción</option></select>
+            </div>
+            <div class="hist-field-group">
+              <label class="hist-field-label">Serial del dispositivo</label>
+              <input class="hist-field-input" id="chk-buscar-serial" type="text" placeholder="Ej: 1288 — o déjalo vacío para buscar por tipo" onkeydown="if(event.key==='Enter') buscarChecklistDispositivo()">
+            </div>
+            <div class="hist-btn-actions">
+              <button class="hist-btn-consultar" onclick="buscarChecklistDispositivo()"><i class="fas fa-search"></i> Buscar</button>
+            </div>
+          </div>
+        </div>
+        <div class="hist-initial-state" id="chk-initial">
+          <div class="hist-initial-icon"><i class="fas fa-clipboard-check"></i></div>
+          <div class="hist-initial-title">Busca un dispositivo para comenzar</div>
+          <div class="hist-initial-desc">Selecciona el tipo de dispositivo y/o ingresa el serial, y presiona Buscar para ver los resultados.</div>
+          <div class="hist-initial-hint"><i class="fas fa-lightbulb"></i> Puedes buscar solo por tipo para ver todos los equipos de esa categoría</div>
         </div>
       </section>
 
