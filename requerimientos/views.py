@@ -263,6 +263,15 @@ def mis_requerimientos(request):
 
     data = []
     for r in reqs:
+        # Recalculado a partir de categoría + subcategoría (mismo criterio que
+        # crear_requerimiento), no de IdJefeArea: ese campo queda poblado en
+        # CUALQUIER requerimiento del área (para saber quién es el jefe),
+        # no solo en los que de verdad pasaron por aprobación.
+        requiere_aprobacion_r = (
+            _normaliza(categoria_map.get(r.IdCategoria, '')) == CATEGORIA_SOPORTE_EXTERNO
+            and any(_normaliza(subcategoria_map.get(r.IdSubCategoria, '')).startswith(s)
+                    for s in SUBCATEGORIAS_REQUIEREN_APROBACION)
+        )
         data.append({
             'id':              r.Codigo,
             'codigo':          r.codigo(),
@@ -280,7 +289,7 @@ def mis_requerimientos(request):
             'clasificacion':   clasif_map.get(r.Clasificacion, ''),
             'calificacion':    evaluacion_map.get(r.Codigo, None),
             'estado':          ESTADOS.get(r.IdEstado, str(r.IdEstado or '')),
-            'requiere_aprobacion': bool(r.IdJefeArea),
+            'requiere_aprobacion': requiere_aprobacion_r,
             'fecha_aprobacion':    r.FechaAprobacion.strftime('%d/%m/%Y') if r.FechaAprobacion else '',
         })
 
@@ -1264,6 +1273,22 @@ def api_seguimiento_publico(request):
         except Categoria.DoesNotExist:
             pass
 
+    subcategoria_txt = ''
+    if req.IdSubCategoria:
+        try:
+            subcategoria_txt = SubCategoria.objects.using(DB).get(IdSubCategoria=req.IdSubCategoria).Descripcion
+        except SubCategoria.DoesNotExist:
+            pass
+
+    # Recalculado a partir de categoría + subcategoría (mismo criterio que
+    # crear_requerimiento), no de IdJefeArea: ese campo queda poblado en
+    # CUALQUIER requerimiento del área, no solo en los que de verdad pasaron
+    # por aprobación.
+    requiere_aprobacion = (
+        _normaliza(categoria_txt) == CATEGORIA_SOPORTE_EXTERNO
+        and any(_normaliza(subcategoria_txt).startswith(s) for s in SUBCATEGORIAS_REQUIEREN_APROBACION)
+    )
+
     evaluacion = EvaluacionReq.objects.using(DB).filter(IdReq=req.Codigo).first()
 
     data = {
@@ -1276,7 +1301,7 @@ def api_seguimiento_publico(request):
         'solucion':            req.Solucion or '',
         'fecha_solucion':      str(req.FechaRealSoluci) if req.FechaRealSoluci else '',
         'estado':              ESTADOS_PUBLICO.get(req.IdEstado, str(req.IdEstado or '')),
-        'requiere_aprobacion': bool(req.IdJefeArea),
+        'requiere_aprobacion': requiere_aprobacion,
         'fecha_aprobacion':    str(req.FechaAprobacion) if req.FechaAprobacion else '',
         'calificacion':        evaluacion.Evaluacion if evaluacion else None,
         'comentario_evaluacion': evaluacion.Comentario if evaluacion else '',
