@@ -600,6 +600,18 @@
     .chk-hist-item-text{min-width:0;}
     .chk-hist-item-fecha{font-size:13px;font-weight:700;color:var(--text-primary);font-family:'DM Mono',monospace;}
     .chk-hist-item-resp{font-size:12.5px;color:var(--text-light);white-space:nowrap;overflow:hidden;text-overflow:ellipsis;}
+    .chk-hist-item-tipo{font-size:11px;font-weight:600;letter-spacing:.2px;color:var(--primary);margin-top:2px;text-transform:uppercase;}
+    .chk-hist-item-tipo.chk-hist-item-editado{color:#b45309;}
+    .chk-hist-item-icon-editado{background:#fef3e2;color:#b45309;}
+    .nov-adjuntos-grid{display:flex;flex-wrap:wrap;gap:10px;margin-top:10px;}
+    .nov-adjuntos-grid:empty{margin-top:0;}
+    .nov-adjunto-card{position:relative;width:96px;display:flex;flex-direction:column;align-items:center;gap:4px;text-decoration:none;}
+    .nov-adjunto-card img{width:96px;height:72px;border-radius:var(--radius-md);object-fit:cover;border:1px solid var(--border);background:#f6f8fd;}
+    .nov-adjunto-icono{width:96px;height:72px;border-radius:var(--radius-md);border:1px solid var(--border);background:#f6f8fd;color:var(--primary-light);display:flex;align-items:center;justify-content:center;font-size:24px;}
+    .nov-adjunto-nombre{font-size:11px;color:var(--text-light);max-width:96px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;text-align:center;}
+    .nov-adjunto-quitar{position:absolute;top:-6px;right:-6px;width:20px;height:20px;border-radius:50%;background:#dc2626;color:#fff;border:2px solid #fff;font-size:10px;display:flex;align-items:center;justify-content:center;cursor:pointer;padding:0;}
+    .nov-adjunto-descargar{position:absolute;bottom:-6px;right:-6px;width:22px;height:22px;border-radius:50%;background:var(--primary);color:#fff;border:2px solid #fff;font-size:10px;display:flex;align-items:center;justify-content:center;text-decoration:none;}
+    #nov-det-adjuntos-seccion .chk-seccion-title{display:flex;align-items:center;justify-content:space-between;gap:10px;}
     .chk-preview-box{background:#fff;border-radius:12px;width:100%;max-width:900px;height:88vh;display:flex;flex-direction:column;overflow:hidden;box-shadow:0 25px 60px rgba(0,0,0,.35);}
     .chk-preview-header{display:flex;align-items:center;justify-content:space-between;padding:16px 22px;background:#1e3a5f;color:#fff;font-weight:600;font-size:15px;flex-shrink:0;}
     .chk-preview-header i{margin-right:8px;}

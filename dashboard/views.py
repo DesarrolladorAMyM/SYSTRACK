@@ -30,7 +30,8 @@ from .models import (
     AsignacionColaborador, Acta, ActaDispositivo, CentroCosto, TipoImpresora,
     RAM, TipoDisco ,CaracteristicasVideoBeam,TipoActa, NotificacionBellLeida,
     ItemChecklist, ChecklistDispositivo, RespuestaChecklist,
-    TipoNovedadGeneral, CampoNovedadGeneral, NovedadGeneral, RespuestaNovedadGeneral
+    TipoNovedadGeneral, CampoNovedadGeneral, NovedadGeneral, RespuestaNovedadGeneral,
+    AdjuntoNovedadGeneral,
 )
 import base64
 import os
@@ -1007,8 +1008,17 @@ def _guardar_checklist_dispositivo(dispositivo, checklist_body, responsable):
     """
     Guarda el Checklist de Inventario de un dispositivo (cabecera + respuestas)
     y deja constancia en Historial de Equipo. Se llama desde api_dispositivo_editar
-    cuando el dispositivo entra a un estado inactivo (ver ESTADOS_INACTIVOS).
+    cuando el dispositivo entra a un estado inactivo (ver ESTADOS_INACTIVOS) y
+    también desde api_checklist_dispositivo_guardar (pantalla de Checklist).
+
+    Nunca sobreescribe un checklist anterior — cada llamada crea un registro
+    nuevo (ChecklistDispositivo.objects.create), así que el historial de
+    checklists de un dispositivo queda completo. Lo único que cambia según
+    si ya tenía uno antes es la etiqueta que queda en Historial de Equipo,
+    para que se note a simple vista si fue el primero o uno posterior.
     """
+    ya_tenia_checklist = ChecklistDispositivo.objects.filter(g237_dispositivo=dispositivo).exists()
+
     tipo_nombre = dispositivo.g212_tipo.g200_tipo_dispositivo if dispositivo.g212_tipo else '—'
     marca_nombre = dispositivo.g212_marca.g202_marca if dispositivo.g212_marca else '—'
     cd = ChecklistDispositivo.objects.create(
@@ -1032,11 +1042,14 @@ def _guardar_checklist_dispositivo(dispositivo, checklist_body, responsable):
         )
     _registrar_historial_auto(
         dispositivo    = dispositivo,
-        nombre_novedad = 'CHECKLIST REALIZADO',
+        nombre_novedad = 'CHECKLIST ACTUALIZADO' if ya_tenia_checklist else 'CHECKLIST REALIZADO',
         responsable    = responsable,
-        observaciones  = 'Se completó el checklist de inventario al cambiar el estado del equipo.',
+        observaciones  = ('Se registró un nuevo checklist de inventario — el dispositivo ya tenía uno previo.'
+                           if ya_tenia_checklist else
+                           'Se completó el checklist de inventario al cambiar el estado del equipo.'),
         co             = dispositivo.g212_co,
     )
+    return cd
 
 
 @login_required(login_url='login')
@@ -1530,8 +1543,8 @@ def api_checklist_dispositivo_guardar(request, pk):
     except json.JSONDecodeError:
         return _json_err('JSON inválido')
     responsable = _nombre_completo_usuario(request)
-    _guardar_checklist_dispositivo(d, body, responsable)
-    return _json_ok({'id': d.g212_id})
+    cd = _guardar_checklist_dispositivo(d, body, responsable)
+    return _json_ok({'id': cd.g237_id})
 
 
 @login_required(login_url='login')
@@ -1559,6 +1572,7 @@ def api_checklist_lista(request):
             'responsable':   c.g237_responsable,
             'observaciones': c.g237_observaciones or '',
             'fecha':         _fecha_local_str(c.g237_fecha),
+            'fecha_edicion': _fecha_local_str(c.g237_fecha_edicion),
         })
 
     return _json_ok(registros)
@@ -1635,6 +1649,7 @@ def api_checklist_editar(request, pk):
         cd.g237_resp_area = body.get('resp_area', '')
     if 'resp_cargo' in body:
         cd.g237_resp_cargo = body.get('resp_cargo', '')
+    cd.g237_fecha_edicion = timezone.now()
     cd.save()
 
     for r in body.get('respuestas', []):
@@ -1898,6 +1913,21 @@ def _construir_html_checklist(cd, respuestas, colaborador, logo_b64):
 # dinámicos por tipo, igual patrón que Checklist de Inventario.
 # ═══════════════════════════════════════════════════════════════
 
+# Mismo criterio que ADJUNTO_CARPETA/ADJUNTO_MAX_BYTES en
+# requerimientos/views.py: una novedad puede tener varios adjuntos
+# (fotos o archivos), cada uno hasta 5 MB.
+NOVEDAD_ADJUNTO_CARPETA   = 'novedades_adjuntos'
+NOVEDAD_ADJUNTO_MAX_BYTES = 5 * 1024 * 1024
+
+
+def _novedad_adjunto_dict(a):
+    return {
+        'id':     a.g243_id,
+        'nombre': a.g243_nombre,
+        'url':    f'{settings.MEDIA_URL}{NOVEDAD_ADJUNTO_CARPETA}/{a.g243_id}_{a.g243_nombre}',
+    }
+
+
 @login_required(login_url='login')
 @require_http_methods(['GET'])
 def api_novedades_tipos(request):
@@ -2017,7 +2047,7 @@ def api_novedades_lista(request):
       ?fecha_desde=  ?fecha_hasta=   (formato YYYY-MM-DD)
     Paginación es del lado del frontend, igual que Inventario.
     """
-    qs = NovedadGeneral.objects.select_related('g241_tipo').prefetch_related('respuestas')
+    qs = NovedadGeneral.objects.select_related('g241_tipo').prefetch_related('respuestas', 'adjuntos')
 
     q = request.GET.get('q', '').strip()
     if q:
@@ -2050,6 +2080,7 @@ def api_novedades_lista(request):
             'observaciones': n.g241_observaciones or '',
             'detalle':       detalle,
             'fecha':         _fecha_local_str(n.g241_fecha),
+            'tiene_adjuntos': bool(n.adjuntos.all()),
         })
     return _json_ok(registros)
 
@@ -2094,6 +2125,7 @@ def api_novedades_detalle(request, pk):
         'campo':       r.g242_campo_desc,
         'observacion': r.g242_observacion or '',
     } for r in n.respuestas.all()]
+    adjuntos = [_novedad_adjunto_dict(a) for a in n.adjuntos.all().order_by('g243_id')]
     return _json_ok({
         'id':            n.g241_id,
         'tipo_id':       n.g241_tipo_id,
@@ -2102,7 +2134,95 @@ def api_novedades_detalle(request, pk):
         'observaciones': n.g241_observaciones or '',
         'fecha':         _fecha_local_str(n.g241_fecha),
         'respuestas':    respuestas,
+        'adjuntos':      adjuntos,
     })
+
+
+@login_required(login_url='login')
+@require_http_methods(['POST'])
+def api_novedades_adjuntar_archivo(request, pk):
+    """
+    Sube UN archivo (foto o documento, máx 5 MB) y lo asocia a la Novedad
+    `pk`. Se llama en un segundo paso justo después de api_novedades_guardar
+    (que recibe JSON puro y no puede llevar el binario) — mismo patrón que
+    api_adjuntar_archivo en requerimientos/views.py. Una novedad puede
+    tener varios adjuntos: se llama una vez por cada archivo elegido.
+    """
+    novedad = get_object_or_404(NovedadGeneral, pk=pk)
+
+    archivo = request.FILES.get('archivo')
+    if not archivo:
+        return _json_err('No se recibió ningún archivo.')
+
+    if archivo.size > NOVEDAD_ADJUNTO_MAX_BYTES:
+        return _json_err(f'El archivo supera el máximo permitido de {NOVEDAD_ADJUNTO_MAX_BYTES // (1024*1024)} MB.')
+
+    try:
+        adjunto = AdjuntoNovedadGeneral.objects.create(g243_novedad=novedad, g243_nombre=archivo.name)
+
+        carpeta = os.path.join(settings.MEDIA_ROOT, NOVEDAD_ADJUNTO_CARPETA)
+        os.makedirs(carpeta, exist_ok=True)
+        nombre_disco = f'{adjunto.g243_id}_{archivo.name}'
+        ruta_disco   = os.path.join(carpeta, nombre_disco)
+        with open(ruta_disco, 'wb+') as destino:
+            for chunk in archivo.chunks():
+                destino.write(chunk)
+
+        return _json_ok(_novedad_adjunto_dict(adjunto))
+    except Exception as e:
+        return _json_err(str(e))
+
+
+@login_required(login_url='login')
+@require_http_methods(['POST'])
+def api_novedades_adjunto_eliminar(request, pk):
+    """Quita un adjunto (por si se subió el archivo equivocado). Borra la
+    fila y, si existe, el archivo físico en disco."""
+    adjunto = get_object_or_404(AdjuntoNovedadGeneral, pk=pk)
+    ruta_disco = os.path.join(settings.MEDIA_ROOT, NOVEDAD_ADJUNTO_CARPETA, f'{adjunto.g243_id}_{adjunto.g243_nombre}')
+    adjunto.delete()
+    try:
+        if os.path.exists(ruta_disco):
+            os.remove(ruta_disco)
+    except OSError:
+        pass  # si no se pudo borrar el archivo físico, el registro ya se quitó igual
+    return _json_ok({'id': int(pk)})
+
+
+@login_required(login_url='login')
+@require_http_methods(['GET'])
+def api_novedades_adjuntos_zip(request, pk):
+    """Descarga todos los adjuntos de una novedad juntos, en un solo .zip
+    (útil cuando son varios — descargarlos de a uno se vuelve tedioso)."""
+    import zipfile
+    from io import BytesIO
+
+    novedad = get_object_or_404(NovedadGeneral, pk=pk)
+    adjuntos = list(novedad.adjuntos.all())
+    if not adjuntos:
+        return _json_err('Esta novedad no tiene adjuntos.', 404)
+
+    carpeta = os.path.join(settings.MEDIA_ROOT, NOVEDAD_ADJUNTO_CARPETA)
+    buffer = BytesIO()
+    with zipfile.ZipFile(buffer, 'w', zipfile.ZIP_DEFLATED) as zf:
+        nombres_usados = set()
+        for a in adjuntos:
+            ruta_disco = os.path.join(carpeta, f'{a.g243_id}_{a.g243_nombre}')
+            if not os.path.exists(ruta_disco):
+                continue
+            # Evita que dos adjuntos con el mismo nombre original se pisen
+            # dentro del zip (ej. dos fotos llamadas igual "foto.jpg").
+            nombre_zip = a.g243_nombre
+            if nombre_zip in nombres_usados:
+                base, ext = os.path.splitext(a.g243_nombre)
+                nombre_zip = f'{base}_{a.g243_id}{ext}'
+            nombres_usados.add(nombre_zip)
+            zf.write(ruta_disco, arcname=nombre_zip)
+
+    buffer.seek(0)
+    resp = HttpResponse(buffer.getvalue(), content_type='application/zip')
+    resp['Content-Disposition'] = f'attachment; filename="Adjuntos_novedad_{pk}.zip"'
+    return resp
 
 
 # COLABORADORES
@@ -4119,6 +4239,17 @@ def api_req_tic_accion(request, req_id):
     body   = json.loads(request.body)
     accion = body.get('accion')
 
+    # Candado de aprobación: mientras un requerimiento de Compras siga
+    # esperando al jefe de área (7) o haya sido rechazado por él (8), el
+    # técnico no puede asignarlo, ponerle plan, solucionarlo ni rechazarlo
+    # — evita que se "salte" la aprobación por este camino (ver
+    # api_todos_req_tic, que ya no lo muestra en la cola, pero esto cubre
+    # también el caso de un código de requerimiento usado directo).
+    if r.IdEstado == 7:
+        return _json_err('Este requerimiento está pendiente de aprobación por el jefe de área — no se puede gestionar todavía.')
+    if r.IdEstado == 8:
+        return _json_err('Este requerimiento fue rechazado por el jefe de área — no requiere gestión del técnico.')
+
     if accion == 'plan':
         r.PlanAccion = body.get('plan_accion', '').strip()
         r.IdEstado   = 3  # En Proceso
@@ -4184,10 +4315,15 @@ def api_req_tic_accion(request, req_id):
         r.save(using='requerimientos')
 
         # No hay señal (Signals.py) que reaccione a este estado, así que el
-        # correo se dispara explícitamente aquí, igual que en el rechazo de
-        # aprobación (requerimientos/views.py:_enviar_correo_rechazo).
-        from requerimientos.views import _enviar_correo_rechazo_tecnico
+        # correo Y la notificación de campanita se disparan explícitamente
+        # aquí, igual que en el rechazo de aprobación
+        # (requerimientos/views.py:_enviar_correo_rechazo / rechazar_requerimiento).
+        from requerimientos.views import _enviar_correo_rechazo_tecnico, _crear_notificacion_portal
         _enviar_correo_rechazo_tecnico(r, motivo)
+        _crear_notificacion_portal(
+            r, 'requiere_correccion', f'{r.codigo()} requiere corrección',
+            f'El técnico devolvió tu requerimiento para que lo corrijas. Motivo: "{motivo[:300]}"'
+        )
 
     else:
         return _json_err('Acción no válida. Use: plan | reasignar | solucionar | rechazar')
@@ -4218,10 +4354,14 @@ def api_todos_req_tic(request):
     # nombre — se resuelve aquí para que la tabla del técnico sea legible.
     CENTROS       = {c.IdCo: c.Descripcion for c in CentroOperacionReq.objects.using('requerimientos').all()}
 
+    # Se excluyen también 7 (Pendiente Aprobación) y 8 (Rechazado por el
+    # jefe de área): mientras el jefe no apruebe, el técnico no debe poder
+    # tomarlo — y si lo rechazó, no hay nada que gestionar (no existe flujo
+    # de corrección para ese caso, a diferencia del 9).
     qs = (Requerimiento.objects
           .using('requerimientos')
           .filter(IdUsuarioAsig__isnull=True)
-          .exclude(IdEstado__in=[4, 5, 6])
+          .exclude(IdEstado__in=[4, 5, 6, 7, 8])
           .order_by('-Fecha'))
 
     # Adjuntos: solo se guardan los que suba este proyecto (ver ADJUNTO_CARPETA

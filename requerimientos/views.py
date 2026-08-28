@@ -291,6 +291,7 @@ def mis_requerimientos(request):
             'estado':          ESTADOS.get(r.IdEstado, str(r.IdEstado or '')),
             'requiere_aprobacion': requiere_aprobacion_r,
             'fecha_aprobacion':    r.FechaAprobacion.strftime('%d/%m/%Y') if r.FechaAprobacion else '',
+            'motivo_rechazo':      r.MotivoRechazo or '',
         })
 
     return JsonResponse({'ok': True, 'data': data})
@@ -1305,6 +1306,7 @@ def api_seguimiento_publico(request):
         'fecha_aprobacion':    str(req.FechaAprobacion) if req.FechaAprobacion else '',
         'calificacion':        evaluacion.Evaluacion if evaluacion else None,
         'comentario_evaluacion': evaluacion.Comentario if evaluacion else '',
+        'motivo_rechazo':      req.MotivoRechazo or '',
     }
     return JsonResponse({'ok': True, 'data': data})
 

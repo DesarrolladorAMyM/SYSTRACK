@@ -114,6 +114,7 @@
   .bell-item-icon.solucionado{background:#f59e0b;}
   .bell-item-icon.pendiente_calificar{background:#7c3aed;}
   .bell-item-icon.vencido{background:#dc2626;}
+  .bell-item-icon.requiere_correccion{background:#dc2626;}
   .bell-item-body{flex:1;min-width:0;}
   .bell-item-title{font-size:12.5px;font-weight:700;color:var(--text-primary);}
   .bell-item-msg{font-size:12px;color:var(--text-secondary);margin-top:2px;line-height:1.4;}
@@ -687,7 +688,7 @@
     box-shadow:0 4px 10px rgba(27,70,152,0.30);
   }
   .trip-step-detail-title{font-size:14px;font-weight:700;color:var(--text-primary);margin-bottom:4px;}
-  .trip-step-detail-text{font-size:13px;color:var(--text-secondary);line-height:1.55;}
+  .trip-step-detail-text{font-size:13px;color:var(--text-secondary);line-height:1.55;white-space:pre-line;}
 
   .seg-rating-row{
     display:flex;align-items:center;gap:14px;flex-wrap:wrap;justify-content:space-between;

@@ -40,11 +40,17 @@ function showNotif(title, msg, type = 'success', duration = 3500) {
       {key:'fecha_solucion', label:'FECHA SOLUCIÓN'},
       {key:'clasificacion',  label:'CLASIFICACIÓN'},
     ],
+    rechazados: [
+      {key:'fecha_creacion', label:'FECHA'},
+      {key:'area',           label:'ÁREA REQUERIDA'},
+      {key:'vencimiento',    label:'FECHA VENCIMIENTO'},
+    ],
   };
 
   const FULL_WIDTH_FIELDS = new Set(['requerimiento','plan_accion','solucion']);
-  const PEND_ESTADOS = ['Abierto','Asignado','En Proceso','Pendiente Aprobación','Requiere corrección'];
+  const PEND_ESTADOS = ['Abierto','Asignado','En Proceso','Pendiente Aprobación'];
   const SOL_ESTADOS  = ['Cerrado', 'Calificado'];
+  const RECHAZADOS_ESTADOS = ['Requiere corrección'];
   let tab = 'pendientes', page = 1, size = 10, q = '';
 
   // ===== [FIX 1] Variables globales para el control de la calificación:
@@ -122,6 +128,7 @@ function showNotif(title, msg, type = 'success', duration = 3500) {
   const ICONOS_NOTIF = {
     asignado:  'fa-user-gear', aprobado: 'fa-check', rechazado: 'fa-xmark',
     solucionado: 'fa-circle-check', pendiente_calificar: 'fa-star', vencido: 'fa-clock',
+    requiere_correccion: 'fa-file-circle-exclamation',
   };
 
   async function cargarNotificaciones(cedula){
@@ -201,11 +208,12 @@ function showNotif(title, msg, type = 'success', duration = 3500) {
         const codigo = el.dataset.codigo;
         cerrarBellPanel();
         if(!codigo) return;
-        const enSolucionados = SOL_ESTADOS.includes(
-          (misRequerimientos().find(r => r.codigo === codigo) || {}).estado
-        );
+        const estadoNotif = (misRequerimientos().find(r => r.codigo === codigo) || {}).estado;
+        let destino = 'pendientes';
+        if(SOL_ESTADOS.includes(estadoNotif)) destino = 'solucionados';
+        else if(RECHAZADOS_ESTADOS.includes(estadoNotif)) destino = 'rechazados';
         irAVista('mis-req');
-        tab = enSolucionados ? 'solucionados' : 'pendientes'; page = 1;
+        tab = destino; page = 1;
         document.querySelectorAll('.req-tab').forEach(x => x.classList.toggle('active', x.dataset.tab === tab));
         renderMisReq();
         setTimeout(() => abrirTripModal(codigo), 150);
@@ -261,8 +269,9 @@ function showNotif(title, msg, type = 'success', duration = 3500) {
   });
 
   function filtered(){
+    const ESTADOS_TAB = {pendientes: PEND_ESTADOS, solucionados: SOL_ESTADOS, rechazados: RECHAZADOS_ESTADOS};
     return misRequerimientos().filter(r => {
-      const ok = tab==='pendientes' ? PEND_ESTADOS.includes(r.estado) : SOL_ESTADOS.includes(r.estado);
+      const ok = (ESTADOS_TAB[tab] || PEND_ESTADOS).includes(r.estado);
       const s  = !q || Object.values(r).some(v=>String(v??'').toLowerCase().includes(q));
       return ok && s;
     });
@@ -275,7 +284,8 @@ function showNotif(title, msg, type = 'success', duration = 3500) {
   function estBadge(e){
     const m = {'Abierto':'est-abierto','Asignado':'est-asignado','En Proceso':'est-en-proceso',
                'Cerrado':'est-cerrado','Calificado':'est-cerrado',
-               'Pendiente Aprobación':'est-pendiente-aprob','Rechazado':'est-rechazado'};
+               'Pendiente Aprobación':'est-pendiente-aprob','Rechazado':'est-rechazado',
+               'Requiere corrección':'est-rechazado'};
     return `<span class="est-badge ${m[e]||''}"><span class="ed"></span>${e}</span>`;
   }
 
@@ -1112,24 +1122,46 @@ function showNotif(title, msg, type = 'success', duration = 3500) {
   ];
 
   function buildTripSteps(r){
-    if(!r.requiere_aprobacion) return TRIP_STEPS_BASE;
+    let steps = TRIP_STEPS_BASE;
 
-    const fueRechazado = r.estado === 'Rechazado';
-    const pasoAprobacion = {
-      estado: fueRechazado ? 'Rechazado' : 'Pendiente Aprobación',
-      label: fueRechazado ? 'Rechazado' : 'Aprobación',
-      icon:  fueRechazado ? 'fa-file-circle-xmark' : 'fa-file-signature',
-      detalle: (r) => {
-        if(r.estado === 'Rechazado'){
-          return `Tu requerimiento fue rechazado por el jefe de área${r.fecha_aprobacion ? ' el '+r.fecha_aprobacion : ''}.`;
+    if(r.requiere_aprobacion){
+      const fueRechazado = r.estado === 'Rechazado';
+      const pasoAprobacion = {
+        estado: fueRechazado ? 'Rechazado' : 'Pendiente Aprobación',
+        label: fueRechazado ? 'Rechazado' : 'Aprobación',
+        icon:  fueRechazado ? 'fa-file-circle-xmark' : 'fa-file-signature',
+        detalle: (r) => {
+          if(r.estado === 'Rechazado'){
+            return `Tu requerimiento fue rechazado por el jefe de área${r.fecha_aprobacion ? ' el '+r.fecha_aprobacion : ''}.`;
+          }
+          if(r.estado === 'Pendiente Aprobación'){
+            return 'Tu requerimiento está a la espera de aprobación por el jefe de área.';
+          }
+          return `Tu requerimiento fue aprobado por el jefe de área${r.fecha_aprobacion ? ' el '+r.fecha_aprobacion : ''} y continuó su curso normal.`;
         }
-        if(r.estado === 'Pendiente Aprobación'){
-          return 'Tu requerimiento está a la espera de aprobación por el jefe de área.';
-        }
-        return `Tu requerimiento fue aprobado por el jefe de área${r.fecha_aprobacion ? ' el '+r.fecha_aprobacion : ''} y continuó su curso normal.`;
-      }
-    };
-    return [pasoAprobacion, ...TRIP_STEPS_BASE];
+      };
+      steps = [pasoAprobacion, ...steps];
+    }
+
+    // Paso "Requiere corrección" — el técnico devolvió el requerimiento tras
+    // revisarlo. Se inserta SOLO mientras sigue en ese estado; al corregirlo
+    // vuelve a "Asignado" (ver api_corregir_requerimiento) y el paso
+    // desaparece de nuevo, no queda como historial permanente.
+    if(r.estado === 'Requiere corrección'){
+      const pasoCorreccion = {
+        estado: 'Requiere corrección',
+        label: 'Requiere corrección',
+        icon:  'fa-file-circle-exclamation',
+        detalle: (r) => r.motivo_rechazo
+          ? `El técnico devolvió tu requerimiento para que lo corrijas.\n\nMotivo: "${r.motivo_rechazo}"`
+          : 'El técnico devolvió tu requerimiento para que lo corrijas.'
+      };
+      const idxAsignado = steps.findIndex(s => s.estado === 'Asignado');
+      const insertAt = idxAsignado >= 0 ? idxAsignado + 1 : steps.length;
+      steps = [...steps.slice(0, insertAt), pasoCorreccion, ...steps.slice(insertAt)];
+    }
+
+    return steps;
   }
 
   const segCodigoInput   = document.getElementById('segCodigoInput');

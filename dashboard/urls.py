@@ -58,6 +58,9 @@ urlpatterns = [
     path('api/novedades/',                          views.api_novedades_lista,         name='api_novedades_lista'),
     path('api/novedades/guardar/',                   views.api_novedades_guardar,       name='api_novedades_guardar'),
     path('api/novedades/<int:pk>/',                  views.api_novedades_detalle,       name='api_novedades_detalle'),
+    path('api/novedades/<int:pk>/adjuntar/',         views.api_novedades_adjuntar_archivo, name='api_novedades_adjuntar_archivo'),
+    path('api/novedades/adjuntos/<int:pk>/eliminar/', views.api_novedades_adjunto_eliminar, name='api_novedades_adjunto_eliminar'),
+    path('api/novedades/<int:pk>/adjuntos/zip/',     views.api_novedades_adjuntos_zip,  name='api_novedades_adjuntos_zip'),
 
     #  Colaboradores
     path('api/colaboradores/',                views.api_colaboradores,           name='api_colaboradores'),

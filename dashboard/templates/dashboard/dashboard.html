@@ -322,14 +322,15 @@
         <div class="chk-seccion-title"><i class="fas fa-id-card"></i> Datos del Responsable</div>
         <div class="chk-resp-body">
           <div class="form-row cols2">
-            <div class="form-group" style="position:relative;">
+            <div class="form-group">
               <label class="form-label">Cédula</label>
               <div class="chk-input-icon-wrap">
-                <i class="fas fa-magnifying-glass"></i>
-                <input class="form-input" id="chkdet-resp-cedula" type="text" placeholder="Escribe la cédula..." autocomplete="off"
-                  oninput="chkFiltrarResponsable('chkdet-resp')" onfocus="chkFiltrarResponsable('chkdet-resp')" onblur="setTimeout(()=>chkCerrarResponsableDropdown('chkdet-resp'),200)">
+                <i class="fas fa-id-card"></i>
+                <!-- La cédula del responsable no se puede cambiar al editar —
+                     queda fija desde que se registró el checklist por
+                     primera vez; lo que se corrige aquí son las respuestas. -->
+                <input class="form-input chk-input-readonly" id="chkdet-resp-cedula" type="text" readonly>
               </div>
-              <div id="chkdet-resp-dropdown" class="usr-dropdown" style="display:none;"></div>
             </div>
             <div class="form-group">
               <label class="form-label">Nombre completo</label>
@@ -419,28 +420,28 @@
         <div class="chk-seccion-title"><i class="fas fa-id-card"></i> Datos del Responsable</div>
         <div class="chk-resp-body">
           <div class="form-row cols2">
-            <div class="form-group" style="position:relative;">
+            <div class="form-group">
               <label class="form-label">Cédula</label>
               <div class="chk-input-icon-wrap">
-                <i class="fas fa-magnifying-glass"></i>
-                <input class="form-input" id="chk-resp-cedula" type="text" placeholder="Escribe la cédula..." autocomplete="off"
-                  oninput="chkFiltrarResponsable()" onfocus="chkFiltrarResponsable()" onblur="setTimeout(()=>chkCerrarResponsableDropdown(),200)">
+                <i class="fas fa-id-card"></i>
+                <!-- Se toma de la sesión (_precargarMiResponsable) y no se
+                     edita: el responsable es quien tiene la sesión abierta. -->
+                <input class="form-input chk-input-readonly" id="chk-resp-cedula" type="text" readonly>
               </div>
-              <div id="chk-resp-dropdown" class="usr-dropdown" style="display:none;"></div>
             </div>
             <div class="form-group">
               <label class="form-label">Nombre completo</label>
-              <input class="form-input chk-input-readonly" id="chk-resp-nombre" type="text" placeholder="Se completa al elegir la cédula" readonly>
+              <input class="form-input chk-input-readonly" id="chk-resp-nombre" type="text" readonly>
             </div>
           </div>
           <div class="form-row cols2" style="margin-top:12px;">
             <div class="form-group">
               <label class="form-label">Área</label>
-              <input class="form-input chk-input-readonly" id="chk-resp-area" type="text" placeholder="Se completa al elegir la cédula" readonly>
+              <input class="form-input chk-input-readonly" id="chk-resp-area" type="text" readonly>
             </div>
             <div class="form-group">
               <label class="form-label">Cargo</label>
-              <input class="form-input chk-input-readonly" id="chk-resp-cargo" type="text" placeholder="Se completa al elegir la cédula" readonly>
+              <input class="form-input chk-input-readonly" id="chk-resp-cargo" type="text" readonly>
             </div>
           </div>
         </div>
@@ -540,6 +541,16 @@
         </div>
       </div>
       <div id="nov-campos-dinamicos" style="margin-bottom:0;"></div>
+      <div class="chk-seccion" id="nov-adjuntos-seccion" style="margin-top:18px;margin-bottom:0;display:none;">
+        <div class="chk-seccion-title"><i class="fas fa-paperclip"></i> Adjuntos (fotos o archivos)</div>
+        <div class="chk-resp-body">
+          <input type="file" id="nov-adjuntos-input" multiple accept="image/*,.pdf,.doc,.docx,.xls,.xlsx" style="display:none;" onchange="_novAdjuntosSeleccionados(this.files)">
+          <button type="button" class="btn-cancel" style="width:100%;justify-content:center;" onclick="document.getElementById('nov-adjuntos-input').click()">
+            <i class="fas fa-upload"></i> Elegir foto(s) o archivo(s)
+          </button>
+          <div id="nov-adjuntos-preview" class="nov-adjuntos-grid"></div>
+        </div>
+      </div>
     </div>
     <div class="modal-form-footer">
       <button class="btn-cancel" onclick="closeModal('modalRegistrarNovedad')"><i class="fas fa-arrow-left"></i> Cancelar</button>
@@ -561,6 +572,17 @@
     </div>
     <div class="modal-form-body">
       <div id="nov-det-campos" style="margin-bottom:0;"></div>
+      <div class="chk-seccion" id="nov-det-adjuntos-seccion" style="margin-top:18px;margin-bottom:0;display:none;">
+        <div class="chk-seccion-title">
+          <span><i class="fas fa-paperclip"></i> Adjuntos</span>
+          <button type="button" id="nov-det-adjuntos-descargar-todos" class="btn-export" style="display:none;padding:5px 12px;font-size:12px;" onclick="_novDescargarTodosAdjuntos()">
+            <i class="fas fa-download"></i> Descargar todos
+          </button>
+        </div>
+        <div class="chk-resp-body">
+          <div id="nov-det-adjuntos" class="nov-adjuntos-grid"></div>
+        </div>
+      </div>
     </div>
     <div class="modal-form-footer">
       <button class="btn-cancel" onclick="closeModal('modalDetalleNovedad')"><i class="fas fa-arrow-left"></i> Cerrar</button>

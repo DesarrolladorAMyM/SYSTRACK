@@ -61,6 +61,9 @@ const API = {
   novedadesLista:       `${BASE}/inventario/api/novedades/`,
   novedadesGuardar:     `${BASE}/inventario/api/novedades/guardar/`,
   novedadesDetalle:     (pk) => `${BASE}/inventario/api/novedades/${pk}/`,
+  novedadesAdjuntar:      (pk) => `${BASE}/inventario/api/novedades/${pk}/adjuntar/`,
+  novedadesAdjuntoEliminar: (pk) => `${BASE}/inventario/api/novedades/adjuntos/${pk}/eliminar/`,
+  novedadesAdjuntosZip:   (pk) => `${BASE}/inventario/api/novedades/${pk}/adjuntos/zip/`,
 
   // ── Préstamo de Equipos ──
   equiposAdmin:        `${BASE}/inventario/api/prestamo-equipos/`,
@@ -2265,39 +2268,17 @@ async function seleccionarDispositivoChecklist(id) {
   document.getElementById('modalChecklistForm').classList.add('active');
 }
 
-let _chkRespBuscadorData = [];
 
-async function chkFiltrarResponsable(prefix = 'chk-resp') {
-  const q = document.getElementById(`${prefix}-cedula`).value.trim();
-  const dd = document.getElementById(`${prefix}-dropdown`);
-  dd.style.display = 'block';
-  const res = await apiFetch(`${API.checklistColaboradorBuscar}?q=${encodeURIComponent(q)}`);
-  _chkRespBuscadorData = res.ok ? res.data : [];
-  dd.innerHTML = _chkRespBuscadorData.length
-    ? _chkRespBuscadorData.map(c => `<div class="usr-dropdown-item" onmousedown="chkSeleccionarResponsable(${c.id}, '${prefix}')">${c.documento} — ${c.nombre}</div>`).join('')
-    : `<div class="usr-dropdown-empty">Sin resultados</div>`;
-}
-
-function chkCerrarResponsableDropdown(prefix = 'chk-resp') {
-  document.getElementById(`${prefix}-dropdown`).style.display = 'none';
-}
-
-function chkSeleccionarResponsable(id, prefix = 'chk-resp') {
-  const c = _chkRespBuscadorData.find(x => x.id === id);
-  if (!c) return;
-  document.getElementById(`${prefix}-nombre`).value = c.nombre;
-  document.getElementById(`${prefix}-cedula`).value = c.documento;
-  document.getElementById(`${prefix}-area`).value   = c.area;
-  document.getElementById(`${prefix}-cargo`).value  = c.cargo;
-  chkCerrarResponsableDropdown(prefix);
-}
-
-// El login usa la cédula como usuario, así que casi siempre coincide con un
-// Colaborador — se precarga solo, pero se puede cambiar buscando otra cédula
-// si el responsable real es otra persona.
+// El login usa la cédula como usuario, así que siempre debe coincidir con
+// un Colaborador — "Datos del Responsable" se toma de la sesión y no se
+// puede editar (los 4 campos son de solo lectura): el responsable del
+// checklist es quien tiene la sesión abierta, no alguien que se escriba.
 async function _precargarMiResponsable() {
   const res = await apiFetch(API.checklistMiResponsable);
-  if (!res.ok || !res.data) return;
+  if (!res.ok || !res.data) {
+    showNotif('No se encontró tu colaborador', 'Tu usuario no está vinculado a un registro de Colaborador — pide al administrador que lo revise antes de guardar un checklist.', 'warning');
+    return;
+  }
   const c = res.data;
   document.getElementById('chk-resp-nombre').value = c.nombre;
   document.getElementById('chk-resp-cedula').value = c.documento;
@@ -2344,7 +2325,21 @@ function _setTextoChkNuevoRespuesta(itemId, valor) {
 async function guardarChecklistNuevo() {
   const d = _chkDispositivoSeleccionado;
   if (!d) return;
+
+  const respCedula = document.getElementById('chk-resp-cedula').value.trim();
+  const respNombre = document.getElementById('chk-resp-nombre').value.trim();
+  if (!respCedula || !respNombre) {
+    showNotif('Falta el responsable', 'Escribe la cédula del responsable — el nombre se completa solo si es un colaborador registrado.', 'warning');
+    document.getElementById('chk-resp-cedula').focus();
+    return;
+  }
+
   const idsRespuestas = new Set([...Object.keys(_chkNuevoRespuestas), ...Object.keys(_chkNuevoTextos)]);
+  if (idsRespuestas.size === 0) {
+    showNotif('Falta el checklist', 'Responde al menos una pregunta del checklist antes de guardar — no puede quedar solo con los datos del responsable.', 'warning');
+    return;
+  }
+
   const respuestas = Array.from(idsRespuestas).map(itemId => ({
     item_id: parseInt(itemId),
     respuesta: _chkNuevoRespuestas[itemId] || false,
@@ -2353,18 +2348,16 @@ async function guardarChecklistNuevo() {
   const body = {
     respuestas,
     observaciones: document.getElementById('chk-nuevo-obs').value,
-    resp_nombre:   document.getElementById('chk-resp-nombre').value,
-    resp_cedula:   document.getElementById('chk-resp-cedula').value,
+    resp_nombre:   respNombre,
+    resp_cedula:   respCedula,
     resp_area:     document.getElementById('chk-resp-area').value,
     resp_cargo:    document.getElementById('chk-resp-cargo').value,
   };
   const res = await apiFetch(API.checklistDispositivoGuardar(d.id), 'POST', body);
   if (!res.ok) { showNotif('Error', res.error || 'No se pudo guardar el checklist', 'warning'); return; }
   showNotif(' Guardado', `Checklist del equipo ${d.serial} guardado correctamente`, 'success');
-  const btnGuardar = document.getElementById('btnGuardarChecklistNuevo');
-  if (btnGuardar) { btnGuardar.disabled = true; btnGuardar.innerHTML = '<i class="fas fa-check"></i> Guardado'; }
-  await _cargarHistorialAnteriorChecklist(d.id);
   cargarChecklistStats();
+  _volverBusquedaChecklist();
 }
 
 let _chkDetId = null;
@@ -2414,7 +2407,6 @@ let _chkDetEditando = false;
 function _setModoChecklistDetalle(editando) {
   _chkDetEditando = editando;
   document.querySelectorAll('#chkDetalleRespuestas button, #chkDetalleRespuestas input').forEach(el => el.disabled = !editando);
-  document.getElementById('chkdet-resp-cedula').disabled = !editando;
   document.getElementById('chkdet-obs').disabled = !editando;
   document.getElementById('chkDetalleTitulo').textContent = editando ? 'Editar Checklist' : 'Detalle del Checklist';
   document.getElementById('chkDetalleHint').textContent = editando
@@ -2443,7 +2435,21 @@ function _setTextoChkDetRespuesta(itemId, valor) {
 
 async function guardarEdicionChecklist() {
   if (!_chkDetId) return;
+
+  const respCedula = document.getElementById('chkdet-resp-cedula').value.trim();
+  const respNombre = document.getElementById('chkdet-resp-nombre').value.trim();
+  if (!respCedula || !respNombre) {
+    showNotif('Falta el responsable', 'Escribe la cédula del responsable — el nombre se completa solo si es un colaborador registrado.', 'warning');
+    document.getElementById('chkdet-resp-cedula').focus();
+    return;
+  }
+
   const idsRespuestas = new Set([...Object.keys(_chkDetRespuestas), ...Object.keys(_chkDetTextos)]);
+  if (idsRespuestas.size === 0) {
+    showNotif('Falta el checklist', 'Responde al menos una pregunta del checklist antes de guardar — no puede quedar solo con los datos del responsable.', 'warning');
+    return;
+  }
+
   const respuestas = Array.from(idsRespuestas).map(itemId => ({
     item_id: parseInt(itemId),
     respuesta: _chkDetRespuestas[itemId] || false,
@@ -2452,8 +2458,8 @@ async function guardarEdicionChecklist() {
   const body = {
     respuestas,
     observaciones: document.getElementById('chkdet-obs').value,
-    resp_nombre:   document.getElementById('chkdet-resp-nombre').value,
-    resp_cedula:   document.getElementById('chkdet-resp-cedula').value,
+    resp_nombre:   respNombre,
+    resp_cedula:   respCedula,
     resp_area:     document.getElementById('chkdet-resp-area').value,
     resp_cargo:    document.getElementById('chkdet-resp-cargo').value,
   };
@@ -2474,7 +2480,10 @@ function descargarChecklistPdf(id) {
 }
 
 async function verVistaPreviaChecklist(id) {
-  closeModal('modalChecklistHistorialDispositivo');
+  // No se cierra "Historial de Checklists" — queda debajo (mismo z-index,
+  // pero este modal va después en el HTML así que se pinta encima) para
+  // que al cerrar la vista previa el usuario vuelva directo al historial
+  // y pueda abrir el otro registro sin tener que reabrirlo desde cero.
   const body = document.getElementById('chkPreviewBody');
   body.innerHTML = `<div class="empty-state" style="color:#fff"><i class="fas fa-spinner fa-spin"></i><p>Cargando…</p></div>`;
   document.getElementById('btnChkPreviewPdf').onclick = () => descargarChecklistPdf(id);
@@ -2608,17 +2617,40 @@ async function verHistorialChecklistDispositivo(dispositivoId, serial) {
     body.innerHTML = `<div class="empty-state"><i class="fas fa-clock-rotate-left"></i><p>Este dispositivo no tiene checklists registrados.</p></div>`;
     return;
   }
-  body.innerHTML = `<div class="chk-hist-list">${lista.map(c => `
+  // Cada checklist puede generar hasta 2 entradas en esta lista: la de
+  // creación siempre, y la de edición solo si ya se corrigió alguna vez
+  // (fecha_edicion). Ambas apuntan al mismo checklist (es el mismo
+  // registro corregido, no uno nuevo) — ver "Ver detalle".
+  const eventos = [];
+  lista.forEach(c => {
+    eventos.push({ id: c.id, fecha: c.fecha, responsable: c.responsable, tipo: 'creado' });
+    if (c.fecha_edicion) {
+      eventos.push({ id: c.id, fecha: c.fecha_edicion, responsable: c.responsable, tipo: 'editado' });
+    }
+  });
+  // "dd/mm/yyyy HH:MM" no se puede comparar como texto directo (agosto
+  // quedaría después de septiembre) — se reordena a "yyyy-mm-dd HH:MM" solo
+  // para poder ordenar cronológicamente, sin tocar cómo se muestra.
+  const _comparable = f => {
+    const m = f.match(/^(\d{2})\/(\d{2})\/(\d{4}) (\d{2}:\d{2})$/);
+    return m ? `${m[3]}-${m[2]}-${m[1]} ${m[4]}` : f;
+  };
+  eventos.sort((a, b) => _comparable(b.fecha).localeCompare(_comparable(a.fecha)));
+
+  body.innerHTML = `<div class="chk-hist-list">${eventos.map(ev => `
     <div class="chk-hist-item">
       <div class="chk-hist-item-info">
-        <div class="chk-hist-item-icon"><i class="fas fa-clipboard-check"></i></div>
+        <div class="chk-hist-item-icon ${ev.tipo === 'editado' ? 'chk-hist-item-icon-editado' : ''}">
+          <i class="fas ${ev.tipo === 'editado' ? 'fa-pen' : 'fa-clipboard-check'}"></i>
+        </div>
         <div class="chk-hist-item-text">
-          <div class="chk-hist-item-fecha">${c.fecha}</div>
-          <div class="chk-hist-item-resp">${c.responsable}</div>
+          <div class="chk-hist-item-fecha">${ev.fecha}</div>
+          <div class="chk-hist-item-resp">${ev.responsable}</div>
+          <div class="chk-hist-item-tipo ${ev.tipo === 'editado' ? 'chk-hist-item-editado' : ''}">${ev.tipo === 'editado' ? 'Checklist editado' : 'Checklist creado'}</div>
         </div>
       </div>
       <div class="tbl-actions">
-        <button class="tbl-btn edit" onclick="verVistaPreviaChecklist(${c.id})" title="Vista previa del checklist"><i class="fas fa-eye"></i></button>
+        <button class="tbl-btn edit" onclick="verVistaPreviaChecklist(${ev.id})" title="Vista previa del checklist"><i class="fas fa-eye"></i></button>
       </div>
     </div>`).join('')}</div>`;
 }
@@ -2699,6 +2731,7 @@ let NOV_DATA = [];
 let novPage = 1;
 let novPageSize = 10;
 let _novCamposRespuestas = {};
+let _novDetalleId = null; // novedad abierta en el modal de detalle, para "Descargar todos"
 
 async function loadNovedades() {
   await cargarNovTiposFiltro();
@@ -2749,7 +2782,7 @@ function _renderNovTable() {
       <tr onclick="verNovedadDetalle(${n.id})">
         <td><span class="serial-mono">${n.fecha}</span></td>
         <td>${n.tipo}</td>
-        <td>${n.responsable}</td>
+        <td>${n.responsable} ${n.tiene_adjuntos ? '<i class="fas fa-paperclip" style="color:var(--text-light);margin-left:4px;" title="Tiene adjuntos"></i>' : ''}</td>
         <td onclick="event.stopPropagation()">
           <div class="tbl-actions">
             <button class="tbl-btn info" onclick="verNovedadDetalle(${n.id})"><i class="fas fa-eye"></i></button>
@@ -2782,9 +2815,15 @@ function changeNovPageSize() {
 
 // ── Registrar novedad ──
 
+let _novAdjuntosStaged = []; // archivos elegidos, aun no subidos (se suben al guardar)
+
 async function abrirRegistrarNovedad() {
   document.getElementById('nov-campos-dinamicos').innerHTML = '';
   _novCamposRespuestas = {};
+  _novAdjuntosStaged = [];
+  document.getElementById('nov-adjuntos-input').value = '';
+  document.getElementById('nov-adjuntos-preview').innerHTML = '';
+  document.getElementById('nov-adjuntos-seccion').style.display = 'none';
   const sel = document.getElementById('nov-tipo');
   const res = await apiFetch(API.novedadesTipos);
   const tipos = (res.ok ? res.data : []).filter(t => t.activo);
@@ -2798,6 +2837,9 @@ async function _cargarCamposNovedad() {
   const tipoId = document.getElementById('nov-tipo').value;
   const wrap = document.getElementById('nov-campos-dinamicos');
   _novCamposRespuestas = {};
+  // Adjuntos también se ocultan hasta que haya un tipo elegido — no tiene
+  // sentido dejar adjuntar algo antes de saber a qué novedad va.
+  document.getElementById('nov-adjuntos-seccion').style.display = tipoId ? '' : 'none';
   if (!tipoId) { wrap.innerHTML = ''; return; }
   const res = await apiFetch(`${API.novedadesCampos}?tipo_id=${tipoId}`);
   const campos = res.ok ? res.data : [];
@@ -2819,6 +2861,36 @@ async function _cargarCamposNovedad() {
     </div>`;
 }
 
+// ── Adjuntos (Registrar novedad): se eligen y se ven de una vez con
+// URL.createObjectURL — no se suben todavía, se quedan en memoria hasta
+// que se guarde la novedad (necesita su id para asociarlos). ──
+
+function _novAdjuntosSeleccionados(fileList) {
+  Array.from(fileList).forEach(f => _novAdjuntosStaged.push(f));
+  document.getElementById('nov-adjuntos-input').value = ''; // permite volver a elegir el mismo archivo si lo quita y lo agrega de nuevo
+  _renderNovAdjuntosPreview();
+}
+
+function _novQuitarAdjuntoStaged(idx) {
+  _novAdjuntosStaged.splice(idx, 1);
+  _renderNovAdjuntosPreview();
+}
+
+function _renderNovAdjuntosPreview() {
+  const wrap = document.getElementById('nov-adjuntos-preview');
+  wrap.innerHTML = _novAdjuntosStaged.map((f, i) => {
+    const esImagen = ADJUNTO_EXT_IMAGEN.includes((f.name.split('.').pop() || '').toLowerCase());
+    return `
+      <div class="nov-adjunto-card">
+        <button type="button" class="nov-adjunto-quitar" onclick="_novQuitarAdjuntoStaged(${i})" title="Quitar"><i class="fas fa-times"></i></button>
+        ${esImagen
+          ? `<img src="${URL.createObjectURL(f)}" alt="${f.name}">`
+          : `<div class="nov-adjunto-icono"><i class="fas fa-file-lines"></i></div>`}
+        <div class="nov-adjunto-nombre" title="${f.name}">${f.name}</div>
+      </div>`;
+  }).join('');
+}
+
 async function guardarNovedad() {
   const tipoId = document.getElementById('nov-tipo').value;
   if (!tipoId) { showNotif('Falta el tipo', 'Elige un tipo de novedad', 'warning'); return; }
@@ -2829,6 +2901,29 @@ async function guardarNovedad() {
   const body = { tipo_id: tipoId, campos };
   const res = await apiFetch(API.novedadesGuardar, 'POST', body);
   if (!res.ok) { showNotif('Error', res.error || 'No se pudo guardar la novedad', 'warning'); return; }
+
+  // Los adjuntos se suben en un segundo paso — novedadesGuardar recibe JSON
+  // puro y no puede llevar binarios (mismo patrón que Requerimientos).
+  if (_novAdjuntosStaged.length > 0) {
+    const fallos = [];
+    for (const archivo of _novAdjuntosStaged) {
+      const fd = new FormData();
+      fd.append('archivo', archivo);
+      try {
+        const ra = await fetch(API.novedadesAdjuntar(res.data.id), {
+          method: 'POST', headers: { 'X-CSRFToken': getCookie('csrftoken') }, body: fd,
+        });
+        const respA = await ra.json();
+        if (!respA.ok) fallos.push(archivo.name);
+      } catch {
+        fallos.push(archivo.name);
+      }
+    }
+    if (fallos.length > 0) {
+      showNotif('Algunos adjuntos no se subieron', fallos.join(', '), 'warning', 6000);
+    }
+  }
+
   showNotif(' Registrada', 'La novedad fue registrada correctamente', 'success');
   closeModal('modalRegistrarNovedad');
   loadNovedades();
@@ -2855,7 +2950,41 @@ async function verNovedadDetalle(id) {
         </table>
       </div>`;
   }
+
+  const seccionAdj = document.getElementById('nov-det-adjuntos-seccion');
+  const adjuntos = n.adjuntos || [];
+  _novDetalleId = n.id;
+  if (adjuntos.length === 0) {
+    seccionAdj.style.display = 'none';
+  } else {
+    seccionAdj.style.display = '';
+    document.getElementById('nov-det-adjuntos-descargar-todos').style.display = adjuntos.length > 1 ? '' : 'none';
+    document.getElementById('nov-det-adjuntos').innerHTML = adjuntos.map(a => {
+      const esImagen = ADJUNTO_EXT_IMAGEN.includes((a.nombre.split('.').pop() || '').toLowerCase());
+      return `
+        <div class="nov-adjunto-card">
+          <a href="${a.url}" target="_blank" rel="noopener" title="Abrir ${a.nombre}" style="display:contents;">
+            ${esImagen
+              ? `<img src="${a.url}" alt="${a.nombre}">`
+              : `<div class="nov-adjunto-icono"><i class="fas fa-file-lines"></i></div>`}
+            <div class="nov-adjunto-nombre">${a.nombre}</div>
+          </a>
+          <a class="nov-adjunto-descargar" href="${a.url}" download="${a.nombre}" title="Descargar ${a.nombre}"><i class="fas fa-download"></i></a>
+        </div>`;
+    }).join('');
+  }
+
   document.getElementById('modalDetalleNovedad').classList.add('active');
+}
+
+function _novDescargarTodosAdjuntos() {
+  if (!_novDetalleId) return;
+  const a = document.createElement('a');
+  a.href = API.novedadesAdjuntosZip(_novDetalleId);
+  a.download = '';
+  document.body.appendChild(a);
+  a.click();
+  a.remove();
 }
 
 // ── Administrar tipos y campos ──
@@ -5627,7 +5756,16 @@ function verAdjuntoReq(nombre, url) {
   if (ADJUNTO_EXT_IMAGEN.includes(ext)) {
     visor.innerHTML = `<img src="${url}" alt="${nombre}" style="max-width:100%;max-height:60vh;border-radius:var(--radius-md);box-shadow:var(--shadow-sm)">`;
   } else if (ext === 'pdf') {
-    visor.innerHTML = `<iframe src="${url}" style="width:100%;height:60vh;border:1px solid var(--border);border-radius:var(--radius-md)"></iframe>`;
+    // No se incrusta en <iframe>: el visor de PDF de Chrome hace peticiones
+    // internas propias que en algunos servidores (proxys/antivirus de red)
+    // terminan en "conexión rechazada" aunque la descarga directa sí
+    // funciona. Se muestra solo el ícono + nombre y se usa "Descargar".
+    visor.innerHTML = `
+      <div style="display:flex;flex-direction:column;align-items:center;gap:10px;color:var(--text-secondary)">
+        <i class="fas fa-file-pdf" style="font-size:52px;color:#dc2626"></i>
+        <span>${nombre}</span>
+        <small>Usa "Descargar" para abrir el PDF.</small>
+      </div>`;
   } else {
     visor.innerHTML = `
       <div style="display:flex;flex-direction:column;align-items:center;gap:10px;color:var(--text-secondary)">

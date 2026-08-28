@@ -872,6 +872,9 @@ class ChecklistDispositivo(models.Model):
     g237_resp_area        = models.CharField(max_length=150, blank=True, null=True)
     g237_resp_cargo       = models.CharField(max_length=150, blank=True, null=True)
     g237_fecha            = models.DateTimeField(auto_now_add=True)
+    # Se llena solo la primera vez que se corrige (api_checklist_editar) —
+    # queda en NULL si el checklist nunca se ha editado desde que se creó.
+    g237_fecha_edicion    = models.DateTimeField(null=True, blank=True)
 
     class Meta:
         db_table = 'j237_checklist_dispositivo'
@@ -1011,6 +1014,28 @@ class RespuestaNovedadGeneral(models.Model):
 
     def __str__(self):
         return f"{self.g242_campo_desc}: {self.g242_observacion or ''}"
+
+
+class AdjuntoNovedadGeneral(models.Model):
+    """Foto o archivo adjunto a una Novedad General — una novedad puede
+    tener varios (por eso una tabla aparte, no un solo campo de texto). El
+    archivo físico se guarda en MEDIA_ROOT/novedades_adjuntos/{id}_{nombre
+    original}, mismo patrón que ImagenAdjunta en requerimientos/models.py."""
+    g243_id      = models.AutoField(primary_key=True)
+    g243_novedad = models.ForeignKey(
+        NovedadGeneral, on_delete=models.CASCADE,
+        db_column='g243_novedad_id', related_name='adjuntos'
+    )
+    g243_nombre  = models.CharField(max_length=255)
+    g243_fecha   = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        db_table = 'j243_adjunto_novedad_general'
+        verbose_name = 'Adjunto de Novedad General'
+        verbose_name_plural = 'Adjuntos de Novedad General'
+
+    def __str__(self):
+        return self.g243_nombre
 
 
 #CENTRO DE COSTOS

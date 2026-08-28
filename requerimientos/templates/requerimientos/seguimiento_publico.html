@@ -133,7 +133,7 @@
     color:var(--primary);display:flex;align-items:center;justify-content:center;font-size:13px;
   }
   .trip-step-detail-title{font-size:14px;font-weight:700;color:var(--text-primary);margin-bottom:4px;}
-  .trip-step-detail-text{font-size:13px;color:var(--text-secondary);line-height:1.55;}
+  .trip-step-detail-text{font-size:13px;color:var(--text-secondary);line-height:1.55;white-space:pre-line;}
 
   .seg-publico-cerrar{
     position:absolute;top:18px;right:18px;width:32px;height:32px;border-radius:50%;
@@ -207,25 +207,49 @@
   ];
 
   function buildTripSteps(r){
-    if(!r.requiere_aprobacion) return TRIP_STEPS_BASE;
-    const fueRechazado = r.estado === 'Rechazado';
-    const pasoAprobacion = {
-      estado: fueRechazado ? 'Rechazado' : 'Pendiente Aprobación',
-      label: fueRechazado ? 'Rechazado' : 'Aprobación',
-      icon:  fueRechazado ? 'fa-file-circle-xmark' : 'fa-file-signature',
-      detalle: (r) => {
-        if(r.estado === 'Rechazado') return `Tu requerimiento fue rechazado por el jefe de área${r.fecha_aprobacion ? ' el '+r.fecha_aprobacion : ''}.`;
-        if(r.estado === 'Pendiente Aprobación') return 'Tu requerimiento está a la espera de aprobación por el jefe de área.';
-        return `Tu requerimiento fue aprobado por el jefe de área${r.fecha_aprobacion ? ' el '+r.fecha_aprobacion : ''} y continuó su curso normal.`;
-      }
-    };
-    return [pasoAprobacion, ...TRIP_STEPS_BASE];
+    let steps = TRIP_STEPS_BASE;
+
+    if(r.requiere_aprobacion){
+      const fueRechazado = r.estado === 'Rechazado';
+      const pasoAprobacion = {
+        estado: fueRechazado ? 'Rechazado' : 'Pendiente Aprobación',
+        label: fueRechazado ? 'Rechazado' : 'Aprobación',
+        icon:  fueRechazado ? 'fa-file-circle-xmark' : 'fa-file-signature',
+        detalle: (r) => {
+          if(r.estado === 'Rechazado') return `Tu requerimiento fue rechazado por el jefe de área${r.fecha_aprobacion ? ' el '+r.fecha_aprobacion : ''}.`;
+          if(r.estado === 'Pendiente Aprobación') return 'Tu requerimiento está a la espera de aprobación por el jefe de área.';
+          return `Tu requerimiento fue aprobado por el jefe de área${r.fecha_aprobacion ? ' el '+r.fecha_aprobacion : ''} y continuó su curso normal.`;
+        }
+      };
+      steps = [pasoAprobacion, ...steps];
+    }
+
+    // Paso "Requiere corrección" — el técnico devolvió el requerimiento tras
+    // revisarlo. Se inserta SOLO mientras sigue en ese estado; al corregirlo
+    // vuelve a "Asignado" (ver api_corregir_requerimiento) y el paso
+    // desaparece de nuevo, no queda como historial permanente.
+    if(r.estado === 'Requiere corrección'){
+      const pasoCorreccion = {
+        estado: 'Requiere corrección',
+        label: 'Requiere corrección',
+        icon:  'fa-file-circle-exclamation',
+        detalle: (r) => r.motivo_rechazo
+          ? `El técnico devolvió tu requerimiento para que lo corrijas.\n\nMotivo: "${r.motivo_rechazo}"`
+          : 'El técnico devolvió tu requerimiento para que lo corrijas.'
+      };
+      const idxAsignado = steps.findIndex(s => s.estado === 'Asignado');
+      const insertAt = idxAsignado >= 0 ? idxAsignado + 1 : steps.length;
+      steps = [...steps.slice(0, insertAt), pasoCorreccion, ...steps.slice(insertAt)];
+    }
+
+    return steps;
   }
 
   function estBadge(e){
     const m = {'Abierto':'est-abierto','Asignado':'est-asignado','En Proceso':'est-en-proceso',
                'Cerrado':'est-cerrado','Calificado':'est-cerrado',
-               'Pendiente Aprobación':'est-pendiente-aprob','Rechazado':'est-rechazado'};
+               'Pendiente Aprobación':'est-pendiente-aprob','Rechazado':'est-rechazado',
+               'Requiere corrección':'est-rechazado'};
     return `<span class="est-badge ${m[e]||''}"><span class="ed"></span>${e}</span>`;
   }
 
