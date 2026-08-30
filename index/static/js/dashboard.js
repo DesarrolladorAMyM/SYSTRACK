@@ -852,7 +852,15 @@ async function saveDevice() {
     caract:              buildCaracteristicasBody(),
   };
   if (editingId && document.getElementById('chkSectionEdit')?.style.display !== 'none') {
-    body.checklist = _buildChecklistPayload();
+    const checklistPayload = _buildChecklistPayload();
+    // Si la sección está visible es porque el tipo sí tiene preguntas (ver
+    // _showChecklistEditSection) — no se puede pasar a un estado inactivo
+    // sin responder ni una, igual que ya se exige en la pantalla Checklist.
+    if (checklistPayload.respuestas.length === 0) {
+      showNotif('Falta el checklist', 'Responde al menos una pregunta del checklist antes de guardar este cambio de estado.', 'warning');
+      return;
+    }
+    body.checklist = checklistPayload;
   }
   const res = editingId
     ? await apiFetch(API.editarDev(editingId), 'PUT', body)
@@ -2128,6 +2136,11 @@ async function _onEstadoEditChange() {
 async function _showChecklistEditSection() {
   const tipoId = document.getElementById('f-tipo')?.value || '';
   const items = await fetchChecklistItems(tipoId);
+  // Si el tipo de dispositivo no tiene preguntas de checklist configuradas
+  // (hoy en día, todo menos Portátil), no tiene sentido mostrar la sección
+  // ni dejar que se guarde un checklist vacío — se oculta igual que si el
+  // estado nuevo no fuera inactivo.
+  if (items.length === 0) { _hideChecklistEditSection(); return; }
   _chkRespuestas = {};
   _chkTextos = {};
   document.getElementById('chkEditPreguntas').innerHTML = _renderPreguntasAgrupadasHTML(items, 'chk-edit', '_toggleChkRespuesta', '_setTextoChkRespuesta', _chkRespuestas, _chkTextos);
