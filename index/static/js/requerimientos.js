@@ -480,15 +480,19 @@ function showNotif(title, msg, type = 'success', duration = 3500) {
     }
 
     const dot = document.getElementById('manualBtnDot');
+    const btn = document.getElementById('btnManualTecnico');
 
     posicionarAviso();
     aviso.classList.remove('hidden');
     if(dot) dot.classList.remove('hidden');
+    btn.classList.add('manual-destacado');
     window.addEventListener('resize', posicionarAviso);
 
+    // Se queda abierto hasta que le den click a la X — no se cierra solo.
     function cerrarAviso(){
       aviso.classList.add('hidden');
       if(dot) dot.classList.add('hidden');
+      btn.classList.remove('manual-destacado');
       window.removeEventListener('resize', posicionarAviso);
       try { localStorage.setItem(KEY, '1'); } catch(e) {}
     }
@@ -498,7 +502,6 @@ function showNotif(title, msg, type = 'success', duration = 3500) {
       cerrarAviso();
     });
     document.getElementById('btnManualTecnico').addEventListener('click', cerrarAviso);
-    setTimeout(cerrarAviso, 9000);
   })();
   document.addEventListener('click', (e) => {
     const panel = document.getElementById('bellPanel');
