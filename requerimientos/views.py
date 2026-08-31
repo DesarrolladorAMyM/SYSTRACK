@@ -9,6 +9,7 @@ from django.template.loader import render_to_string
 from django.conf import settings
 from django.contrib.auth.decorators import login_required
 from django.contrib.auth.hashers import make_password
+from dashboard.permisos import requiere_pantalla
 from .models import (
     Usuario, Requerimiento, Categoria, SubCategoria, CentroOperacion,
     Cargo, TipoUsuario, Area, Prioridad, Clasificacion, EvaluacionReq, TipoRequerimiento,
@@ -1142,6 +1143,7 @@ def api_usuarios_req(request):
 @login_required
 @csrf_exempt
 @require_POST
+@requiere_pantalla('gestion-usuarios', bloquear_solo_lectura=True)
 def api_usuario_req_crear(request):
     try:
         body     = json.loads(request.body)
@@ -1182,6 +1184,7 @@ def api_usuario_req_crear(request):
 @login_required
 @csrf_exempt
 @require_POST
+@requiere_pantalla('gestion-usuarios', bloquear_solo_lectura=True)
 def api_usuario_req_editar(request, pk):
     try:
         u    = Usuario.objects.using(DB).get(IdUsuario=pk)
@@ -1203,6 +1206,7 @@ def api_usuario_req_editar(request, pk):
 @login_required
 @csrf_exempt
 @require_POST
+@requiere_pantalla('gestion-usuarios', bloquear_solo_lectura=True)
 def api_usuario_req_eliminar(request, pk):
     try:
         u        = Usuario.objects.using(DB).get(IdUsuario=pk)

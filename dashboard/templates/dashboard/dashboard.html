@@ -923,26 +923,31 @@
           {% if 'historial-equipo' in screens_permitidas %}
           <button class="sub-btn" data-screen="historial-equipo" onclick="showScreen('historial-equipo')">
             <i class="fas fa-circle"></i> Historial equipo
+            {% if 'historial-equipo' in screens_solo_lectura %}<i class="fas fa-eye" title="Solo lectura" style="margin-left:auto;opacity:.6;"></i>{% endif %}
           </button>
           {% endif %}
           {% if 'inactivos' in screens_permitidas %}
           <button class="sub-btn" data-screen="inactivos" onclick="showScreen('inactivos')">
             <i class="fas fa-circle"></i> Inactivos
+            {% if 'inactivos' in screens_solo_lectura %}<i class="fas fa-eye" title="Solo lectura" style="margin-left:auto;opacity:.6;"></i>{% endif %}
           </button>
           {% endif %}
           {% if 'colaboradores' in screens_permitidas %}
           <button class="sub-btn" data-screen="colaboradores" onclick="showScreen('colaboradores')">
             <i class="fas fa-circle"></i> Colaboradores
+            {% if 'colaboradores' in screens_solo_lectura %}<i class="fas fa-eye" title="Solo lectura" style="margin-left:auto;opacity:.6;"></i>{% endif %}
           </button>
           {% endif %}
           {% if 'prestamo-equipos' in screens_permitidas %}
           <button class="sub-btn" data-screen="prestamo-equipos" onclick="showScreen('prestamo-equipos')">
             <i class="fas fa-circle"></i> Préstamo de Equipos
+            {% if 'prestamo-equipos' in screens_solo_lectura %}<i class="fas fa-eye" title="Solo lectura" style="margin-left:auto;opacity:.6;"></i>{% endif %}
           </button>
           {% endif %}
           {% if 'checklist' in screens_permitidas %}
           <button class="sub-btn" data-screen="checklist" onclick="showScreen('checklist')">
             <i class="fas fa-circle"></i> Checklist
+            {% if 'checklist' in screens_solo_lectura %}<i class="fas fa-eye" title="Solo lectura" style="margin-left:auto;opacity:.6;"></i>{% endif %}
           </button>
           {% endif %}
         </div>
@@ -969,6 +974,7 @@
         <button class="nav-btn" data-screen="mis-requerimientos" onclick="showScreen('mis-requerimientos')">
           <i class="fas fa-clipboard-list nav-icon"></i>
           <span class="nav-label">Mis Requerimientos</span>
+          {% if 'mis-requerimientos' in screens_solo_lectura %}<i class="fas fa-eye" title="Solo lectura" style="margin-left:auto;opacity:.6;"></i>{% endif %}
         </button>
         {% endif %}
  
@@ -976,6 +982,7 @@
         <button class="nav-btn" data-screen="gestion-usuarios" onclick="showScreen('gestion-usuarios')">
           <i class="fas fa-user-friends nav-icon"></i>
           <span class="nav-label">Gestión de Usuarios</span>
+          {% if 'gestion-usuarios' in screens_solo_lectura %}<i class="fas fa-eye" title="Solo lectura" style="margin-left:auto;opacity:.6;"></i>{% endif %}
         </button>
         {% endif %}
  
@@ -984,6 +991,7 @@
         <button class="nav-btn" data-screen="asignar-requerimientos" onclick="showScreen('asignar-requerimientos')">
           <i class="fas fa-user-plus nav-icon"></i>
           <span class="nav-label">Asignar Requerimientos</span>
+          {% if 'asignar-requerimientos' in screens_solo_lectura %}<i class="fas fa-eye" title="Solo lectura" style="margin-left:auto;opacity:.6;"></i>{% endif %}
         </button>
         {% endif %}
  

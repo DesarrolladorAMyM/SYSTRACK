@@ -19,6 +19,7 @@ from django.db import transaction
 from django.db.models import Count, Q ,F
 from django.utils import timezone
 from django.contrib.auth.decorators import login_required
+from .permisos import requiere_pantalla, usuario_es_solo_lectura, usuario_tiene_pantalla
 from .models import (
     TipoDispositivo, Estado, Marca, Propietario, Departamento,
     Municipio, TipoDocumento, CentroOperaciones, Antivirus, Procesador,
@@ -579,6 +580,7 @@ def api_siguiente_serial(request):
 
 @login_required(login_url='login')
 @require_http_methods(['POST'])
+@requiere_pantalla('inventario', bloquear_solo_lectura=True)
 def api_dispositivo_crear(request):
     """Crea un nuevo dispositivo con sus características."""
     try:
@@ -634,6 +636,7 @@ def api_dispositivo_crear(request):
 
 @login_required(login_url='login')
 @require_http_methods(['PUT'])
+@requiere_pantalla('inventario', bloquear_solo_lectura=True)
 def api_dispositivo_editar(request, pk):
     """Edita un dispositivo existente."""
     d = get_object_or_404(Dispositivo, pk=pk)
@@ -839,6 +842,7 @@ def _save_caracteristicas(d, body):
 
 @login_required(login_url='login')
 @require_http_methods(['DELETE'])
+@requiere_pantalla('inventario', bloquear_solo_lectura=True)
 def api_dispositivo_eliminar(request, pk):
     """Elimina un dispositivo permanentemente."""
     d = get_object_or_404(Dispositivo, pk=pk)
@@ -1090,6 +1094,7 @@ def api_historial_por_dispositivo(request, dispositivo_id):
 
 @login_required(login_url='login')
 @require_http_methods(['POST'])
+@requiere_pantalla('historial-equipo', bloquear_solo_lectura=True)
 def api_historial_crear(request):
     """Crea un nuevo registro de historial."""
     try:
@@ -1322,6 +1327,7 @@ def api_inactivos(request):
 
 @login_required(login_url='login')
 @require_http_methods(['PUT'])
+@requiere_pantalla('inactivos', bloquear_solo_lectura=True)
 def api_inactivo_editar(request, pk):
     """
     Edita un dispositivo inactivo. Es el mismo registro de Dispositivo: si
@@ -1397,6 +1403,7 @@ def api_checklist_items(request):
 
 @login_required(login_url='login')
 @require_http_methods(['POST'])
+@requiere_pantalla('checklist', bloquear_solo_lectura=True)
 def api_checklist_item_crear(request):
     try:
         body = json.loads(request.body)
@@ -1418,6 +1425,7 @@ def api_checklist_item_crear(request):
 
 @login_required(login_url='login')
 @require_http_methods(['PUT'])
+@requiere_pantalla('checklist', bloquear_solo_lectura=True)
 def api_checklist_item_editar(request, pk):
     item = get_object_or_404(ItemChecklist, pk=pk)
     try:
@@ -1532,6 +1540,7 @@ def api_checklist_dispositivos(request):
 
 @login_required(login_url='login')
 @require_http_methods(['POST'])
+@requiere_pantalla('checklist', bloquear_solo_lectura=True)
 def api_checklist_dispositivo_guardar(request, pk):
     """
     Guarda un checklist nuevo para un dispositivo directamente desde la
@@ -1627,6 +1636,7 @@ def api_checklist_detalle(request, pk):
 
 @login_required(login_url='login')
 @require_http_methods(['PUT'])
+@requiere_pantalla('checklist', bloquear_solo_lectura=True)
 def api_checklist_editar(request, pk):
     """
     Corrige un checklist ya guardado: respuestas, observaciones y datos
@@ -1941,6 +1951,7 @@ def api_novedades_tipos(request):
 
 @login_required(login_url='login')
 @require_http_methods(['POST'])
+@requiere_pantalla('novedades', bloquear_solo_lectura=True)
 def api_novedades_tipo_crear(request):
     try:
         body = json.loads(request.body)
@@ -1955,6 +1966,7 @@ def api_novedades_tipo_crear(request):
 
 @login_required(login_url='login')
 @require_http_methods(['PUT'])
+@requiere_pantalla('novedades', bloquear_solo_lectura=True)
 def api_novedades_tipo_editar(request, pk):
     tipo = get_object_or_404(TipoNovedadGeneral, pk=pk)
     try:
@@ -2000,6 +2012,7 @@ def api_novedades_campos(request):
 
 @login_required(login_url='login')
 @require_http_methods(['POST'])
+@requiere_pantalla('novedades', bloquear_solo_lectura=True)
 def api_novedades_campo_crear(request):
     try:
         body = json.loads(request.body)
@@ -2020,6 +2033,7 @@ def api_novedades_campo_crear(request):
 
 @login_required(login_url='login')
 @require_http_methods(['PUT'])
+@requiere_pantalla('novedades', bloquear_solo_lectura=True)
 def api_novedades_campo_editar(request, pk):
     campo = get_object_or_404(CampoNovedadGeneral, pk=pk)
     try:
@@ -2087,6 +2101,7 @@ def api_novedades_lista(request):
 
 @login_required(login_url='login')
 @require_http_methods(['POST'])
+@requiere_pantalla('novedades', bloquear_solo_lectura=True)
 def api_novedades_guardar(request):
     """Crea un registro nuevo de Novedad General con sus campos."""
     try:
@@ -2140,6 +2155,7 @@ def api_novedades_detalle(request, pk):
 
 @login_required(login_url='login')
 @require_http_methods(['POST'])
+@requiere_pantalla('novedades', bloquear_solo_lectura=True)
 def api_novedades_adjuntar_archivo(request, pk):
     """
     Sube UN archivo (foto o documento, máx 5 MB) y lo asocia a la Novedad
@@ -2175,6 +2191,7 @@ def api_novedades_adjuntar_archivo(request, pk):
 
 @login_required(login_url='login')
 @require_http_methods(['POST'])
+@requiere_pantalla('novedades', bloquear_solo_lectura=True)
 def api_novedades_adjunto_eliminar(request, pk):
     """Quita un adjunto (por si se subió el archivo equivocado). Borra la
     fila y, si existe, el archivo físico en disco."""
@@ -2334,6 +2351,7 @@ def api_colaboradores_cargos(request):
 
 @login_required(login_url='login')
 @require_http_methods(['POST'])
+@requiere_pantalla('colaboradores', bloquear_solo_lectura=True)
 def api_colaborador_crear(request):
     """Crea un nuevo colaborador desde la plataforma (fuera del panel de admin)."""
     try:
@@ -2399,6 +2417,7 @@ def api_colaborador_crear(request):
 
 @login_required(login_url='login')
 @require_http_methods(['POST'])
+@requiere_pantalla('colaboradores', bloquear_solo_lectura=True)
 def api_asignacion_guardar(request, colaborador_id):
     """
     Guarda la asignación de dispositivos a un colaborador.
@@ -2891,6 +2910,7 @@ def _enviar_correo_asignacion_smtp(destinatario, nombre_tecnico, codigo, solicit
 
 @login_required(login_url='login')
 @require_http_methods(['POST'])
+@requiere_pantalla('colaboradores', bloquear_solo_lectura=True)
 def api_acta_guardar(request, colaborador_id):
     """Guarda el acta y envía el PDF por correo automáticamente."""
     c = get_object_or_404(Colaborador, pk=colaborador_id)
@@ -3497,6 +3517,7 @@ def api_dashboard_stats(request):
 
 @login_required(login_url='login')
 @require_http_methods(['DELETE'])
+@requiere_pantalla('colaboradores', bloquear_solo_lectura=True)
 def api_asignacion_eliminar(request, colaborador_id, dispositivo_id):
     """
     Elimina una sola asignación colaborador↔dispositivo sin tocar las demás.
@@ -3629,6 +3650,7 @@ def _texto_excel_seguro(valor):
 @csrf_exempt
 @login_required(login_url='login')
 @require_http_methods(['POST'])
+@requiere_pantalla('inventario', bloquear_solo_lectura=True)
 def api_carga_masiva(request):
     """
     Importa dispositivos desde un archivo Excel (.xlsx / .xls).
@@ -4238,6 +4260,16 @@ def api_req_tic_accion(request, req_id):
 
     body   = json.loads(request.body)
     accion = body.get('accion')
+
+    # Permiso por pantalla: "reasignar" se dispara desde Asignar
+    # Requerimientos, el resto (plan/solucionar/rechazar) desde Mis
+    # Requerimientos — es la misma API para las dos pantallas, así que el
+    # candado depende de la acción, no de una sola screen_key fija.
+    screen_key = 'asignar-requerimientos' if accion == 'reasignar' else 'mis-requerimientos'
+    if not usuario_tiene_pantalla(request.user, screen_key):
+        return _json_err('No tienes permiso para esta sección.', 403)
+    if usuario_es_solo_lectura(request.user, screen_key):
+        return _json_err('Tu acceso a esta sección es de solo lectura.', 403)
 
     # Candado de aprobación: mientras un requerimiento de Compras siga
     # esperando al jefe de área (7) o haya sido rechazado por él (8), el

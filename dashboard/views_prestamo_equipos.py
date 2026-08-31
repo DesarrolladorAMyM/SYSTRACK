@@ -9,13 +9,17 @@ import json
 from django.http import JsonResponse
 from django.views.decorators.http import require_GET, require_POST
 from django.views.decorators.csrf import csrf_exempt
+from django.contrib.auth.decorators import login_required
 
 from requerimientos.models import Equipo, EstadoGeneral, Usuario, HistorialPrestamo
+from .permisos import requiere_pantalla
 
 DB = 'requerimientos'
 
 
+@login_required(login_url='login')
 @require_GET
+@requiere_pantalla('prestamo-equipos')
 def api_equipos_admin_lista(request):
     """Lista completa de equipos con el nombre del responsable y del estado
     ya resueltos, para pintar la tabla de administración."""
@@ -47,7 +51,9 @@ def api_equipos_admin_lista(request):
     return JsonResponse({'ok': True, 'equipos': data})
 
 
+@login_required(login_url='login')
 @require_GET
+@requiere_pantalla('prestamo-equipos')
 def api_equipos_admin_catalogos(request):
     """Catálogos para el modal de administración: estados disponibles
     (tabla compartida mm_estados) y usuarios activos (para elegir responsable)."""
@@ -64,8 +70,10 @@ def api_equipos_admin_catalogos(request):
     return JsonResponse({'ok': True, 'estados': estados, 'usuarios': usuarios})
 
 
+@login_required(login_url='login')
 @csrf_exempt
 @require_POST
+@requiere_pantalla('prestamo-equipos', bloquear_solo_lectura=True)
 def api_equipo_admin_guardar(request):
     """Crea un equipo nuevo, o edita uno existente si viene id_equipo.
     Aquí es donde el admin asigna/cambia el responsable y el estado."""
@@ -106,8 +114,10 @@ def api_equipo_admin_guardar(request):
     return JsonResponse({'ok': True, 'id_equipo': equipo.IdEquipo})
 
 
+@login_required(login_url='login')
 @csrf_exempt
 @require_POST
+@requiere_pantalla('prestamo-equipos', bloquear_solo_lectura=True)
 def api_equipo_admin_eliminar(request, pk):
     try:
         equipo = Equipo.objects.using(DB).get(IdEquipo=pk)
@@ -117,7 +127,9 @@ def api_equipo_admin_eliminar(request, pk):
     return JsonResponse({'ok': True})
 
 
+@login_required(login_url='login')
 @require_GET
+@requiere_pantalla('prestamo-equipos')
 def api_equipo_admin_historial(request, pk):
     """Historial completo de préstamos de un equipo (todas las filas de
     mv_HistorialPrestamos para ese IdEquipo), para el modal de 'Ver

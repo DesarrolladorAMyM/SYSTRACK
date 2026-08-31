@@ -262,7 +262,39 @@ function showScreen(id) {
   if (id === 'centro-costo')            resetCC();
   if (id === 'historial-equipo')        resetHistorialEquipo();
   if (id === 'novedades')               loadNovedades();
+
+  _aplicarSoloLecturaEnPantalla(id);
 }
+
+// ── Solo lectura: oculta los botones de escritura de una pantalla cuando
+// el backend (screens_solo_lectura, ver context_processors.permisos_menu)
+// dice que el usuario solo puede ver, no crear/editar/eliminar. El backend
+// ya rechaza estas acciones igual (requiere_pantalla en las vistas) — esto
+// es solo para que ni aparezca el botón.
+const SOLO_LECTURA_BTN_SELECTOR = '.btn-create, .tbl-btn.edit, .tbl-btn.del, [onclick="abrirAdminTiposNovedad()"]';
+
+function _pantallaEsSoloLectura(screenKey) {
+  return Array.isArray(window.SCREENS_SOLO_LECTURA) && window.SCREENS_SOLO_LECTURA.includes(screenKey);
+}
+
+function _aplicarSoloLecturaEnPantalla(screenKey) {
+  if (!_pantallaEsSoloLectura(screenKey)) return;
+  const seccion = document.getElementById('screen-' + screenKey);
+  if (!seccion) return;
+  seccion.querySelectorAll(SOLO_LECTURA_BTN_SELECTOR).forEach(btn => { btn.style.display = 'none'; });
+}
+
+// Las tablas se repintan de forma asíncrona (tras el fetch de cada pantalla),
+// así que un solo pase en showScreen() no alcanza para los botones de
+// Editar/Eliminar que se generan por fila — este observer vuelve a aplicar
+// el ocultado cada vez que el contenido de la pantalla activa cambia.
+document.addEventListener('DOMContentLoaded', () => {
+  const contenedor = document.querySelector('.content-area') || document.body;
+  new MutationObserver(() => {
+    const activa = document.querySelector('.screen.active');
+    if (activa) _aplicarSoloLecturaEnPantalla(activa.id.replace('screen-', ''));
+  }).observe(contenedor, { childList: true, subtree: true });
+});
 
 // Reinicia filtros y resultados de Centro de Costos al entrar a la pantalla,
 // para no arrastrar una consulta vieja de una visita anterior.
