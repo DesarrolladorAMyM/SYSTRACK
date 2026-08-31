@@ -414,6 +414,92 @@ function showNotif(title, msg, type = 'success', duration = 3500) {
     const abrir = () => panel.classList.contains('hidden') ? abrirBellPanel() : cerrarBellPanel();
     if(!getDocumento()){ pedirDocumento(abrir); } else { abrir(); }
   });
+
+  /* ===== Manual del portal (PDF) — vista + descarga, mismo estilo que
+     "Vista de Acta" del Dashboard: modal con encabezado oscuro, botón de
+     descargar y una previsualización (aquí, un <iframe> con el PDF real,
+     ya que el manual es un archivo fijo y no algo que se genera al vuelo). */
+  function abrirManualTecnico(){
+    const btn = document.getElementById('btnManualTecnico');
+    const url = btn.dataset.pdfUrl;
+
+    let overlay = document.getElementById('modalManualTecnico');
+    if(!overlay){
+      overlay = document.createElement('div');
+      overlay.id = 'modalManualTecnico';
+      overlay.style.cssText = 'display:none;position:fixed;inset:0;background:rgba(15,23,42,.55);z-index:9999;align-items:center;justify-content:center;padding:24px;box-sizing:border-box;';
+      overlay.innerHTML = `
+        <div style="background:#fff;width:min(920px,100%);height:min(88vh,900px);border-radius:14px;overflow:hidden;display:flex;flex-direction:column;box-shadow:0 20px 60px rgba(0,0,0,.35);">
+          <div style="background:linear-gradient(135deg,#1B4698,#132f6b);padding:14px 18px;display:flex;align-items:center;justify-content:space-between;flex-shrink:0;">
+            <span style="color:#fff;font-weight:700;font-size:15px;display:flex;align-items:center;gap:8px;">
+              <i class="fa-solid fa-book"></i> Manual del Portal de Requerimientos
+            </span>
+            <div style="display:flex;gap:10px;align-items:center;">
+              <a id="btnDescargarManual" download="Manual_Portal_de_Requerimientos.pdf"
+                 style="background:#fff;color:#132f6b;border:none;border-radius:6px;padding:7px 16px;font-size:13px;font-weight:700;cursor:pointer;text-decoration:none;display:flex;align-items:center;gap:6px;">
+                <i class="fa-solid fa-download"></i> Descargar PDF
+              </a>
+              <button id="btnCerrarManual" style="background:transparent;border:none;color:#fff;font-size:20px;cursor:pointer;line-height:1;">
+                <i class="fa-solid fa-xmark"></i>
+              </button>
+            </div>
+          </div>
+          <iframe id="manualPdfFrame" style="flex:1;border:none;background:#525659;" title="Manual del Portal de Requerimientos"></iframe>
+        </div>`;
+      document.body.appendChild(overlay);
+      overlay.addEventListener('click', (e) => { if(e.target === overlay) overlay.style.display = 'none'; });
+      overlay.querySelector('#btnCerrarManual').addEventListener('click', () => { overlay.style.display = 'none'; });
+    }
+
+    const frame = document.getElementById('manualPdfFrame');
+    // #toolbar=0&navpanes=0 le dice al visor de PDF nativo del navegador
+    // (Chrome/Edge/Firefox) que no dibuje su propia barra de herramientas
+    // ni el panel de esquema — así solo se ve la página, ocupando todo
+    // el iframe, sin esa barra gris duplicada encima de nuestro encabezado.
+    if(frame.src.indexOf(url) === -1) frame.src = url + '#toolbar=0&navpanes=0&statusbar=0&view=FitH';
+    document.getElementById('btnDescargarManual').href = url;
+    overlay.style.display = 'flex';
+  }
+  document.getElementById('btnManualTecnico').addEventListener('click', abrirManualTecnico);
+
+  // Aviso "aquí está el manual" — solo se muestra la primera vez que alguien
+  // entra al portal en ese navegador; una vez lo cierra o abre el manual,
+  // queda marcado en localStorage y no vuelve a aparecer.
+  (function(){
+    const KEY = 'systraker_manual_aviso_visto';
+    const aviso = document.getElementById('manualAviso');
+    if(!aviso) return;
+    let yaVisto = true;
+    try { yaVisto = !!localStorage.getItem(KEY); } catch(e) { /* localStorage bloqueado: no molestar */ }
+    if(yaVisto) return;
+
+    function posicionarAviso(){
+      const rect = document.getElementById('btnManualTecnico').getBoundingClientRect();
+      aviso.style.top   = (rect.bottom + 12) + 'px';
+      aviso.style.right = (window.innerWidth - rect.right) + 'px';
+    }
+
+    const dot = document.getElementById('manualBtnDot');
+
+    posicionarAviso();
+    aviso.classList.remove('hidden');
+    if(dot) dot.classList.remove('hidden');
+    window.addEventListener('resize', posicionarAviso);
+
+    function cerrarAviso(){
+      aviso.classList.add('hidden');
+      if(dot) dot.classList.add('hidden');
+      window.removeEventListener('resize', posicionarAviso);
+      try { localStorage.setItem(KEY, '1'); } catch(e) {}
+    }
+
+    document.getElementById('manualAvisoClose').addEventListener('click', (e) => {
+      e.stopPropagation();
+      cerrarAviso();
+    });
+    document.getElementById('btnManualTecnico').addEventListener('click', cerrarAviso);
+    setTimeout(cerrarAviso, 9000);
+  })();
   document.addEventListener('click', (e) => {
     const panel = document.getElementById('bellPanel');
     if(!panel.classList.contains('hidden') && !panel.contains(e.target) && e.target.id !== 'btnBell'){

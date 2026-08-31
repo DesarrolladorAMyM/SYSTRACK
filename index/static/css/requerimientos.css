@@ -95,6 +95,45 @@
     87%{transform:rotate(-12deg);} 89%{transform:rotate(10deg);} 91%{transform:rotate(-8deg);}
     93%{transform:rotate(6deg);} 95%{transform:rotate(0);}
   }
+  /* position:fixed (no absolute) porque .app-header tiene overflow:hidden
+     (para recortar su circulo decorativo) y eso recortaria la burbuja si
+     fuera absolute — la posicion real se calcula en JS con
+     getBoundingClientRect(), igual que .bell-panel un poco mas abajo. */
+  .manual-aviso{
+    position:fixed;width:230px;
+    background:#fff;color:var(--text-primary);border:1.5px solid var(--border);
+    border-radius:10px;padding:10px 30px 10px 14px;
+    font-size:12.5px;font-weight:600;line-height:1.4;box-shadow:0 12px 28px rgba(15,23,42,.18);
+    z-index:1000;animation:manual-aviso-in .35s ease;
+  }
+  .manual-aviso.hidden{display:none;}
+  .manual-btn-dot{
+    position:absolute;top:2px;right:2px;width:10px;height:10px;border-radius:50%;
+    background:#f59e0b;border:2px solid var(--primary-dark);
+    animation:manual-dot-pulse 1.8s ease-in-out infinite;
+  }
+  .manual-btn-dot.hidden{display:none;}
+  @keyframes manual-dot-pulse{
+    0%,100%{box-shadow:0 0 0 0 rgba(245,158,11,.55);}
+    50%{box-shadow:0 0 0 4px rgba(245,158,11,0);}
+  }
+  .manual-aviso-arrow{
+    position:absolute;top:-6px;right:16px;width:12px;height:12px;
+    background:#fff;border-left:1.5px solid var(--border);border-top:1.5px solid var(--border);
+    transform:rotate(45deg);border-radius:2px;
+  }
+  .manual-aviso-close{
+    position:absolute;top:6px;right:7px;background:none;border:none;color:var(--text-light);
+    font-size:12px;cursor:pointer;padding:3px;line-height:1;
+  }
+  .manual-aviso-close:hover{color:var(--text-primary);}
+  @keyframes manual-aviso-in{
+    from{opacity:0;transform:translateY(-6px);}
+    to{opacity:1;transform:translateY(0);}
+  }
+  @media (max-width:520px){
+    .manual-aviso{width:190px;font-size:12px;}
+  }
   .bell-panel{
     position:fixed;width:340px;max-height:420px;overflow-y:auto;
     background:#fff;border-radius:var(--radius-lg);box-shadow:0 12px 32px rgba(0,0,0,.18);

@@ -494,6 +494,20 @@
         </div>
       </div>
       <div class="header-actions">
+        <div style="position:relative;">
+          <button type="button" class="bell-btn" id="btnManualTecnico" title="Manual del portal"
+                  data-pdf-url="{% static 'docs/Manual_Portal_de_Requerimientos.pdf' %}">
+            <i class="fa-solid fa-book"></i>
+            <span class="manual-btn-dot hidden" id="manualBtnDot"></span>
+          </button>
+          <div class="manual-aviso hidden" id="manualAviso">
+            <div class="manual-aviso-arrow"></div>
+            <span>Aquí puedes descargar el manual del portal</span>
+            <button type="button" class="manual-aviso-close" id="manualAvisoClose" aria-label="Cerrar">
+              <i class="fa-solid fa-xmark"></i>
+            </button>
+          </div>
+        </div>
         <div class="bell-wrap" style="position:relative;display:none;" id="bellWrap">
           <button class="bell-btn" id="btnBell" title="Notificaciones">
             <i class="fa-solid fa-bell"></i>
