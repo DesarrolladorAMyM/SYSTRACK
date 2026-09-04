@@ -942,9 +942,14 @@ async function openDetail(id) {
   if (d.nombre_equipo)      camposCaract.push({ l: 'Nombre del Equipo', v: d.nombre_equipo });
   if (d.valor_promedio)     camposCaract.push({ l: 'Valor Promedio', v: fmtMoneda(d.valor_promedio) });
   if (d.valor_arrendamiento) camposCaract.push({ l: 'Valor Arrendamiento', v: fmtMoneda(d.valor_arrendamiento) });
+  // Los booleanos (características de PERIFERICO: base/teclado/mouse/...) se
+  // dejan pasar aunque sean false — antes el "&& v" los descartaba y la fila
+  // desaparecía del detalle, sin poder distinguir "NO" de "sin registrar".
   camposCaract.push(...Object.entries(caract)
-    .filter(([k, v]) => !CARACT_EXCLUIR.has(k) && !k.endsWith('_id') && v && v !== '—')
-    .map(([k, v]) => ({ l: CARACT_LABELS[k] || k, v })));
+    .filter(([k, v]) => !CARACT_EXCLUIR.has(k) && !k.endsWith('_id')
+                        && (typeof v === 'boolean' || (v && v !== '—')))
+    .map(([k, v]) => ({ l: CARACT_LABELS[k] || k,
+                        v: typeof v === 'boolean' ? (v ? 'SÍ' : 'NO') : v })));
 
   document.getElementById('det-caract').innerHTML = camposCaract.length > 0
     ? camposCaract.map(f => `
