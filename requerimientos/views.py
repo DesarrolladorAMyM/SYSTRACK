@@ -37,6 +37,21 @@ CATEGORIA_SOPORTE_EXTERNO = 'soporte tecnico externo'
 # Subcategorías (dentro de esa categoría) que exigen aprobación del jefe de área.
 SUBCATEGORIAS_REQUIEREN_APROBACION = ['compras']
 
+# Técnico asignado por defecto según la categoría del requerimiento.
+# Se indexa por IdCategoria (no por la descripción) porque los nombres se
+# editan en el admin y un cambio de texto rompería la asignación en silencio.
+# Las subcategorías heredan automáticamente: solo se mira la categoría.
+TECNICO_POR_DEFECTO_POR_CATEGORIA = {
+    #  IdCategoria: IdUsuario (mv_Usuarios)
+    36: 185,   # Soporte tecnico Interno                     -> ARBOLEDA GODOY BRAYAN DAVID
+    37: 185,   # Soporte tecnico Externo                     -> ARBOLEDA GODOY BRAYAN DAVID
+    38:  62,   # Desarrollo y Soporte aplicaciones internas  -> GALEANO DUQUE DUVER ANDRES
+}
+
+# TipoUsuario que el sistema considera técnico — mismo criterio que usa el
+# selector manual de asignación (ver dashboard.api_colaboradores_ti).
+TIPOS_USUARIO_TECNICO = [7, 8]
+
 # Adjuntos de requerimientos (un solo archivo, cualquier tipo, máx 5 MB)
 ADJUNTO_CARPETA    = 'requerimientos_adjuntos'
 ADJUNTO_MAX_BYTES  = 5 * 1024 * 1024
@@ -57,6 +72,56 @@ def _normaliza(txt):
     """minúsculas + sin tildes, para comparar sin fallos por formato."""
     txt = (txt or '').strip().lower()
     return ''.join(c for c in unicodedata.normalize('NFD', txt) if unicodedata.category(c) != 'Mn')
+
+
+def _asignar_tecnico_por_defecto(req):
+    """Asigna el técnico configurado para la categoría del requerimiento.
+
+    Se llama SOLO cuando el requerimiento queda habilitado para gestión
+    (IdEstado=1): al crearlo, o cuando el jefe de área lo aprueba. Nunca
+    sobre un requerimiento en estado 7 (Pendiente Aprobación) ni 8
+    (Rechazado por el jefe) — mientras no esté aprobado no debe tener
+    técnico, igual que ya lo exige la bandeja de asignación del dashboard.
+
+    Va en un save() aparte del INSERT a propósito: el signal
+    _notificar_asignacion (ver Signals.py) ignora created=True, así que
+    asignar dentro de la creación dejaría al técnico sin correo.
+
+    Si el técnico configurado no existe, está inactivo o no es de un
+    TipoUsuario técnico, NO falla: deja el requerimiento sin asignar (cae
+    en la bandeja "por asignar", como antes) y avisa al log. Un problema de
+    configuración no debe impedirle a nadie crear un requerimiento.
+    """
+    if req.IdUsuarioAsig:
+        return  # ya tiene técnico: no pisar una asignación previa
+
+    id_tecnico = TECNICO_POR_DEFECTO_POR_CATEGORIA.get(req.IdCategoria)
+    if not id_tecnico:
+        return  # categoría sin técnico por defecto configurado
+
+    tecnico = (
+        Usuario.objects
+        .using(DB)
+        .filter(IdUsuario=id_tecnico, Estado=1, TipoUsuario__in=TIPOS_USUARIO_TECNICO)
+        .first()
+    )
+    if not tecnico:
+        logger.warning(
+            'Técnico por defecto IdUsuario=%s (categoría %s) no existe, está '
+            'inactivo o no es TipoUsuario técnico — %s queda sin asignar.',
+            id_tecnico, req.IdCategoria, req.codigo()
+        )
+        return
+
+    req.IdUsuarioAsig    = tecnico.IdUsuario
+    req.NombreUsuariAsig = tecnico.NombreCompleto
+    req.IdEstado         = 2  # Asignado
+    req.save(using=DB)
+    logger.info(
+        'Requerimiento %s asignado automáticamente a %s (IdUsuario=%s) '
+        'por la categoría %s.',
+        req.codigo(), tecnico.NombreCompleto, tecnico.IdUsuario, req.IdCategoria
+    )
 
 
 def Requerimientos(request):
@@ -494,6 +559,12 @@ def crear_requerimiento(request):
             })
 
         _enviar_correo_confirmacion(request, req, pendiente=False)
+        # Nace en estado 1 (Abierto) — ya es gestionable, así que se asigna al
+        # técnico de la categoría. Va DESPUÉS del correo de confirmación para
+        # que el solicitante reciba primero "recibimos tu requerimiento" y
+        # luego "ya tiene técnico asignado". Los que requieren aprobación
+        # salieron por el return de arriba y aquí no llegan nunca.
+        _asignar_tecnico_por_defecto(req)
         return JsonResponse({'ok': True, 'codigo': req.codigo(), 'estado': 'creado'})
     except Exception as e:
         return JsonResponse({'ok': False, 'error': str(e)}, status=500)
@@ -990,6 +1061,10 @@ def aprobar_requerimiento(request, token):
         req, 'aprobado', f'{req.codigo()} fue aprobado',
         'Tu jefe de área lo aprobó. Ya quedó habilitado para que Tecnología lo gestione.'
     )
+    # Recién ahora es gestionable (pasó de 7 a 1), así que este es el momento
+    # de asignarle el técnico de su categoría. En el rechazo (estado 8) no se
+    # hace nunca: no hay nada que gestionar.
+    _asignar_tecnico_por_defecto(req)
     return render(request, 'requerimientos/aprobacion_resultado.html', {'accion': 'aprobado', 'req': req})
 
 
