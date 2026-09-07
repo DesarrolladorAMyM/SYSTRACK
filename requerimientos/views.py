@@ -41,11 +41,24 @@ SUBCATEGORIAS_REQUIEREN_APROBACION = ['compras']
 # Se indexa por IdCategoria (no por la descripción) porque los nombres se
 # editan en el admin y un cambio de texto rompería la asignación en silencio.
 # Las subcategorías heredan automáticamente: solo se mira la categoría.
+#
+# ─────────────────────────────────────────────────────────────────────────
+# DESACTIVADO A PROPÓSITO — diccionario vacío.
+#
+# Con el diccionario vacío, _asignar_tecnico_por_defecto sale de inmediato
+# por su `if not id_tecnico: return` y el sistema se comporta EXACTAMENTE
+# como antes: los requerimientos nacen sin técnico y caen en la bandeja
+# "por asignar", como siempre. No se escribe nada ni se envía ningún correo.
+#
+# PARA ACTIVARLO: descomentar las tres líneas de abajo. Antes de hacerlo,
+# avisar a los técnicos implicados — desde ese momento empiezan a recibir
+# un correo de asignación por cada requerimiento de su categoría.
+# ─────────────────────────────────────────────────────────────────────────
 TECNICO_POR_DEFECTO_POR_CATEGORIA = {
     #  IdCategoria: IdUsuario (mv_Usuarios)
-    36: 185,   # Soporte tecnico Interno                     -> ARBOLEDA GODOY BRAYAN DAVID
-    37: 185,   # Soporte tecnico Externo                     -> ARBOLEDA GODOY BRAYAN DAVID
-    38:  62,   # Desarrollo y Soporte aplicaciones internas  -> GALEANO DUQUE DUVER ANDRES
+    # 36: 185,   # Soporte tecnico Interno                     -> ARBOLEDA GODOY BRAYAN DAVID
+    # 37: 185,   # Soporte tecnico Externo                     -> ARBOLEDA GODOY BRAYAN DAVID
+    # 38:  62,   # Desarrollo y Soporte aplicaciones internas  -> GALEANO DUQUE DUVER ANDRES
 }
 
 # TipoUsuario que el sistema considera técnico — mismo criterio que usa el
@@ -682,7 +695,10 @@ def _enviar_correo_aprobacion(request, req, area):
         )
         return
 
-    base_url = request.build_absolute_uri('/').rstrip('/')
+    # request es opcional: cuando se llama fuera del ciclo request/response
+    # (p. ej. desde _enviar_a_aprobacion_jefe) se cae a SITE_URL, igual que
+    # ya hacen _enviar_correo_solucion y _enviar_correo_asignacion.
+    base_url = request.build_absolute_uri('/').rstrip('/') if request else _obtener_link_base()
     link_aprobar  = f"{base_url}{PREFIJO_APP}/requerimiento/api/aprobar/{req.TokenAprobacion}/"
     link_rechazar = f"{base_url}{PREFIJO_APP}/requerimiento/api/rechazar/{req.TokenAprobacion}/"
 
@@ -709,6 +725,83 @@ def _enviar_correo_aprobacion(request, req, area):
             "FALLÓ el envío del correo de aprobación al jefe %s para el requerimiento %s",
             area.CorreoJefe, req.codigo()
         )
+
+
+def _enviar_a_aprobacion_jefe(req, request=None):
+    """Devuelve un requerimiento YA CREADO al flujo de aprobación del jefe.
+
+    Existe para el caso en que se corrige la categoría/subcategoría de un
+    requerimiento y resulta que ahora sí exige aprobación: hoy nada cubre
+    eso, porque `requiere_aprobacion` solo se evalúa al crear (ver
+    crear_requerimiento). Ni la reasignación del dashboard ni el flujo de
+    corrección lo re-evalúan, así que el requerimiento se queda con
+    TokenAprobacion NULL y el jefe nunca se entera.
+
+    Quita el técnico asignado a propósito: mientras el jefe no apruebe,
+    nadie debe estar gestionándolo — mismo criterio que la bandeja de
+    asignación del dashboard, que excluye los estados 7 y 8. Cuando el
+    jefe apruebe, _asignar_tecnico_por_defecto lo reasigna solo.
+
+    Devuelve (ok, detalle) para poder informar por qué no se hizo nada.
+    No escribe si algo no cuadra: valida todo antes de tocar la fila.
+    """
+    if req.IdEstado in (4, 5, 6):
+        return False, f'{req.codigo()} ya está cerrado/calificado/eliminado (estado {req.IdEstado}).'
+    if req.IdEstado == 7:
+        return False, f'{req.codigo()} ya está pendiente de aprobación.'
+
+    cat = Categoria.objects.using(DB).filter(IdCategoria=req.IdCategoria).first()
+    sub = SubCategoria.objects.using(DB).filter(IdSubCategoria=req.IdSubCategoria).first()
+    cat_txt = cat.Descripcion if cat else ''
+    sub_txt = sub.Descripcion if sub else ''
+    sub_norm = _normaliza(sub_txt)
+    requiere = (
+        _normaliza(cat_txt) == CATEGORIA_SOPORTE_EXTERNO
+        and any(sub_norm.startswith(s) for s in SUBCATEGORIAS_REQUIEREN_APROBACION)
+    )
+    if not requiere:
+        return False, (f'{req.codigo()} no exige aprobación con su categoría actual '
+                       f'({cat_txt!r} / {sub_txt!r}).')
+
+    solicitante = Usuario.objects.using(DB).filter(IdUsuario=req.IdUsuario).first()
+    if not solicitante or not solicitante.IdArea:
+        return False, f'El solicitante de {req.codigo()} no está vinculado a un área.'
+
+    area = Area.objects.using(DB).filter(IdArea=solicitante.IdArea).first()
+    if not area:
+        return False, f'El área {solicitante.IdArea} del solicitante no existe.'
+    if not area.CorreoJefe:
+        return False, f'El área {area.NombreArea!r} no tiene CorreoJefe configurado.'
+
+    # Si el propio solicitante es el jefe, no hay a quién pedirle aprobación
+    # (mismo criterio que crear_requerimiento).
+    if _normaliza(solicitante.Email) == _normaliza(area.CorreoJefe):
+        return False, (f'El solicitante de {req.codigo()} ES el jefe del área '
+                       f'{area.NombreArea!r}: no requiere aprobación de nadie.')
+
+    jefe = Usuario.objects.using(DB).filter(Email__iexact=area.CorreoJefe, Estado=1).first()
+    if not jefe:
+        return False, (f'No hay usuario activo con el correo de jefe '
+                       f'{area.CorreoJefe!r} del área {area.NombreArea!r}.')
+
+    tecnico_anterior = req.NombreUsuariAsig
+    req.TokenAprobacion  = uuid.uuid4().hex
+    req.IdEstado         = 7      # Pendiente Aprobación
+    req.IdJefeArea       = jefe.IdUsuario
+    req.IdUsuarioAsig    = None   # nadie lo gestiona hasta que se apruebe
+    req.NombreUsuariAsig = None
+    req.FechaAprobacion  = None
+    req.save(using=DB)
+
+    _enviar_correo_aprobacion(request, req, area)
+    logger.info(
+        'Requerimiento %s devuelto a aprobación del jefe %s (IdUsuario=%s, área %s). '
+        'Técnico anterior: %s.',
+        req.codigo(), jefe.NombreCompleto, jefe.IdUsuario, area.NombreArea,
+        tecnico_anterior or 'ninguno'
+    )
+    return True, (f'{req.codigo()} quedó pendiente de aprobación de '
+                  f'{jefe.NombreCompleto} ({area.CorreoJefe}).')
 
 
 def _enviar_correo_confirmacion(request, req, pendiente=False):
@@ -1064,7 +1157,17 @@ def aprobar_requerimiento(request, token):
     # Recién ahora es gestionable (pasó de 7 a 1), así que este es el momento
     # de asignarle el técnico de su categoría. En el rechazo (estado 8) no se
     # hace nunca: no hay nada que gestionar.
-    _asignar_tecnico_por_defecto(req)
+    #
+    # Va en try/except porque la aprobación YA se guardó: un fallo al asignar
+    # no debe mostrarle al jefe una página de error haciéndole creer que no
+    # aprobó (volvería a hacer clic y el link ya estaría invalidado).
+    try:
+        _asignar_tecnico_por_defecto(req)
+    except Exception:
+        logger.exception(
+            'La aprobación de %s se guardó correctamente, pero falló la '
+            'asignación automática del técnico.', req.codigo()
+        )
     return render(request, 'requerimientos/aprobacion_resultado.html', {'accion': 'aprobado', 'req': req})
 
 
