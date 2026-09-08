@@ -4186,7 +4186,8 @@ function _construirBellItems() {
                        : `${n.codigo} nuevo sin asignar`,
     mensaje: `Solicitado por ${n.solicitante}`,
     fecha: `Creado el ${n.fecha}`,
-    icono: 'fa-inbox', onClick: () => _irARequerimiento(n.codigo),
+    icono: 'fa-inbox',
+    onClick: () => _irARequerimiento(n.codigo, _pantallaDeRequerimiento(n)),
     dismissible: true, onLeida: () => _bellMarcarLeida('nuevo', n.id, n.fecha),
   }));
   BELL_DATA.prestamos_realizados.forEach(p => items.push({
@@ -4203,11 +4204,14 @@ function _construirBellItems() {
     icono: 'fa-clipboard-check', onClick: () => _irAChecklistDispositivo(d.serial),
     dismissible: true, onLeida: () => _bellMarcarLeida('checklist', d.id, d.fecha),
   }));
+  // 'vencidos' son los que están asignados A MÍ (ver api_notificaciones_bell),
+  // así que el destino natural es mi propia bandeja, no la cola de asignación.
   BELL_DATA.vencidos.forEach(v => items.push({
     tipo: 'vencido', titulo: `${v.codigo} está vencido`,
     mensaje: v.descripcion || 'Sin descripción',
     fecha: `Debió resolverse antes del ${v.fecha_estimada}`,
-    icono: 'fa-clock', onClick: () => _irARequerimiento(v.codigo),
+    icono: 'fa-clock',
+    onClick: () => _irARequerimiento(v.codigo, 'mis-requerimientos'),
     dismissible: false,
   }));
   BELL_DATA.vencidos_sin_asignar.forEach(v => items.push({
@@ -4239,13 +4243,52 @@ function renderBellBadge() {
 // Navega a Asignar Requerimientos y filtra por el código — usado por
 // vencidos (asignados a mí), vencidos sin asignar, y pendientes de aprobación
 // (ahí también aparecen, aunque la aprobación en sí se hace por el link del correo).
-function _irARequerimiento(codigo) {
+// Pantallas a las que puede llevar un aviso de la campanita, con el buscador
+// y la acción de refresco de cada una. Se replica lo que hace el propio
+// handler de cada buscador en vez de despachar un evento 'input', porque esos
+// handlers están guardados por _suppressChange y podrían ignorarlo.
+const BELL_DESTINOS_REQ = {
+  'asignar-requerimientos':   { input: 'asig-search',  buscar: () => { asigPage = 1; renderAsignar(); } },
+  'mis-requerimientos':       { input: 'req-search',   buscar: () => { reqActPage = 1; reqCerPage = 1; reqLoadPage(1); } },
+  'historial-requerimientos': { input: 'hreq-search',  buscar: () => { hreqLoadPage(1); } },
+};
+
+/* Lleva al requerimiento en la pantalla indicada.
+
+   Antes iba siempre a "Asignar Requerimientos", que era correcto cuando todo
+   requerimiento nacía sin dueño. Con la asignación automática por categoría
+   esa cola queda vacía, así que hacer clic en el aviso de un requerimiento ya
+   asignado dejaba al usuario en una pantalla sin nada. Ahora el destino
+   depende de quién lo tenga (lo decide el backend con 'es_mio').
+
+   Si el usuario no tiene permiso para la pantalla destino, cae a la de
+   asignación, y si tampoco la tiene solo se cierra el panel: nunca se lo
+   manda a una pantalla que no puede ver. */
+function _irARequerimiento(codigo, pantalla = 'asignar-requerimientos') {
   cerrarBellPanel();
-  showScreen('asignar-requerimientos');
+
+  const permitidas = Array.isArray(window.SCREENS_PERMITIDAS) ? window.SCREENS_PERMITIDAS : [];
+  if (!permitidas.includes(pantalla)) pantalla = 'asignar-requerimientos';
+  if (!permitidas.includes(pantalla)) return;
+
+  const destino = BELL_DESTINOS_REQ[pantalla];
+  if (!destino) return;
+
+  showScreen(pantalla);
   setTimeout(() => {
-    const buscador = document.getElementById('asig-search');
-    if (buscador) { buscador.value = codigo; asigPage = 1; renderAsignar(); }
+    const buscador = document.getElementById(destino.input);
+    if (!buscador) return;
+    buscador.value = codigo;
+    destino.buscar();
   }, 500);
+}
+
+/* Pantalla donde de verdad se puede ver un requerimiento según quién lo
+   tenga. Sin técnico -> la cola de asignación; mío -> mi bandeja; de otro ->
+   el Historial, que es la única pantalla que lista todos. */
+function _pantallaDeRequerimiento(n) {
+  if (!n.asignado) return 'asignar-requerimientos';
+  return n.es_mio ? 'mis-requerimientos' : 'historial-requerimientos';
 }
 
 // Navega a Inventario y busca el dispositivo de la licencia por vencer.

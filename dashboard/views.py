@@ -4307,7 +4307,7 @@ def api_req_tic_accion(request, req_id):
 
         from requerimientos.views import (
             _clasificacion_requiere_aprobacion, _recalcular_fecha_estimada,
-            _enviar_a_aprobacion_jefe,
+            _recalcular_prioridad, _enviar_a_aprobacion_jefe,
         )
 
         # Al cambiar de clasificación cambia el plazo de atención: hay que
@@ -4317,6 +4317,11 @@ def api_req_tic_accion(request, req_id):
         # una reasignación normal no debe mover la fecha de nadie.
         if reclasificado:
             _recalcular_fecha_estimada(r)
+            # La prioridad también sale de la subcategoría, así que se
+            # recalcula con la misma condición: dejarla en la de la
+            # clasificación anterior desordenaría la bandeja del técnico y el
+            # indicador de prioridades.
+            _recalcular_prioridad(r)
 
         # Si la nueva clasificación exige aprobación del jefe y este
         # requerimiento nunca pasó por ella, NO se asigna: primero autoriza el
@@ -4642,6 +4647,12 @@ def api_notificaciones_bell(request):
             'descripcion': (r.Requerimiento or '')[:120],
             'solicitante': r.NombreUsuario or '—',
             'asignado':    r.NombreUsuariAsig or '',
+            # Para saber a qué pantalla llevar al hacer clic en el aviso: si
+            # es mío va a "Mis Requerimientos", si es de otro al Historial
+            # (la única pantalla que los lista todos) y si no tiene técnico a
+            # "Asignar Requerimientos". El frontend no conoce el
+            # req_user_id, así que la comparación se hace aquí.
+            'es_mio':      bool(req_user_id) and r.IdUsuarioAsig == req_user_id,
             'fecha':       fecha_str,
         })
 

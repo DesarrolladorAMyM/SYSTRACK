@@ -467,16 +467,13 @@ def crear_requerimiento(request):
             try:
                 sub = SubCategoria.objects.using(DB).get(IdSubCategoria=id_sub)
                 sub_txt   = sub.Descripcion
-                prioridad = sub.Prioridad or 'Media'
+                prioridad = sub.Prioridad
                 tiempo_dias_sub = sub.TiempoDias
             except SubCategoria.DoesNotExist:
                 pass
 
-        #  Resolver IdPrioridad (la columna no admite NULL) 
-        id_prioridad = None
-        if prioridad:
-            prio_obj = Prioridad.objects.using(DB).filter(Descripcion__iexact=prioridad).first()
-            id_prioridad = prio_obj.IdPrioridad if prio_obj else None
+        #  Resolver IdPrioridad (la columna no admite NULL)
+        id_prioridad = _resolver_id_prioridad(prioridad)
 
         if not id_prioridad:
             # Fallback: prioridad "Media" (o la primera disponible si no existe "Media")
@@ -749,6 +746,53 @@ def _clasificacion_requiere_aprobacion(req):
         _normaliza(cat.Descripcion if cat else '') == CATEGORIA_SOPORTE_EXTERNO
         and any(sub_norm.startswith(s) for s in SUBCATEGORIAS_REQUIEREN_APROBACION)
     )
+
+
+def _resolver_id_prioridad(valor):
+    """Traduce el campo Prioridad de una subcategoría a un IdPrioridad válido.
+
+    mm_SubCategoria.Prioridad guarda el ID de la prioridad (1 Alta, 2 Media,
+    3 Baja), NO su descripción. El campo está declarado CharField en el modelo
+    pero la columna es numérica, así que Django lo entrega como int.
+
+    La versión anterior lo buscaba con `Descripcion__iexact=valor`, o sea
+    comparaba 'Baja' contra 3: nunca coincidía, y TODO requerimiento acababa
+    en el fallback de Media, ignorando la configuración de su subcategoría.
+
+    Se admiten las dos formas —id numérico y descripción en texto— para que la
+    resolución no se vuelva a romper si algún día la columna cambia de tipo.
+    Siempre se valida contra mm_Prioridad: nunca se guarda un id que no exista.
+
+    Devuelve None si no se puede resolver; el llamador aplica su fallback.
+    """
+    if valor in (None, ''):
+        return None
+    txt = str(valor).strip()
+    if not txt:
+        return None
+    filtro = {'IdPrioridad': int(txt)} if txt.isdigit() else {'Descripcion__iexact': txt}
+    return (Prioridad.objects
+            .using(DB)
+            .filter(**filtro)
+            .values_list('IdPrioridad', flat=True)
+            .first())
+
+
+def _recalcular_prioridad(req):
+    """Pone en el requerimiento la prioridad de su subcategoría ACTUAL.
+
+    Va de la mano de _recalcular_fecha_estimada: al reclasificar cambian el
+    plazo Y la prioridad, y dejar la prioridad de la clasificación anterior
+    desordenaría la bandeja del técnico y el indicador de prioridades.
+
+    Solo escribe en memoria. Si la subcategoría no tiene prioridad
+    configurada, o no resuelve a una fila de mm_Prioridad, deja la que el
+    requerimiento ya tenía: la columna no admite NULL.
+    """
+    sub = SubCategoria.objects.using(DB).filter(IdSubCategoria=req.IdSubCategoria).first()
+    id_prioridad = _resolver_id_prioridad(sub.Prioridad if sub else None)
+    if id_prioridad:
+        req.IdPrioridad = id_prioridad
 
 
 def _recalcular_fecha_estimada(req):
