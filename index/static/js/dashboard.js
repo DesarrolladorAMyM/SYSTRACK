@@ -5616,21 +5616,101 @@ async function asigCargarCategorias() {
   }
 }
 
+// Subcategorías que exigen aprobación del jefe, por id. La bandera la
+// calcula el backend (api_subcategorias_req) — aquí no se replica la regla,
+// para que no quede desincronizada si cambia.
+let _asigSubcatAprobacion = {};
+
+// Nombre del técnico que tiene el requerimiento al abrir el modal (vacío si
+// no tiene). Lo usa el aviso de aprobación para redactar qué va a pasar.
+let _asigTecnicoActual = '';
+
+// Clasificación con la que se abrió el modal. Sirve para saber si de verdad
+// hubo reclasificación: el aviso de aprobación solo aplica cuando se CAMBIA
+// la clasificación hacia una que la exige, no cuando el requerimiento ya
+// estaba en ella y solo se está reasignando. Mismo criterio que el backend,
+// que exige `reclasificado` para enrutar a aprobación.
+let _asigClasifOriginal = { cat: '', sub: '' };
+
 async function asigLoadSubcat(preseleccionar = null) {
   const catId = document.getElementById('asig-f-categoria').value;
   const sel   = document.getElementById('asig-f-subcategoria');
 
   if (!catId) {
     sel.innerHTML = '<option value="">Seleccione una opción</option>';
+    _asigSubcatAprobacion = {};
+    asigChequearAprobacion();
     return;
   }
 
   sel.innerHTML = '<option value="">Cargando...</option>';
   const res = await apiFetch(API.subcategoriasReq(catId));
+  const subs = res.data || [];
+  _asigSubcatAprobacion = {};
+  subs.forEach(s => { _asigSubcatAprobacion[String(s.id)] = !!s.requiere_aprobacion; });
+
   sel.innerHTML = '<option value="">Seleccione una opción</option>' +
-    (res.data || []).map(s => `<option value="${s.id}">${s.descripcion}</option>`).join('');
+    subs.map(s => `<option value="${s.id}">${s.descripcion}</option>`).join('');
 
   if (preseleccionar) sel.value = preseleccionar;
+  asigChequearAprobacion();
+}
+
+/* ¿Esta operación va a mandar el requerimiento a aprobación del jefe?
+
+   Solo si se CAMBIA la clasificación hacia una que la exige. Si el
+   requerimiento ya estaba en esa categoría/subcategoría y únicamente se está
+   reasignando, no hay nada que aprobar y la operación es una reasignación
+   normal. Replica la condición `reclasificado` del backend, para que el
+   aviso no prometa algo distinto de lo que va a pasar. */
+function _asigRequiereAprobacion() {
+  const cat = document.getElementById('asig-f-categoria')?.value || '';
+  const sub = document.getElementById('asig-f-subcategoria')?.value || '';
+  if (!_asigSubcatAprobacion[String(sub)]) return false;
+  const cambio = (cat && cat !== _asigClasifOriginal.cat) ||
+                 (sub && sub !== _asigClasifOriginal.sub);
+  return !!cambio;
+}
+
+/* Si la operación va a mandar el requerimiento a aprobación, se muestra el
+   aviso y se deshabilita el selector de colaborador, para que quien reasigna
+   no crea que su elección de técnico se aplicó. La decisión real la toma el
+   backend; esto solo evita la sorpresa.
+
+   El texto cambia según si el requerimiento YA tiene técnico: en una
+   reasignación decir "no se asignará" sería incoherente, porque ya está
+   asignado — lo que de verdad pasa es que se le retira al técnico actual
+   (ver _enviar_a_aprobacion_jefe, que pone IdUsuarioAsig en NULL). */
+function asigChequearAprobacion() {
+  const subId  = document.getElementById('asig-f-subcategoria')?.value || '';
+  const aviso  = document.getElementById('asig-aviso-aprobacion');
+  const colab  = document.getElementById('asig-f-colaborador');
+  const requiere = _asigRequiereAprobacion();
+
+  if (aviso) {
+    aviso.style.display = requiere ? '' : 'none';
+    if (requiere) {
+      const tecnico = _asigTecnicoActual
+        ? `<strong>${_asigTecnicoActual}</strong>`
+        : 'el técnico actual';
+      const quePasa = _asigTecnicoActual
+        ? `El requerimiento <strong>se retirará de ${tecnico}</strong> y pasará a
+           <em>Pendiente Aprobación</em> hasta que el jefe lo autorice.`
+        : `El requerimiento pasará a <em>Pendiente Aprobación</em> y
+           <strong>no se asignará</strong> hasta que el jefe lo autorice.`;
+      aviso.innerHTML =
+        `<i class="fas fa-triangle-exclamation" style="margin-right:6px"></i>
+         Esta subcategoría <strong>requiere aprobación del jefe de área</strong>.
+         ${quePasa}
+         <br><span style="opacity:.85">Cuando el jefe apruebe, volverá a la bandeja
+         de asignación para asignarlo de nuevo.</span>`;
+    }
+  }
+  if (colab) {
+    colab.disabled = requiere;
+    colab.style.opacity       = requiere ? '.55' : '';
+    colab.style.cursor        = requiere ? 'not-allowed' : '';
+  }
 }
 
 
@@ -5638,6 +5718,14 @@ async function asigLoadSubcat(preseleccionar = null) {
 async function openAsignarReqModal(req, origen = 'asignar') {
   asigReqId  = req.id;
   asigOrigen = origen;
+  // Técnico que lo tiene ahora — para poder decir en el aviso de aprobación
+  // que se le va a retirar, en vez de "no se asignará" (que en una
+  // reasignación sería falso: ya está asignado).
+  _asigTecnicoActual = req.asignado || '';
+  _asigClasifOriginal = {
+    cat: req.categoria_id    != null ? String(req.categoria_id)    : '',
+    sub: req.subcategoria_id != null ? String(req.subcategoria_id) : '',
+  };
   document.getElementById('asig-modal-title').textContent =
     origen === 'misreq' ? 'Reasignar Requerimiento' : 'Asignar Requerimiento';
   document.getElementById('asig-f-codigo').value     = req.codigo || '';
@@ -5685,21 +5773,38 @@ function openModal(id) {
 /* ── Guardar asignación ── */
 async function guardarAsignacionReq() {
   const colaborador = document.getElementById('asig-f-colaborador').value;
-  if (!colaborador) return showNotification('warning', 'Campo requerido', 'Selecciona un colaborador');
+  const categoria   = document.getElementById('asig-f-categoria')?.value || '';
+  const subcategoria = document.getElementById('asig-f-subcategoria')?.value || '';
+  const vaAprobacion = _asigRequiereAprobacion();
+
+  // Si va a aprobación del jefe no se asigna a nadie, así que no se exige
+  // colaborador (el selector está deshabilitado en ese caso).
+  if (!vaAprobacion && !colaborador) {
+    return showNotification('warning', 'Campo requerido', 'Selecciona un colaborador');
+  }
 
   const res = await apiFetch(API.reqTicAccion(asigReqId), 'POST', {
     accion: 'reasignar',
-    id_usuario_asig: colaborador,
+    id_usuario_asig: colaborador || null,
+    categoria_id: categoria || null,
+    subcategoria_id: subcategoria || null,
   });
 
   if (res.ok) {
     closeModal('modalAsignarReq');
-    const esReasignacion = asigOrigen === 'misreq';
-    showNotification('success',
-      esReasignacion ? 'Requerimiento reasignado' : 'Asignación guardada',
-      esReasignacion ? 'El requerimiento fue reasignado correctamente' : 'El requerimiento fue asignado correctamente'
-    );
-    if (esReasignacion) cargarRequerimientos();
+    // El backend avisa si el requerimiento se fue a aprobación en vez de
+    // asignarse — hay que decirlo, o parecería que la asignación falló.
+    if (res.data && res.data.aprobacion_requerida) {
+      showNotification('info', 'Enviado a aprobación',
+        res.data.mensaje || 'El requerimiento quedó pendiente de aprobación del jefe de área', 7000);
+    } else {
+      const esReasignacion = asigOrigen === 'misreq';
+      showNotification('success',
+        esReasignacion ? 'Requerimiento reasignado' : 'Asignación guardada',
+        esReasignacion ? 'El requerimiento fue reasignado correctamente' : 'El requerimiento fue asignado correctamente'
+      );
+    }
+    if (asigOrigen === 'misreq') cargarRequerimientos();
     else cargarAsignar();
   } else {
     showNotification('warning', 'Error', res.error || 'No se pudo asignar');

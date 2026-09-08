@@ -38,9 +38,32 @@ def api_equipos_lista(request):
 
     ids_responsables = {e['IdResponsable'] for e in equipos if e['IdResponsable']}
     responsables_qs = Usuario.objects.using(DB).filter(IdUsuario__in=ids_responsables) \
-        .values('IdUsuario', 'NombreCompleto', 'Cedula')
-    responsables      = {u['IdUsuario']: u['NombreCompleto'] for u in responsables_qs}
-    cedula_responsable = {u['IdUsuario']: u['Cedula'] for u in responsables_qs}
+        .values('IdUsuario', 'NombreCompleto')
+    responsables = {u['IdUsuario']: u['NombreCompleto'] for u in responsables_qs}
+
+    # Cédula de quien tiene cada equipo, tomada del préstamo activo (el que
+    # todavía no tiene FechaDevolucionReal). De aquí sale 'es_mio', NO de
+    # Equipo.IdResponsable -> Usuario.Cedula, por dos razones:
+    #
+    #   1. mv_Usuarios.Cedula está declarada CharField pero la columna es
+    #      numérica, así que Django la devuelve como int. Comparada con la
+    #      cédula del querystring (str) la igualdad nunca se cumplía y el
+    #      botón "Devolver" no le aparecía a nadie, ni al dueño del préstamo.
+    #   2. Es la misma regla que valida api_equipos_devolver, así que el botón
+    #      se le muestra exactamente a quien se le va a aceptar la devolución.
+    #      Con IdResponsable no era así: si el solicitante no existe en
+    #      mv_Usuarios queda en NULL y el préstamo se volvía indevolvible.
+    #
+    # Orden ascendente a propósito: si un equipo tuviera más de un préstamo
+    # abierto, gana el más reciente al sobrescribirse en el dict — el mismo
+    # que elige api_equipos_devolver con order_by('-FechaPrestamo').first().
+    prestamos_activos = {
+        p['IdEquipo']: str(p['Cedula'] or '').strip()
+        for p in (HistorialPrestamo.objects.using(DB)
+                  .filter(FechaDevolucionReal__isnull=True)
+                  .order_by('FechaPrestamo')
+                  .values('IdEquipo', 'Cedula'))
+    }
 
     data = []
     for e in equipos:
@@ -51,7 +74,7 @@ def api_equipos_lista(request):
             'responsable':  responsables.get(e['IdResponsable'], '—') if e['IdResponsable'] else '—',
             'estado':       estados.get(e['IdEstado'], 'Desconocido'),
             'disponible':   e['IdEstado'] == ESTADO_DISPONIBLE,
-            'es_mio':       bool(cedula) and cedula_responsable.get(e['IdResponsable']) == cedula,
+            'es_mio':       bool(cedula) and prestamos_activos.get(e['IdEquipo']) == cedula,
         })
 
     return JsonResponse({'ok': True, 'equipos': data})
@@ -141,7 +164,11 @@ def api_equipos_devolver(request):
     )
     if not prestamo:
         return JsonResponse({'ok': False, 'error': 'Este equipo no tiene un préstamo activo.'}, status=400)
-    if prestamo.Cedula != cedula:
+    # Comparación explícita como texto: es la MISMA regla con la que
+    # api_equipos_lista decide mostrar el botón "Devolver". Hoy las dos
+    # partes ya son str, pero dejarlo explícito evita que vuelva el bug de
+    # tipos que tenía es_mio si algún día cambia el tipo de la columna.
+    if str(prestamo.Cedula or '').strip() != cedula:
         return JsonResponse({
             'ok': False,
             'error': 'Este equipo está prestado a otra persona — solo quien lo tiene puede registrar la devolución.'

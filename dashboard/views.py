@@ -4288,7 +4288,50 @@ def api_req_tic_accion(request, req_id):
         r.save(using='requerimientos')
 
     elif accion == 'reasignar':
+        # El técnico se valida más abajo, no aquí: si la reclasificación manda
+        # el requerimiento a aprobación del jefe, no se asigna a nadie y
+        # exigirlo de entrada bloquearía la operación sin motivo.
         nuevo_id = body.get('id_usuario_asig')
+        # La reclasificación se aplica ANTES de decidir el técnico, porque de
+        # la clasificación depende si el requerimiento puede asignarse o tiene
+        # que pasar primero por la aprobación del jefe de área.
+        categoria_id    = body.get('categoria_id')
+        subcategoria_id = body.get('subcategoria_id')
+        reclasificado   = False
+        if categoria_id and str(categoria_id) != str(r.IdCategoria):
+            r.IdCategoria = categoria_id
+            reclasificado = True
+        if subcategoria_id and str(subcategoria_id) != str(r.IdSubCategoria):
+            r.IdSubCategoria = subcategoria_id
+            reclasificado = True
+
+        from requerimientos.views import (
+            _clasificacion_requiere_aprobacion, _recalcular_fecha_estimada,
+            _enviar_a_aprobacion_jefe,
+        )
+
+        # Al cambiar de clasificación cambia el plazo de atención: hay que
+        # recalcularlo o el requerimiento se queda con el de la clasificación
+        # anterior y aparece vencido (o no) cuando no corresponde, falseando
+        # el indicador de cumplimiento. Solo si de verdad hubo reclasificación:
+        # una reasignación normal no debe mover la fecha de nadie.
+        if reclasificado:
+            _recalcular_fecha_estimada(r)
+
+        # Si la nueva clasificación exige aprobación del jefe y este
+        # requerimiento nunca pasó por ella, NO se asigna: primero autoriza el
+        # jefe, y al aprobar se retoma el curso normal. Sin esto, corregir la
+        # categoría hacia COMPRAS se salta el control de autorización.
+        if reclasificado and _clasificacion_requiere_aprobacion(r) and not r.FechaAprobacion:
+            # El save() de _enviar_a_aprobacion_jefe persiste también la
+            # reclasificación y la fecha nueva: si rechaza la operación, no
+            # queda nada a medias.
+            ok, detalle = _enviar_a_aprobacion_jefe(r)
+            if not ok:
+                return _json_err(detalle)
+            return _json_ok({'aprobacion_requerida': True, 'mensaje': detalle})
+
+        # Ruta normal: aquí sí hace falta el técnico.
         if not nuevo_id:
             return _json_err('id_usuario_asig requerido')
         from requerimientos.models import Usuario as UsuarioReq
@@ -4296,16 +4339,10 @@ def api_req_tic_accion(request, req_id):
             nuevo = UsuarioReq.objects.using('requerimientos').get(IdUsuario=nuevo_id)
         except UsuarioReq.DoesNotExist:
             return _json_err('Usuario destino no encontrado')
+
         r.IdUsuarioAsig    = nuevo.IdUsuario
         r.NombreUsuariAsig = nuevo.NombreCompleto
         r.IdEstado         = 2  # Asignado
-
-        categoria_id    = body.get('categoria_id')
-        subcategoria_id = body.get('subcategoria_id')
-        if categoria_id:
-            r.IdCategoria = categoria_id
-        if subcategoria_id:
-            r.IdSubCategoria = subcategoria_id
 
         r.save(using='requerimientos')
 
@@ -4754,8 +4791,18 @@ def api_historial_req_tic(request):
 @login_required(login_url='login')
 @require_http_methods(['GET'])
 def api_categorias_req(request):
-    """Lista de categorías reales (mm_Categoria) para el modal de Asignar."""
-    qs = Categoria.objects.using('requerimientos').order_by('Descripcion')
+    """Categorías de Tecnología (mm_Categoria) para los selectores del dashboard.
+
+    Se limita a CATEGORIAS_TIC porque mm_Categoria es compartida con otras
+    áreas (Jurídica, SST, Contratos…). Sin el filtro, el modal de asignación
+    ofrecía las 35 categorías de la tabla y se podía reclasificar un
+    requerimiento de TIC a una categoría de otra área.
+    """
+    from requerimientos.views import CATEGORIAS_TIC
+    qs = (Categoria.objects
+          .using('requerimientos')
+          .filter(IdCategoria__in=CATEGORIAS_TIC)
+          .order_by('Descripcion'))
     data = [{'id': c.IdCategoria, 'descripcion': c.Descripcion} for c in qs]
     return _json_ok(data)
 
@@ -4763,12 +4810,37 @@ def api_categorias_req(request):
 @login_required(login_url='login')
 @require_http_methods(['GET'])
 def api_subcategorias_req(request):
-    """Lista de subcategorías (mm_SubCategoria) filtradas por categoria_id."""
+    """Lista de subcategorías (mm_SubCategoria) filtradas por categoria_id.
+
+    Cada fila trae 'requiere_aprobacion' para que el modal de asignación
+    pueda avisar que el requerimiento irá al jefe de área en vez de
+    asignarse. La bandera la calcula el backend a propósito: si el
+    frontend replicara la regla, quedaría desincronizada al cambiarla.
+    """
+    from requerimientos.views import (
+        _normaliza, CATEGORIA_SOPORTE_EXTERNO, SUBCATEGORIAS_REQUIEREN_APROBACION,
+    )
     categoria_id = request.GET.get('categoria_id')
     qs = SubCategoria.objects.using('requerimientos').order_by('Descripcion')
     if categoria_id:
         qs = qs.filter(IdCategoria=categoria_id)
-    data = [{'id': s.IdSubCategoria, 'descripcion': s.Descripcion, 'categoria_id': s.IdCategoria} for s in qs]
+
+    cats = {
+        c.IdCategoria: _normaliza(c.Descripcion)
+        for c in Categoria.objects.using('requerimientos').all()
+    }
+    data = []
+    for s in qs:
+        sub_norm = _normaliza(s.Descripcion)
+        data.append({
+            'id':                  s.IdSubCategoria,
+            'descripcion':         s.Descripcion,
+            'categoria_id':        s.IdCategoria,
+            'requiere_aprobacion': (
+                cats.get(s.IdCategoria) == CATEGORIA_SOPORTE_EXTERNO
+                and any(sub_norm.startswith(x) for x in SUBCATEGORIAS_REQUIEREN_APROBACION)
+            ),
+        })
     return _json_ok(data)
 
 

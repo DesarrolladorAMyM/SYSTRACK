@@ -1193,7 +1193,16 @@ function showNotif(title, msg, type = 'success', duration = 3500) {
   /* ===== SEGUIMIENTO ===== */
   const TRIP_STEPS_BASE = [
     {estado:'Abierto',    label:'Abierto',     icon:'fa-file-pen',
-      detalle:(r)=> `Tu requerimiento fue registrado el ${r.fecha_creacion||'—'} y está a la espera de ser asignado a un responsable.`},
+      // El texto depende de si ya hay responsable: una etapa cumplida debe
+      // narrar lo que pasó, no lo que falta. Mismo criterio que el paso
+      // 'Asignado' de abajo. Con la asignación automática por categoría esta
+      // etapa se completa en el mismo instante, así que la variante "a la
+      // espera de ser asignado" sería falsa. Este bloque debe mantenerse
+      // igual al de seguimiento_publico.html: son la misma línea de tiempo
+      // vista desde el portal y desde el link público.
+      detalle:(r)=> r.responsable
+        ? `Tu requerimiento fue registrado el ${r.fecha_creacion||'—'} y quedó habilitado para ser gestionado.`
+        : `Tu requerimiento fue registrado el ${r.fecha_creacion||'—'} y está a la espera de ser asignado a un responsable.`},
     {estado:'Asignado',   label:'Asignado',    icon:'fa-user-check',
       detalle:(r)=> r.responsable ? `Fue asignado a ${r.responsable}, quien revisará tu solicitud en breve.` : 'Está a la espera de que se le asigne un responsable.'},
     {estado:'En Proceso', label:'En proceso',  icon:'fa-screwdriver-wrench',

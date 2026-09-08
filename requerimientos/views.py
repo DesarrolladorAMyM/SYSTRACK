@@ -42,28 +42,34 @@ SUBCATEGORIAS_REQUIEREN_APROBACION = ['compras']
 # editan en el admin y un cambio de texto rompería la asignación en silencio.
 # Las subcategorías heredan automáticamente: solo se mira la categoría.
 #
-# ─────────────────────────────────────────────────────────────────────────
-# DESACTIVADO A PROPÓSITO — diccionario vacío.
+# ACTIVA. Cada requerimiento de estas categorías nace ya asignado y su
+# técnico recibe el correo de asignación. Las compras siguen pasando
+# primero por el jefe de área: se asignan solo cuando él aprueba (ver
+# aprobar_requerimiento), nunca antes.
 #
-# Con el diccionario vacío, _asignar_tecnico_por_defecto sale de inmediato
-# por su `if not id_tecnico: return` y el sistema se comporta EXACTAMENTE
-# como antes: los requerimientos nacen sin técnico y caen en la bandeja
-# "por asignar", como siempre. No se escribe nada ni se envía ningún correo.
+# Para desactivarla, comentar las tres líneas: con el diccionario vacío
+# _asignar_tecnico_por_defecto sale por su `if not id_tecnico: return` y
+# los requerimientos vuelven a caer en la bandeja "por asignar".
 #
-# PARA ACTIVARLO: descomentar las tres líneas de abajo. Antes de hacerlo,
-# avisar a los técnicos implicados — desde ese momento empiezan a recibir
-# un correo de asignación por cada requerimiento de su categoría.
-# ─────────────────────────────────────────────────────────────────────────
+# Al cambiar un técnico aquí, avisarle: desde ese momento empieza a
+# recibir un correo por cada requerimiento de su categoría.
 TECNICO_POR_DEFECTO_POR_CATEGORIA = {
     #  IdCategoria: IdUsuario (mv_Usuarios)
-    # 36: 185,   # Soporte tecnico Interno                     -> ARBOLEDA GODOY BRAYAN DAVID
-    # 37: 185,   # Soporte tecnico Externo                     -> ARBOLEDA GODOY BRAYAN DAVID
-    # 38:  62,   # Desarrollo y Soporte aplicaciones internas  -> GALEANO DUQUE DUVER ANDRES
+    36: 185,   # Soporte tecnico Interno                     -> ARBOLEDA GODOY BRAYAN DAVID
+    37: 185,   # Soporte tecnico Externo                     -> ARBOLEDA GODOY BRAYAN DAVID
+    38:  62,   # Desarrollo y Soporte aplicaciones internas  -> GALEANO DUQUE DUVER ANDRES
 }
 
 # TipoUsuario que el sistema considera técnico — mismo criterio que usa el
 # selector manual de asignación (ver dashboard.api_colaboradores_ti).
 TIPOS_USUARIO_TECNICO = [7, 8]
+
+# Categorías de Tecnología: las únicas que se administran desde Systraker.
+# mm_Categoria es una tabla compartida con otras áreas (Jurídica, SST,
+# Contratos, Temas societarios…), así que los selectores del dashboard se
+# limitan a estas tres para que no se pueda reclasificar un requerimiento de
+# TIC a una categoría que no le corresponde.
+CATEGORIAS_TIC = [36, 37, 38]
 
 # Adjuntos de requerimientos (un solo archivo, cualquier tipo, máx 5 MB)
 ADJUNTO_CARPETA    = 'requerimientos_adjuntos'
@@ -727,6 +733,47 @@ def _enviar_correo_aprobacion(request, req, area):
         )
 
 
+def _clasificacion_requiere_aprobacion(req):
+    """True si la categoría/subcategoría ACTUAL del requerimiento exige
+    aprobación del jefe de área.
+
+    Única fuente de verdad de esa regla: la usan crear_requerimiento (vía
+    las constantes), _enviar_a_aprobacion_jefe y la reclasificación del
+    dashboard. Trabaja sobre lo que el objeto tenga en memoria, así se
+    puede consultar ANTES de guardar un cambio de clasificación.
+    """
+    cat = Categoria.objects.using(DB).filter(IdCategoria=req.IdCategoria).first()
+    sub = SubCategoria.objects.using(DB).filter(IdSubCategoria=req.IdSubCategoria).first()
+    sub_norm = _normaliza(sub.Descripcion if sub else '')
+    return (
+        _normaliza(cat.Descripcion if cat else '') == CATEGORIA_SOPORTE_EXTERNO
+        and any(sub_norm.startswith(s) for s in SUBCATEGORIAS_REQUIEREN_APROBACION)
+    )
+
+
+def _recalcular_fecha_estimada(req):
+    """Recalcula FechaEstiSoluci con los días de plazo de la subcategoría
+    ACTUAL del requerimiento, contando desde hoy.
+
+    Cuenta desde hoy, no desde req.Fecha, por el mismo criterio que ya
+    aplica api_corregir_requerimiento: al cambiar de clasificación no se
+    debe heredar un plazo que era de otro tipo de trabajo (y que puede
+    estar vencido), porque penalizaría al técnico y falsearía el indicador
+    de cumplimiento.
+
+    req.Fecha NO se toca: es el registro de cuándo lo pidió el usuario y
+    es la fecha por la que agrupan los indicadores de tendencia.
+
+    Solo escribe en memoria. Si la subcategoría no tiene TiempoDias, deja
+    la fecha como estaba.
+    """
+    sub = SubCategoria.objects.using(DB).filter(IdSubCategoria=req.IdSubCategoria).first()
+    tiempo_dias = sub.TiempoDias if sub else None
+    if not tiempo_dias:
+        return
+    req.FechaEstiSoluci = datetime.date.today() + datetime.timedelta(days=tiempo_dias)
+
+
 def _enviar_a_aprobacion_jefe(req, request=None):
     """Devuelve un requerimiento YA CREADO al flujo de aprobación del jefe.
 
@@ -750,18 +797,12 @@ def _enviar_a_aprobacion_jefe(req, request=None):
     if req.IdEstado == 7:
         return False, f'{req.codigo()} ya está pendiente de aprobación.'
 
-    cat = Categoria.objects.using(DB).filter(IdCategoria=req.IdCategoria).first()
-    sub = SubCategoria.objects.using(DB).filter(IdSubCategoria=req.IdSubCategoria).first()
-    cat_txt = cat.Descripcion if cat else ''
-    sub_txt = sub.Descripcion if sub else ''
-    sub_norm = _normaliza(sub_txt)
-    requiere = (
-        _normaliza(cat_txt) == CATEGORIA_SOPORTE_EXTERNO
-        and any(sub_norm.startswith(s) for s in SUBCATEGORIAS_REQUIEREN_APROBACION)
-    )
-    if not requiere:
+    if not _clasificacion_requiere_aprobacion(req):
+        cat = Categoria.objects.using(DB).filter(IdCategoria=req.IdCategoria).first()
+        sub = SubCategoria.objects.using(DB).filter(IdSubCategoria=req.IdSubCategoria).first()
         return False, (f'{req.codigo()} no exige aprobación con su categoría actual '
-                       f'({cat_txt!r} / {sub_txt!r}).')
+                       f'({(cat.Descripcion if cat else "")!r} / '
+                       f'{(sub.Descripcion if sub else "")!r}).')
 
     solicitante = Usuario.objects.using(DB).filter(IdUsuario=req.IdUsuario).first()
     if not solicitante or not solicitante.IdArea:
@@ -794,6 +835,14 @@ def _enviar_a_aprobacion_jefe(req, request=None):
     req.save(using=DB)
 
     _enviar_correo_aprobacion(request, req, area)
+    # Avisarle al solicitante: su requerimiento retrocede de Asignado a
+    # Pendiente Aprobación, y sin este aviso pensaría que se perdió.
+    _crear_notificacion_portal(
+        req, 'pendiente_aprobacion',
+        f'{req.codigo()} quedó pendiente de aprobación',
+        f'Se reclasificó y quedó a la espera de la autorización de tu jefe '
+        f'del área {area.NombreArea}.'
+    )
     logger.info(
         'Requerimiento %s devuelto a aprobación del jefe %s (IdUsuario=%s, área %s). '
         'Técnico anterior: %s.',

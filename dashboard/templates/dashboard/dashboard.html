@@ -1903,22 +1903,28 @@
         </div>
         <div class="form-group" style="margin-bottom:14px">
           <label class="form-label">Categoría <span class="req">*</span></label>
+          <!-- Las opciones las carga openAsignarReqModal desde
+               api_categorias_req, que devuelve solo las categorías de
+               Tecnología (CATEGORIAS_TIC). Antes había una lista fija escrita
+               aquí con nombres que no existen en mm_Categoria; el JS la
+               sobrescribía, así que era código muerto. -->
           <select class="form-select" id="asig-f-categoria" onchange="asigLoadSubcat()">
             <option value="">Seleccione una opción</option>
-            <option value="SOPORTE TÉCNICO">Soporte técnico</option>
-            <option value="DESARROLLO Y SOPORTE APLICACIONES INTERNAS">Desarrollo y Soporte aplicaciones internas</option>
-            <option value="INFRAESTRUCTURA">Infraestructura</option>
-            <option value="REDES Y COMUNICACIONES">Redes y comunicaciones</option>
-            <option value="SEGURIDAD">Seguridad</option>
-            <option value="OTRO">Otro</option>
           </select>
         </div>
         <div class="form-group">
           <label class="form-label">Subcategoría <span class="req">*</span></label>
-          <select class="form-select" id="asig-f-subcategoria">
+          <select class="form-select" id="asig-f-subcategoria" onchange="asigChequearAprobacion()">
             <option value="">Seleccione una opción</option>
           </select>
         </div>
+        <!-- Aviso cuando la subcategoría elegida exige aprobación del jefe de
+             área. El texto lo escribe asigChequearAprobacion() según si el
+             requerimiento ya tiene técnico o no: si lo tiene, se le retira;
+             si no, simplemente no se asigna. -->
+        <div id="asig-aviso-aprobacion" style="display:none;margin-top:14px;padding:12px 14px;
+             border-radius:8px;background:rgba(245,158,11,.10);border:1px solid rgba(245,158,11,.35);
+             color:#92400e;font-size:13px;line-height:1.45"></div>
       </div>
     </div>
     <div class="modal-form-footer">
