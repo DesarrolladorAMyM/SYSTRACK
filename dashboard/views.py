@@ -4591,14 +4591,44 @@ def api_notificaciones_bell(request):
         'fecha_estimada': r.FechaEstiSoluci.strftime('%d/%m/%Y') if r.FechaEstiSoluci else '',
     } for r in sin_asignar_qs]
 
-    # Recién creados sin asignar — aviso temprano, ANTES de que se venzan.
+    # Requerimientos recién entrados — aviso temprano, ANTES de que se venzan.
     # Se excluyen los que ya están vencidos (esos ya salen en
     # vencidos_sin_asignar) para no mostrar el mismo requerimiento dos veces.
+    #
+    # Antes esta consulta exigía IdUsuarioAsig NULL, así que solo avisaba de
+    # los que quedaban sin dueño. Con la asignación automática por categoría
+    # (ver requerimientos.views.TECNICO_POR_DEFECTO_POR_CATEGORIA) eso ya casi
+    # nunca pasa y la campanita se habría quedado muda: el área dejaría de ver
+    # entrar los requerimientos, que es justamente para lo que sirve el aviso.
+    # Ahora entran todos y cada uno viaja con 'asignado', para que el texto
+    # diga a quién le quedó — o avise que no le quedó a nadie, que es la señal
+    # de que el técnico está inactivo o la categoría no tiene configuración.
+    #
+    # Estado 2 (Asignado) además del 1 (Abierto) por lo mismo: con la
+    # asignación automática el requerimiento nace en 2, y filtrando solo por 1
+    # no aparecería ninguno.
+    #
+    # Sin filtro por usuario, igual que antes: la ve toda el área, no solo el
+    # técnico asignado.
+    #
+    # Los ASIGNADOS se acotan a los últimos días: son un aviso informativo de
+    # "entró esto y lo tiene tal persona", y sin ese límite la campanita
+    # listaría todos los requerimientos activos de la operación, llamándole
+    # "nuevo" a uno de hace semanas.
+    #
+    # Los SIN ASIGNAR no se acotan, a propósito: ahí el aviso no es
+    # informativo sino una alarma de configuración (técnico inactivo o
+    # categoría sin técnico por defecto) y debe seguir visible hasta que
+    # alguien lo resuelva, exactamente como se comportaba antes de este
+    # cambio.
+    LIMITE_DIAS_NUEVOS_ASIGNADOS = 7
+    limite_nuevos = hoy - timedelta(days=LIMITE_DIAS_NUEVOS_ASIGNADOS)
     nuevos_qs = (
         Requerimiento.objects
         .using('requerimientos')
-        .filter(IdUsuarioAsig__isnull=True, IdEstado=1)
+        .filter(IdEstado__in=[1, 2])
         .filter(Q(FechaEstiSoluci__gte=hoy) | Q(FechaEstiSoluci__isnull=True))
+        .filter(Q(IdUsuarioAsig__isnull=True) | Q(Fecha__gte=limite_nuevos))
         .order_by('-Fecha')
     )
     nuevos_sin_asignar = []
@@ -4611,6 +4641,7 @@ def api_notificaciones_bell(request):
             'codigo':      r.codigo(),
             'descripcion': (r.Requerimiento or '')[:120],
             'solicitante': r.NombreUsuario or '—',
+            'asignado':    r.NombreUsuariAsig or '',
             'fecha':       fecha_str,
         })
 

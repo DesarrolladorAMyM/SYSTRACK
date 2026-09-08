@@ -4176,8 +4176,14 @@ function _construirBellItems() {
     icono: 'fa-key', onClick: () => _irADispositivo(l.serial_dispositivo),
     dismissible: true, onLeida: () => _bellMarcarLeida('licencia', l.id, l.fecha_vencimiento),
   }));
+  // El título depende de si el requerimiento ya tiene técnico. Con la
+  // asignación automática por categoría lo normal es que sí, y decir "sin
+  // asignar" sería falso; cuando llega sin nadie es una señal de que hay algo
+  // mal configurado, así que ese texto se conserva tal cual para que se note.
   BELL_DATA.nuevos_sin_asignar.forEach(n => items.push({
-    tipo: 'nuevo', titulo: `${n.codigo} nuevo sin asignar`,
+    tipo: 'nuevo',
+    titulo: n.asignado ? `${n.codigo} nuevo — asignado a ${n.asignado}`
+                       : `${n.codigo} nuevo sin asignar`,
     mensaje: `Solicitado por ${n.solicitante}`,
     fecha: `Creado el ${n.fecha}`,
     icono: 'fa-inbox', onClick: () => _irARequerimiento(n.codigo),
