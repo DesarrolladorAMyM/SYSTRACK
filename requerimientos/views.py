@@ -114,7 +114,20 @@ def _asignar_tecnico_por_defecto(req):
     if req.IdUsuarioAsig:
         return  # ya tiene técnico: no pisar una asignación previa
 
-    id_tecnico = TECNICO_POR_DEFECTO_POR_CATEGORIA.get(req.IdCategoria)
+    # req.IdCategoria puede venir como TEXTO: el portal envía el value del
+    # <select> ("36", con comillas) y Django no convierte el atributo del
+    # objeto al guardar — solo el valor que le manda a la base. Las llaves de
+    # este diccionario son int, así que sin la conversión el .get() devuelve
+    # None y la asignación se saltaba EN SILENCIO: sin excepción, sin warning
+    # y con HTTP 200, porque salía por el `return` de "categoría sin técnico".
+    # La conversión va aquí, en el consumidor, para que quede cubierto sin
+    # importar desde dónde se llame (creación, aprobación del jefe, etc.).
+    try:
+        id_categoria = int(req.IdCategoria)
+    except (TypeError, ValueError):
+        return  # sin categoría, o con una que no es numérica
+
+    id_tecnico = TECNICO_POR_DEFECTO_POR_CATEGORIA.get(id_categoria)
     if not id_tecnico:
         return  # categoría sin técnico por defecto configurado
 

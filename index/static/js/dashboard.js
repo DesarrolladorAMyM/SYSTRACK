@@ -4121,15 +4121,20 @@ async function cargarNotificacionesBell() {
   if (panel && !panel.classList.contains('hidden')) renderBellPanel();
 }
 
-// "Marcar como leído" — SOLO para licencias y pendientes de aprobación.
-// Vencidos y vencidos-sin-asignar NUNCA se pueden ocultar: son alertas que
-// necesitan una acción real, no que se ignoren.
+// "Marcar como leído" — para 'licencia', 'aprobacion', 'checklist', 'nuevo'
+// y 'prestamo'. 'vencido' y 'sin_asignar' NUNCA se pueden ocultar: son
+// alertas que necesitan una acción real, no que se ignoren.
+//
+// Cada rama de abajo quita el item de su lista en BELL_DATA para que
+// desaparezca al instante (optimista). El tipo que se maneje aquí TIENE que
+// tener su rama: sin ella la llamada al servidor funciona igual, pero el
+// item se queda en pantalla hasta el siguiente refresco del polling — que
+// es justo el bug que tenían 'nuevo' y 'prestamo'.
 //
 // Se guarda en el SERVIDOR (tabla NotificacionBellLeida, por usuario), no en
 // localStorage — así persiste sin importar desde qué computador/navegador
 // inicies sesión. api_notificaciones_bell ya excluye del lado del backend
-// lo que el usuario marcó como leído, así que aquí solo hace falta avisarle
-// al servidor y quitar el item de la vista al instante (optimista).
+// lo que el usuario marcó como leído.
 async function _bellMarcarLeida(tipo, referenciaId, referenciaFecha) {
   if (tipo === 'licencia') {
     BELL_DATA.licencias_por_vencer = BELL_DATA.licencias_por_vencer
@@ -4140,6 +4145,12 @@ async function _bellMarcarLeida(tipo, referenciaId, referenciaFecha) {
   } else if (tipo === 'checklist') {
     BELL_DATA.checklist_pendiente = BELL_DATA.checklist_pendiente
       .filter(d => !(d.id === referenciaId && d.fecha === referenciaFecha));
+  } else if (tipo === 'nuevo') {
+    BELL_DATA.nuevos_sin_asignar = BELL_DATA.nuevos_sin_asignar
+      .filter(n => !(n.id === referenciaId && n.fecha === referenciaFecha));
+  } else if (tipo === 'prestamo') {
+    BELL_DATA.prestamos_realizados = BELL_DATA.prestamos_realizados
+      .filter(p => !(p.id === referenciaId && p.fecha === referenciaFecha));
   }
   renderBellBadge();
   renderBellPanel();
