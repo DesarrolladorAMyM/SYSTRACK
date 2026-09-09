@@ -514,7 +514,14 @@
             <span class="bell-badge" id="bellBadge"></span>
           </button>
           <div class="bell-panel hidden" id="bellPanel">
-            <div class="bell-panel-header">Notificaciones</div>
+            <div class="bell-panel-header">
+              <span>Notificaciones</span>
+              <!-- Lo muestra/oculta renderBellPanel segun queden o no
+                   notificaciones sin leer. -->
+              <button type="button" class="bell-marcar-todas hidden" id="btnMarcarTodasLeidas">
+                Marcar todas como leídas
+              </button>
+            </div>
             <div class="bell-panel-list" id="bellPanelList"></div>
           </div>
         </div>

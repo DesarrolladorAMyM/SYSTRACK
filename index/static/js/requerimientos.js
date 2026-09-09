@@ -153,7 +153,9 @@ function showNotif(title, msg, type = 'success', duration = 3500) {
     // El badge combina: notificaciones reales sin leer + vencidos + pendientes por calificar.
     // requerimientosPendientesCalificar() (DATA local) manda sobre pendientes_calificar del
     // backend por si el usuario acaba de calificar y el fetch de /notificaciones/ aún no llega.
-    const noLeidas   = NOTIF.notificaciones.filter(n => !n.leida).length;
+    // mis_notificaciones ya devuelve solo las no leídas, y marcar una la
+    // saca de la lista — así que todas las que quedan cuentan.
+    const noLeidas   = NOTIF.notificaciones.length;
     const pendientes = requerimientosPendientesCalificar().length;
     const vencidos    = NOTIF.vencidos.length;
     const total = noLeidas + pendientes + vencidos;
@@ -187,11 +189,24 @@ function showNotif(title, msg, type = 'success', duration = 3500) {
       mensaje: `Debió resolverse antes del ${v.fecha_estimada}.`, fecha: v.fecha_estimada, leida: true,
     }));
 
+    // Se resuelve ANTES del return por lista vacía: si no, el botón se
+    // quedaría visible con lo que hubiera pintado el render anterior.
+    const btnTodas = document.getElementById('btnMarcarTodasLeidas');
+    if(btnTodas){
+      btnTodas.classList.toggle('hidden', NOTIF.notificaciones.length === 0);
+      btnTodas.onclick = marcarTodasNotifLeidas;
+    }
+
     if(items.length === 0){
       list.innerHTML = '<div class="bell-panel-empty">No tienes notificaciones nuevas.</div>';
       return;
     }
 
+    // El check solo va en las notificaciones REALES (las que tienen id en
+    // mv_Notificaciones). Los "pendiente_calificar" y "vencido" NO lo llevan:
+    // se calculan en vivo, no hay nada que marcar, y desaparecen solos
+    // cuando el requerimiento deja de estar en esa condición. Mismo criterio
+    // que 'dismissible' en la campanita del dashboard.
     list.innerHTML = items.map(it => `
       <div class="bell-item ${it.leida ? '' : 'unread'}" data-codigo="${it.codigo || ''}">
         <div class="bell-item-icon ${it.tipo}"><i class="fa-solid ${ICONOS_NOTIF[it.tipo] || 'fa-bell'}"></i></div>
@@ -200,8 +215,24 @@ function showNotif(title, msg, type = 'success', duration = 3500) {
           <div class="bell-item-msg">${it.mensaje}</div>
           ${it.fecha ? `<div class="bell-item-time">${it.fecha}</div>` : ''}
         </div>
+        ${it.id
+          ? `<button type="button" class="bell-item-leida" data-id="${it.id}"
+                     title="Marcar como leída" aria-label="Marcar como leída">
+               <i class="fa-solid fa-check"></i>
+             </button>`
+          : ''}
       </div>
     `).join('');
+
+    // El botón va DENTRO de .bell-item, que navega al requerimiento al hacer
+    // clic — sin stopPropagation, marcar como leída también te sacaría del
+    // panel y te llevaría al detalle.
+    list.querySelectorAll('.bell-item-leida').forEach(btn => {
+      btn.addEventListener('click', ev => {
+        ev.stopPropagation();
+        marcarNotifLeida(Number(btn.dataset.id));
+      });
+    });
 
     list.querySelectorAll('.bell-item').forEach(el => {
       el.addEventListener('click', () => {
@@ -230,17 +261,60 @@ function showNotif(title, msg, type = 'success', duration = 3500) {
     panel.style.right = (window.innerWidth - rect.right) + 'px';
     panel.classList.remove('hidden');
     renderBellPanel();
-    // Marcar como leídas las notificaciones reales (no los pendientes/vencidos,
-    // que solo desaparecen cuando el requerimiento deja de estarlo).
+    // Antes se llamaba aquí a "leer-todas": abrir la campana marcaba TODO
+    // como leído de una. Eso hacía imposible dejar algo pendiente y volver
+    // después, y dejaba sin sentido el marcado individual. Ahora el usuario
+    // decide: el check de cada notificación, o "Marcar todas" en el
+    // encabezado.
+  }
+
+  /* Marca UNA notificación como leída y la QUITA del panel — mismo
+     comportamiento que la campanita del dashboard: la bandeja muestra
+     pendientes, y lo que ya viste deja de ocupar espacio.
+
+     Optimista: se saca de la lista y se repinta de inmediato, y recién
+     después se avisa al servidor. Si la petición falla, reaparece sola en
+     el siguiente refresco, porque cargarNotificaciones repone NOTIF con lo
+     que diga la base (que ya solo devuelve las no leídas). */
+  async function marcarNotifLeida(id){
     const doc = getDocumento();
-    if(doc && NOTIF.notificaciones.some(n => !n.leida)){
-      fetch('/SYSTRACK/requerimiento/api/notificaciones/leer-todas/', {
+    if(!doc) return;
+
+    const antes = NOTIF.notificaciones.length;
+    NOTIF.notificaciones = NOTIF.notificaciones.filter(n => n.id !== id);
+    if(NOTIF.notificaciones.length === antes) return;  // no era de esta lista
+    actualizarBell();
+    renderBellPanel();
+
+    try {
+      await fetch(`/SYSTRACK/requerimiento/api/notificaciones/${id}/leida/`, {
         method: 'POST', headers: {'Content-Type': 'application/json'},
         body: JSON.stringify({ cedula: doc })
-      }).then(() => {
-        NOTIF.notificaciones.forEach(n => n.leida = true);
-        actualizarBell();
-      }).catch(() => {});
+      });
+    } catch(e){
+      console.error('No se pudo marcar la notificación como leída:', e);
+    }
+  }
+
+  /* Marca TODAS las del usuario. Atajo para cuando se acumularon varias.
+     No toca los vencidos ni los pendientes por calificar: esos no son
+     marcables, desaparecen solos cuando el requerimiento deja de estar en
+     esa condición. */
+  async function marcarTodasNotifLeidas(){
+    const doc = getDocumento();
+    if(!doc || !NOTIF.notificaciones.length) return;
+
+    NOTIF.notificaciones = [];
+    actualizarBell();
+    renderBellPanel();
+
+    try {
+      await fetch('/SYSTRACK/requerimiento/api/notificaciones/leer-todas/', {
+        method: 'POST', headers: {'Content-Type': 'application/json'},
+        body: JSON.stringify({ cedula: doc })
+      });
+    } catch(e){
+      console.error('No se pudieron marcar las notificaciones como leídas:', e);
     }
   }
 

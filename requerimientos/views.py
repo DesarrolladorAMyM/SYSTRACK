@@ -1618,11 +1618,15 @@ def mis_notificaciones(request):
     if not cedula:
         return JsonResponse({'ok': False, 'error': 'Cédula requerida.'}, status=400)
 
+    # Solo las NO leídas: la campanita es una bandeja de pendientes, igual
+    # que la del dashboard. Al marcar una como leída desaparece del panel;
+    # el histórico completo del requerimiento se ve en "Mis Requerimientos",
+    # no aquí.
     notifs = list(
         Notificacion.objects
         .using(DB)
-        .filter(CedulaUsuario=cedula)
-        .order_by('Leida', '-FechaCreacion')[:30]
+        .filter(CedulaUsuario=cedula, Leida=False)
+        .order_by('-FechaCreacion')[:30]
     )
     data_notifs = [{
         'id':     n.IdNotificacion,
@@ -1649,8 +1653,8 @@ def mis_notificaciones(request):
     )
     data_pendientes = [r.codigo() for r in pendientes_calificar]
 
-    no_leidas     = sum(1 for n in notifs if not n.Leida)
-    total_alertas = no_leidas + len(data_vencidos) + len(data_pendientes)
+    # notifs ya viene filtrado a Leida=False, así que todas cuentan.
+    total_alertas = len(notifs) + len(data_vencidos) + len(data_pendientes)
 
     return JsonResponse({
         'ok': True,
@@ -1664,13 +1668,37 @@ def mis_notificaciones(request):
 @csrf_exempt
 @require_POST
 def marcar_notificacion_leida(request, pk):
+    """Marca UNA notificación como leída.
+
+    Exige la cédula del dueño en el body. El portal no tiene sesión
+    iniciada —se identifica por documento—, así que sin ese filtro
+    cualquiera podría marcar como leída la notificación de otra persona
+    con solo conocer el IdNotificacion, que es un consecutivo y se adivina
+    probando números.
+
+    Se usa update() y no save(): es una sola sentencia atómica y evita
+    reescribir el resto de las columnas de la fila.
+    """
     try:
-        n = Notificacion.objects.using(DB).get(IdNotificacion=pk)
-        n.Leida = True
-        n.save(using=DB)
+        data = json.loads(request.body or '{}')
+    except json.JSONDecodeError:
+        return JsonResponse({'ok': False, 'error': 'JSON inválido.'}, status=400)
+
+    cedula = str(data.get('cedula', '')).strip()
+    if not cedula:
+        return JsonResponse({'ok': False, 'error': 'Cédula requerida.'}, status=400)
+
+    try:
+        mias = Notificacion.objects.using(DB).filter(
+            IdNotificacion=pk, CedulaUsuario=cedula
+        )
+        if not mias.exists():
+            # Mismo mensaje tanto si no existe como si es de otro usuario:
+            # no hay que confirmarle a nadie que un IdNotificacion ajeno sí
+            # existe.
+            return JsonResponse({'ok': False, 'error': 'Notificación no encontrada.'}, status=404)
+        mias.filter(Leida=False).update(Leida=True)
         return JsonResponse({'ok': True})
-    except Notificacion.DoesNotExist:
-        return JsonResponse({'ok': False, 'error': 'Notificación no encontrada.'}, status=404)
     except Exception as e:
         return JsonResponse({'ok': False, 'error': str(e)}, status=500)
 
