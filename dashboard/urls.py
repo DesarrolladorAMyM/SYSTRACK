@@ -11,7 +11,10 @@ urlpatterns = [
     #  Vista principal (renderiza el HTML) 
     path('', views.dashboard, name='dashboard'),
 
-    #  Catálogos (para poblar <select>) 
+    #  Perfil del usuario logueado
+    path('api/perfil/cambiar-password/',      views.api_cambiar_password,        name='api_cambiar_password'),
+
+    #  Catálogos (para poblar <select>)
     path('api/catalogos/',                    views.api_catalogos,               name='api_catalogos'),
     path('api/municipios/<int:dpto_id>/',     views.api_municipios_por_dpto,     name='api_municipios'),
 

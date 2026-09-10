@@ -567,30 +567,117 @@
   .profile-dropdown-item.danger{color:var(--danger);}
   .profile-dropdown-item.danger:hover{background:#fee2e2;}
 
+  /* ----- Modal de perfil (mismo diseño que el del dashboard) -----
+     Caja propia y no .id-modal-box porque la banda superior tiene que llegar
+     hasta el borde: con el padding del modal genérico quedaría flotando. */
+  .profile-modal-box{
+    background:#fff;border-radius:18px;padding:0 22px 18px;max-width:370px;width:100%;
+    box-shadow:var(--shadow-xl);text-align:center;position:relative;
+    /* Tope de altura: con pantallas bajas el modal llegaba de borde a borde.
+       overflow-x oculto porque la banda superior se sale a propósito con
+       márgenes negativos y no debe generar barra horizontal. */
+    max-height:calc(100vh - 40px);overflow-y:auto;overflow-x:hidden;
+  }
+  .profile-modal-box::-webkit-scrollbar{width:6px;}
+  .profile-modal-box::-webkit-scrollbar-thumb{background:var(--gray-light);border-radius:3px;}
+  #profileModalOverlay .id-modal-close{
+    top:12px;right:12px;width:30px;height:30px;
+    background:rgba(255,255,255,.22);color:#fff;z-index:2;
+  }
+  #profileModalOverlay .id-modal-close:hover{background:rgba(255,255,255,.38);color:#fff;}
+
+  /* Banda superior: le da jerarquía a la foto y evita el modal "plano". */
+  .profile-modal-banner{
+    height:62px;margin:0 -22px;border-radius:18px 18px 0 0;
+    background:linear-gradient(135deg,var(--primary) 0%,var(--primary-dark) 100%);
+  }
   #profileModalOverlay .profile-modal-avatar-wrap{
-    position:relative;width:88px;height:88px;margin:0 auto 16px;
+    position:relative;width:78px;margin:-39px auto 10px;
   }
   .profile-modal-avatar{
-    width:88px;height:88px;border-radius:50%;overflow:hidden;
+    width:78px;height:78px;border-radius:50%;overflow:hidden;border:4px solid #fff;
     background:linear-gradient(135deg,var(--primary) 0%,var(--primary-light) 100%);color:#fff;
-    display:flex;align-items:center;justify-content:center;font-size:28px;font-weight:700;
+    display:flex;align-items:center;justify-content:center;font-size:26px;font-weight:700;
+    box-shadow:0 4px 14px rgba(15,23,42,.18);
   }
+  /* Solo se siente clickeable cuando de verdad hay foto que ampliar. */
+  .profile-modal-avatar.con-foto{cursor:zoom-in;}
   .profile-modal-avatar img{width:100%;height:100%;object-fit:cover;}
   .profile-modal-avatar-edit{
-    position:absolute;right:-2px;bottom:-2px;width:30px;height:30px;
-    border-radius:50%;border:2px solid #fff;background:var(--secondary);color:#fff;
-    display:flex;align-items:center;justify-content:center;cursor:pointer;font-size:12px;
+    position:absolute;right:-2px;bottom:0;width:27px;height:27px;
+    border-radius:50%;border:3px solid #fff;background:var(--primary);color:#fff;
+    display:flex;align-items:center;justify-content:center;cursor:pointer;font-size:10px;
+    transition:.15s;
   }
-  #profileModalOverlay h3{text-align:center;margin:0 0 2px;}
-  .profile-modal-cargo{text-align:center;color:var(--text-secondary);font-size:13px;margin:0 0 18px;}
-  .profile-modal-doc-label{
-    text-align:center;font-size:12px;font-weight:700;letter-spacing:.04em;
-    text-transform:uppercase;color:var(--text-light);margin-bottom:4px;
+  .profile-modal-avatar-edit:hover{background:var(--primary-dark);}
+
+  .profile-modal-nombre{
+    font-size:16px;font-weight:700;color:var(--text-primary);margin:0 0 2px;line-height:1.3;
   }
-  .profile-modal-doc-grande{
-    text-align:center;font-size:26px;font-weight:800;color:var(--text-primary);
-    letter-spacing:.03em;margin-bottom:6px;font-family:'DM Mono',monospace;
+  .profile-modal-cargo{text-align:center;color:var(--text-secondary);font-size:12px;margin:0 0 14px;}
+
+  /* ----- Filas de datos -----
+     Etiqueta arriba y valor abajo: en una sola línea el correo largo se
+     cortaría con puntos suspensivos, y ahorraba apenas unos píxeles. */
+  .profile-datos{display:flex;flex-direction:column;gap:6px;text-align:left;}
+  .profile-dato{
+    display:flex;align-items:center;gap:10px;padding:8px 11px;
+    background:#f8fafc;border:1px solid var(--border);border-radius:10px;
   }
+  .profile-dato-icon{
+    width:28px;height:28px;flex-shrink:0;border-radius:8px;
+    background:rgba(27,70,152,0.09);color:var(--primary);
+    display:flex;align-items:center;justify-content:center;font-size:12px;
+  }
+  .profile-dato-body{flex:1;min-width:0;display:flex;flex-direction:column;}
+  .profile-dato-label{
+    font-size:9.5px;font-weight:700;letter-spacing:.05em;line-height:1.4;
+    text-transform:uppercase;color:var(--text-light);
+  }
+  .profile-dato-valor{
+    font-size:12.5px;font-weight:600;color:var(--text-primary);line-height:1.35;
+    overflow:hidden;text-overflow:ellipsis;white-space:nowrap;
+  }
+  /* El estado va en pastilla y no en texto plano: es el único dato del perfil
+     que puede estar "mal", así se lee de un vistazo. */
+  .profile-dato-badge{
+    display:inline-block;padding:2px 9px;border-radius:999px;
+    font-size:11.5px;font-weight:700;line-height:1.5;
+  }
+  .profile-dato-badge.ok {background:#dcfce7;color:#15803d;}
+  .profile-dato-badge.off{background:#fee2e2;color:#b91c1c;}
+
+  .profile-modal-acciones{display:flex;flex-direction:column;gap:8px;margin-top:14px;}
+  .profile-modal-logout{
+    display:flex;align-items:center;justify-content:center;gap:8px;width:100%;
+    padding:11px;border-radius:10px;font-size:13px;font-weight:700;
+    border:1.5px solid #fecaca;background:#fff;color:#dc2626;
+    cursor:pointer;transition:.15s;font-family:'DM Sans',sans-serif;
+  }
+  .profile-modal-logout:hover{background:#fee2e2;}
+
+  /* ----- Visor de la foto en grande ----- */
+  .foto-visor-overlay{
+    position:fixed;inset:0;background:rgba(9,14,26,.92);z-index:3200;
+    display:flex;flex-direction:column;align-items:center;justify-content:center;gap:22px;padding:24px;
+  }
+  .foto-visor-overlay.hidden{display:none;}
+  .foto-visor-overlay img{
+    max-width:min(420px,86vw);max-height:62vh;border-radius:16px;object-fit:contain;
+    box-shadow:0 24px 60px rgba(0,0,0,.5);
+  }
+  .foto-visor-cerrar{
+    position:absolute;top:20px;right:20px;width:40px;height:40px;border-radius:50%;
+    border:none;background:rgba(255,255,255,.14);color:#fff;cursor:pointer;font-size:17px;
+    display:flex;align-items:center;justify-content:center;transition:.15s;
+  }
+  .foto-visor-cerrar:hover{background:rgba(255,255,255,.26);}
+  .foto-visor-eliminar{
+    display:flex;align-items:center;gap:9px;padding:12px 22px;border-radius:11px;
+    border:1.5px solid rgba(248,113,113,.5);background:rgba(220,38,38,.16);color:#fca5a5;
+    font-size:13.5px;font-weight:700;cursor:pointer;transition:.15s;font-family:'DM Sans',sans-serif;
+  }
+  .foto-visor-eliminar:hover{background:#dc2626;border-color:#dc2626;color:#fff;}
 
   /* ===== SEGUIMIENTO: HERO DE BÚSQUEDA ===== */
   .seg-search-hero{

@@ -53,9 +53,16 @@
           </div>
         </div>
         <div class="form-row cols2">
-          <div class="form-group">
+          <!-- CO con buscador: la lista es larga y desplegarla entera era
+               incómodo. El id 'f-co' se conserva en el hidden para que todo
+               lo que ya lo leía siga funcionando igual. -->
+          <div class="form-group" style="position:relative;">
             <label class="form-label">CO <span class="req">*</span></label>
-            <select class="form-select" id="f-co"><option value="">Seleccione</option></select>
+            <input class="form-input" id="f-co-search" type="text" placeholder="Buscar centro de operación..."
+                   autocomplete="off" oninput="invFiltrarCoDropdown()" onfocus="invAbrirCoDropdown()"
+                   onblur="setTimeout(invCerrarCoDropdown, 200)">
+            <input type="hidden" id="f-co">
+            <div id="f-co-dropdown" class="usr-dropdown" style="display:none;"></div>
           </div>
           <div class="form-group">
             <label class="form-label">Estado <span class="req">*</span></label>
@@ -857,7 +864,7 @@
         </div>
         <div class="user-chip">
           <div class="avatar" id="miAvatar" data-userkey="{{ request.session.usuario|default:'' }}"
-               onclick="toggleAvatarPanel(event)" title="Cambiar foto de perfil">{{ request.session.req_user_primer_nombre|slice:":1"|upper }}</div>
+               onclick="toggleProfileMenu(event)" title="Mi perfil">{{ request.session.req_user_primer_nombre|slice:":1"|upper }}</div>
           <div class="user-text">
             <p class="label">BIENVENIDO</p>
             <p class="name">{{ request.session.req_user_primer_nombre }}</p>
@@ -867,19 +874,148 @@
             </div>
           </div>
         </div>
-        <div class="avatar-panel hidden" id="avatarPanel">
-          <div class="avatar-panel-preview" id="avatarPanelPreview">{{ request.session.req_user_primer_nombre|slice:":1"|upper }}</div>
-          <input type="file" id="avatarFileInput" accept="image/*" style="display:none">
-          <button type="button" class="avatar-panel-btn" onclick="document.getElementById('avatarFileInput').click()">
-            <i class="fa-solid fa-camera"></i> Cambiar foto
+
+        <!-- Menú del avatar: mismas dos opciones que el Portal de
+             Requerimientos. "Cerrar sesión" vive aquí, ya no en el
+             menú lateral. -->
+        <div class="profile-dropdown-menu hidden" id="profileDropdownMenu">
+          <button type="button" class="profile-dropdown-item" id="btnAbrirPerfil">
+            <i class="fa-solid fa-user"></i> Perfil
           </button>
-          <button type="button" class="avatar-panel-btn danger" id="avatarPanelQuitar" style="display:none">
-            <i class="fa-solid fa-trash"></i> Quitar foto
+          <button type="button" class="profile-dropdown-item danger" onclick="cerrarSesion()">
+            <i class="fa-solid fa-right-from-bracket"></i> Cerrar sesión
           </button>
         </div>
       </div>
     </div>
   </header>
+
+  <!-- ══════════ MODAL 1: datos del perfil ══════════
+       Solo información + accesos. El cambio de contraseña vive en su
+       propio modal (#passModalOverlay) para no mezclar "ver quién soy"
+       con "hacer una operación sensible". -->
+  <div class="profile-modal-overlay hidden" id="profileModalOverlay">
+    <div class="profile-modal-box">
+      <button type="button" class="profile-modal-close" id="profileModalClose"
+              title="Cerrar" aria-label="Cerrar"><i class="fa-solid fa-xmark"></i></button>
+
+      <!-- Banda de color: le da jerarquía a la foto sin recargar el modal -->
+      <div class="profile-modal-banner"></div>
+
+      <div class="profile-modal-avatar-wrap">
+        <!-- Clic en la foto = verla en grande (solo si hay foto).
+             El lápiz de la esquina es el que cambia la imagen. -->
+        <div class="profile-modal-avatar" id="profileModalAvatar" title="Ver foto"
+             role="button" tabindex="0">{{ request.session.req_user_primer_nombre|slice:":1"|upper }}</div>
+        <button type="button" class="profile-modal-avatar-edit" id="profileModalAvatarBtn"
+                title="Cambiar foto" aria-label="Cambiar foto"><i class="fa-solid fa-camera"></i></button>
+        <input type="file" id="avatarFileInput" accept="image/*" style="display:none">
+      </div>
+
+      <h3 class="profile-modal-nombre">{{ perfil.nombre }}</h3>
+      <p class="profile-modal-cargo">{{ perfil.cargo|default:"—" }}</p>
+
+      <div class="profile-datos">
+        <div class="profile-dato">
+          <div class="profile-dato-icon"><i class="fa-solid fa-id-card"></i></div>
+          <div class="profile-dato-body">
+            <span class="profile-dato-label">Documento</span>
+            <span class="profile-dato-valor">{{ perfil.documento }}</span>
+          </div>
+        </div>
+        <div class="profile-dato">
+          <div class="profile-dato-icon"><i class="fa-solid fa-envelope"></i></div>
+          <div class="profile-dato-body">
+            <span class="profile-dato-label">Correo</span>
+            <span class="profile-dato-valor" title="{{ perfil.correo }}">{{ perfil.correo|default:"—" }}</span>
+          </div>
+        </div>
+        <div class="profile-dato">
+          <div class="profile-dato-icon"><i class="fa-solid fa-sitemap"></i></div>
+          <div class="profile-dato-body">
+            <span class="profile-dato-label">Área</span>
+            <span class="profile-dato-valor" title="{{ perfil.area }}">{{ perfil.area|default:"—" }}</span>
+          </div>
+        </div>
+        <div class="profile-dato">
+          <div class="profile-dato-icon"><i class="fa-solid fa-circle-check"></i></div>
+          <div class="profile-dato-body">
+            <span class="profile-dato-label">Estado</span>
+            <span class="profile-dato-valor">
+              <span class="profile-dato-badge {% if perfil.estado_activo %}ok{% else %}off{% endif %}">
+                {{ perfil.estado|default:"—" }}
+              </span>
+            </span>
+          </div>
+        </div>
+      </div>
+
+      <div class="profile-modal-acciones">
+        <button type="button" class="profile-modal-btn-pass" id="btnAbrirCambioPass">
+          <i class="fa-solid fa-key"></i> Cambiar la contraseña
+        </button>
+        <button type="button" class="profile-modal-logout" onclick="cerrarSesion()">
+          <i class="fa-solid fa-right-from-bracket"></i> Cerrar sesión
+        </button>
+      </div>
+    </div>
+  </div>
+
+  <!-- ══════════ MODAL 2: cambiar contraseña ══════════
+       Se abre ENCIMA del de perfil; al cerrarlo se vuelve a ver el perfil. -->
+  <div class="profile-modal-overlay pass-overlay hidden" id="passModalOverlay">
+    <div class="profile-modal-box pass-box">
+      <button type="button" class="profile-modal-close" id="passModalClose"
+              title="Cerrar" aria-label="Cerrar"><i class="fa-solid fa-xmark"></i></button>
+
+      <div class="pass-modal-icono"><i class="fa-solid fa-lock"></i></div>
+      <h3 class="profile-modal-nombre">Cambiar contraseña</h3>
+      <p class="pass-modal-ayuda">Es la contraseña con la que inicias sesión en Systraker.</p>
+
+      <form id="formCambiarPassword" novalidate>
+        <label for="pass_actual">Contraseña actual</label>
+        <div class="pass-input-wrap">
+          <input type="password" id="pass_actual" autocomplete="current-password" placeholder="••••••••">
+          <button type="button" class="pass-ver" data-target="pass_actual"
+                  title="Mostrar u ocultar" aria-label="Mostrar u ocultar"><i class="fa-solid fa-eye"></i></button>
+        </div>
+
+        <label for="pass_nueva">Contraseña nueva</label>
+        <div class="pass-input-wrap">
+          <input type="password" id="pass_nueva" autocomplete="new-password" placeholder="••••••••">
+          <button type="button" class="pass-ver" data-target="pass_nueva"
+                  title="Mostrar u ocultar" aria-label="Mostrar u ocultar"><i class="fa-solid fa-eye"></i></button>
+        </div>
+        <p class="pass-requisitos">Mínimo 8 caracteres. No puede ser solo números ni parecerse a tu documento.</p>
+
+        <label for="pass_confirmar">Confirmar contraseña nueva</label>
+        <div class="pass-input-wrap">
+          <input type="password" id="pass_confirmar" autocomplete="new-password" placeholder="••••••••">
+          <button type="button" class="pass-ver" data-target="pass_confirmar"
+                  title="Mostrar u ocultar" aria-label="Mostrar u ocultar"><i class="fa-solid fa-eye"></i></button>
+        </div>
+
+        <div class="profile-pass-msg" id="profilePassMsg"></div>
+
+        <div class="pass-acciones">
+          <button type="button" class="pass-btn-cancelar" id="btnCancelarPass">Cancelar</button>
+          <button type="submit" class="profile-pass-btn" id="btnCambiarPassword">Actualizar</button>
+        </div>
+      </form>
+    </div>
+  </div>
+
+  <!-- ══════════ VISOR: foto de perfil en grande ══════════
+       Se abre al hacer clic en la foto, y es el único sitio desde donde
+       se elimina — así el modal de perfil no carga con un enlace suelto. -->
+  <div class="foto-visor-overlay hidden" id="fotoVisorOverlay">
+    <button type="button" class="foto-visor-cerrar" id="fotoVisorCerrar"
+            title="Cerrar" aria-label="Cerrar"><i class="fa-solid fa-xmark"></i></button>
+    <img id="fotoVisorImg" src="" alt="Foto de perfil">
+    <button type="button" class="foto-visor-eliminar" id="fotoVisorEliminar">
+      <i class="fa-solid fa-trash"></i> Eliminar foto
+    </button>
+  </div>
 
   <div class="main-layout">
     <aside class="sidebar">
@@ -1009,13 +1145,10 @@
         </button>
         {% endif %}
  
-        <div style="margin-top:6px;padding-top:10px;border-top:1.5px solid var(--border);"></div>
- 
-        <button class="nav-btn" onclick="cerrarSesion()">
-          <i class="fas fa-sign-out-alt nav-icon"></i>
-          <span class="nav-label">Cerrar Sesión</span>
-        </button>
- 
+        <!-- "Cerrar Sesión" se movió al menú del avatar, en el header
+             (#profileDropdownMenu), junto con "Perfil" — mismo lugar que
+             en el Portal de Requerimientos. -->
+
       </nav>
         <script>
           window.SCREENS_PERMITIDAS   = {{ screens_permitidas_json|default:"[]"|safe }};

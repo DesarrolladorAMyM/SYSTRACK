@@ -1062,26 +1062,197 @@ a.nav-btn.active {
 }
 .bell-item-leida:hover{background:#16a34a;border-color:#16a34a;color:#fff;}
 
-/* ===== FOTO DE PERFIL (header) ===== */
-.avatar-panel{
-  position:fixed;width:200px;padding:16px;text-align:center;
+/* ===== PERFIL (header) — menú del avatar y modal =====
+   Mismo lenguaje visual que el Portal de Requerimientos, para que las dos
+   aplicaciones se sientan iguales. */
+.profile-dropdown-menu{
+  position:fixed;min-width:190px;padding:6px;
   background:#fff;border-radius:var(--radius-lg);box-shadow:0 12px 32px rgba(0,0,0,.18);
   border:1.5px solid var(--border);z-index:2000;
 }
-.avatar-panel.hidden{display:none;}
-.avatar-panel-preview{
-  width:72px;height:72px;border-radius:50%;margin:0 auto 12px;overflow:hidden;
+.profile-dropdown-menu.hidden{display:none;}
+.profile-dropdown-item{
+  display:flex;align-items:center;gap:10px;width:100%;
+  padding:10px 12px;border:none;border-radius:var(--radius-md);
+  background:none;font-size:13px;font-weight:600;color:var(--text-primary);
+  cursor:pointer;transition:background .15s;font-family:'DM Sans',sans-serif;text-align:left;
+}
+.profile-dropdown-item:hover{background:rgba(27,70,152,0.06);}
+.profile-dropdown-item.danger{color:#dc2626;}
+.profile-dropdown-item.danger:hover{background:#fee2e2;}
+
+.profile-modal-overlay{
+  position:fixed;inset:0;background:rgba(15,23,42,.55);z-index:3000;
+  display:flex;align-items:center;justify-content:center;padding:20px;
+  backdrop-filter:blur(2px);
+}
+/* El de contraseña se abre ENCIMA del de perfil, que queda visible detrás. */
+.profile-modal-overlay.pass-overlay{z-index:3100;}
+.profile-modal-overlay.hidden{display:none;}
+
+.profile-modal-box{
+  position:relative;width:100%;max-width:370px;
+  max-height:calc(100vh - 40px);overflow-y:auto;overflow-x:hidden;
+  background:#fff;border-radius:18px;box-shadow:0 24px 60px rgba(15,23,42,.28);
+  text-align:center;padding:0 22px 18px;
+}
+.profile-modal-box.pass-box{padding:30px 24px 24px;}
+.profile-modal-close{
+  position:absolute;top:12px;right:12px;width:30px;height:30px;border-radius:50%;
+  border:none;background:rgba(255,255,255,.22);color:#fff;cursor:pointer;font-size:15px;
+  display:flex;align-items:center;justify-content:center;transition:.15s;z-index:2;
+}
+.profile-modal-close:hover{background:rgba(255,255,255,.38);}
+/* En el modal de contraseña no hay banda de color detrás, así que el
+   botón necesita el color normal para verse. */
+.pass-box .profile-modal-close{background:none;color:var(--text-light);}
+.pass-box .profile-modal-close:hover{background:rgba(27,70,152,0.12);color:var(--primary);}
+
+/* Banda superior: le da jerarquía a la foto y evita el modal "plano". */
+.profile-modal-banner{
+  height:62px;margin:0 -22px 0;border-radius:18px 18px 0 0;
+  background:linear-gradient(135deg,var(--primary) 0%,var(--primary-dark) 100%);
+}
+.profile-modal-avatar-wrap{position:relative;width:78px;margin:-39px auto 10px;}
+.profile-modal-avatar{
+  width:78px;height:78px;border-radius:50%;overflow:hidden;border:4px solid #fff;
   background:linear-gradient(135deg,var(--primary) 0%,var(--primary-dark) 100%);color:#fff;
-  display:flex;align-items:center;justify-content:center;font-size:24px;font-weight:700;
+  display:flex;align-items:center;justify-content:center;font-size:26px;font-weight:700;
+  box-shadow:0 4px 14px rgba(15,23,42,.18);
 }
-.avatar-panel-preview img{width:100%;height:100%;object-fit:cover;}
-.avatar-panel-btn{
+/* Solo se siente clickeable cuando de verdad hay foto que ampliar. */
+.profile-modal-avatar.con-foto{cursor:zoom-in;}
+.profile-modal-avatar img{width:100%;height:100%;object-fit:cover;}
+.profile-modal-avatar-edit{
+  position:absolute;right:-2px;bottom:0;width:27px;height:27px;border-radius:50%;
+  border:3px solid #fff;background:var(--primary);color:#fff;cursor:pointer;
+  display:flex;align-items:center;justify-content:center;font-size:10px;transition:.15s;
+}
+.profile-modal-avatar-edit:hover{background:var(--primary-dark);}
+
+.profile-modal-nombre{font-size:16px;font-weight:700;color:var(--text-primary);margin:0 0 2px;line-height:1.3;}
+.profile-modal-cargo{color:var(--text-secondary);font-size:12px;margin:0 0 14px;}
+
+/* --- Filas de datos ---
+   Etiqueta arriba y valor abajo: en una sola línea el correo largo se
+   cortaría con puntos suspensivos, y ahorraba apenas unos píxeles. */
+.profile-datos{display:flex;flex-direction:column;gap:6px;text-align:left;}
+.profile-dato{
+  display:flex;align-items:center;gap:10px;padding:8px 11px;
+  background:#f8fafc;border:1px solid var(--border);border-radius:10px;
+}
+.profile-dato-icon{
+  width:28px;height:28px;flex-shrink:0;border-radius:8px;
+  background:rgba(27,70,152,0.09);color:var(--primary);
+  display:flex;align-items:center;justify-content:center;font-size:12px;
+}
+.profile-dato-body{flex:1;min-width:0;display:flex;flex-direction:column;}
+.profile-dato-label{
+  font-size:9.5px;font-weight:700;letter-spacing:.05em;line-height:1.4;
+  text-transform:uppercase;color:var(--text-light);
+}
+.profile-dato-valor{
+  font-size:12.5px;font-weight:600;color:var(--text-primary);line-height:1.35;
+  overflow:hidden;text-overflow:ellipsis;white-space:nowrap;
+}
+/* El estado va en pastilla y no en texto plano: es el único dato del perfil
+   que puede estar "mal" (inactivo), así que debe leerse de un vistazo. */
+.profile-dato-badge{
+  display:inline-block;padding:2px 9px;border-radius:999px;
+  font-size:11.5px;font-weight:700;line-height:1.5;
+}
+.profile-dato-badge.ok {background:#dcfce7;color:#15803d;}
+.profile-dato-badge.off{background:#fee2e2;color:#b91c1c;}
+
+/* Las dos acciones del perfil comparten forma para que se lean como pareja:
+   la principal (contraseña) en sólido, la de salir en rojo discreto. */
+.profile-modal-acciones{display:flex;flex-direction:column;gap:8px;margin-top:14px;}
+.profile-modal-btn-pass,
+.profile-modal-logout{
   display:flex;align-items:center;justify-content:center;gap:8px;width:100%;
-  padding:9px;margin-top:8px;border:1.5px solid var(--border);border-radius:var(--radius-md);
-  background:#fff;font-size:12.5px;font-weight:600;color:var(--text-primary);cursor:pointer;
-  transition:background .15s;font-family:'DM Sans',sans-serif;
+  padding:11px;border-radius:10px;font-size:13px;font-weight:700;
+  cursor:pointer;transition:.15s;font-family:'DM Sans',sans-serif;
 }
-.avatar-panel-btn:hover{background:rgba(27,70,152,0.06);}
-.avatar-panel-btn.danger{color:#dc2626;border-color:#fecaca;}
-.avatar-panel-btn.danger:hover{background:#fee2e2;}
+.profile-modal-btn-pass{
+  border:1.5px solid var(--primary);background:var(--primary);color:#fff;
+}
+.profile-modal-btn-pass:hover{background:var(--primary-dark);border-color:var(--primary-dark);}
+.profile-modal-logout{border:1.5px solid #fecaca;background:#fff;color:#dc2626;}
+.profile-modal-logout:hover{background:#fee2e2;}
+
+/* --- Modal de contraseña --- */
+.pass-modal-icono{
+  width:52px;height:52px;margin:0 auto 14px;border-radius:14px;
+  background:rgba(27,70,152,0.09);color:var(--primary);
+  display:flex;align-items:center;justify-content:center;font-size:20px;
+}
+.pass-modal-ayuda{font-size:12.5px;color:var(--text-secondary);margin:0 0 20px;line-height:1.45;}
+#formCambiarPassword{text-align:left;}
+#formCambiarPassword label{
+  display:block;font-size:11.5px;font-weight:700;color:var(--text-secondary);
+  margin-bottom:5px;letter-spacing:.02em;
+}
+.pass-input-wrap{position:relative;margin-bottom:13px;}
+.pass-input-wrap input{
+  width:100%;padding:11px 40px 11px 13px;
+  border:2px solid var(--border);border-radius:10px;
+  font-size:14px;font-family:'DM Sans',sans-serif;color:var(--text-primary);
+}
+.pass-input-wrap input:focus{
+  outline:none;border-color:var(--primary);box-shadow:0 0 0 3px rgba(27,70,152,0.10);
+}
+.pass-ver{
+  position:absolute;right:6px;top:50%;transform:translateY(-50%);
+  width:30px;height:30px;border:none;background:none;color:var(--text-light);
+  cursor:pointer;font-size:13px;border-radius:6px;transition:.15s;
+}
+.pass-ver:hover{color:var(--primary);background:rgba(27,70,152,0.07);}
+.pass-requisitos{
+  font-size:11.5px;color:var(--text-light);margin:-6px 0 13px;line-height:1.45;
+}
+/* Un solo hueco para el mensaje: se colorea según sea error o éxito, en
+   vez de tener dos elementos que se pisen. */
+.profile-pass-msg{
+  display:none;font-size:12.5px;line-height:1.45;padding:9px 11px;
+  border-radius:10px;margin-bottom:13px;
+}
+.profile-pass-msg.error{display:block;background:#fef2f2;border:1px solid #fecaca;color:#991b1b;}
+.profile-pass-msg.ok{display:block;background:#f0fdf4;border:1px solid #bbf7d0;color:#166534;}
+.pass-acciones{display:flex;gap:10px;}
+.pass-btn-cancelar{
+  flex:1;padding:12px;border:1.5px solid var(--border);border-radius:10px;
+  background:#fff;color:var(--text-secondary);font-size:13px;font-weight:700;
+  cursor:pointer;transition:.15s;font-family:'DM Sans',sans-serif;
+}
+.pass-btn-cancelar:hover{background:#f1f5f9;}
+.profile-pass-btn{
+  flex:1.4;padding:12px;border:none;border-radius:10px;
+  background:var(--primary);color:#fff;font-size:13px;font-weight:700;
+  cursor:pointer;transition:.15s;font-family:'DM Sans',sans-serif;
+}
+.profile-pass-btn:hover:not(:disabled){background:var(--primary-dark);}
+.profile-pass-btn:disabled{opacity:.6;cursor:default;}
+
+/* --- Visor de la foto en grande --- */
+.foto-visor-overlay{
+  position:fixed;inset:0;background:rgba(9,14,26,.92);z-index:3200;
+  display:flex;flex-direction:column;align-items:center;justify-content:center;gap:22px;padding:24px;
+}
+.foto-visor-overlay.hidden{display:none;}
+.foto-visor-overlay img{
+  max-width:min(420px,86vw);max-height:62vh;border-radius:16px;object-fit:contain;
+  box-shadow:0 24px 60px rgba(0,0,0,.5);
+}
+.foto-visor-cerrar{
+  position:absolute;top:20px;right:20px;width:40px;height:40px;border-radius:50%;
+  border:none;background:rgba(255,255,255,.14);color:#fff;cursor:pointer;font-size:17px;
+  display:flex;align-items:center;justify-content:center;transition:.15s;
+}
+.foto-visor-cerrar:hover{background:rgba(255,255,255,.26);}
+.foto-visor-eliminar{
+  display:flex;align-items:center;gap:9px;padding:12px 22px;border-radius:11px;
+  border:1.5px solid rgba(248,113,113,.5);background:rgba(220,38,38,.16);color:#fca5a5;
+  font-size:13.5px;font-weight:700;cursor:pointer;transition:.15s;font-family:'DM Sans',sans-serif;
+}
+.foto-visor-eliminar:hover{background:#dc2626;border-color:#dc2626;color:#fff;}
 

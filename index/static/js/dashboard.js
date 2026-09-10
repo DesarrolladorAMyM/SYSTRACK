@@ -36,6 +36,9 @@ const API = {
   notificacionesBell: `${BASE}/inventario/api/notificaciones-bell/`,
   marcarLeidaBell:    `${BASE}/inventario/api/notificaciones-bell/marcar-leida/`,
 
+  // ── Perfil ──
+  cambiarPassword:    `${BASE}/inventario/api/perfil/cambiar-password/`,
+
   // ── Checklist de Inventario ──
   checklistStats:        `${BASE}/inventario/api/checklist/stats/`,
   checklistTiposDisponibles: `${BASE}/inventario/api/checklist/tipos-disponibles/`,
@@ -382,7 +385,9 @@ function poblarSelects() {
     id:    c.g207_id,
     label: `${c.g207_co} — ${c.g207_descripcion_co}`,
   }));
-  ['f-co', 'hf-co', 'inac-f-co'].forEach(id => {
+  // 'f-co' (inventario) no va aquí: es un buscador con dropdown, no un
+  // <select> — se filtra en vivo contra CAT.centros_operaciones.
+  ['hf-co', 'inac-f-co'].forEach(id => {
     const el = document.getElementById(id);
     if (!el) return;
     el.innerHTML = '<option value="">Seleccione</option>' +
@@ -806,12 +811,93 @@ async function openEdit(id) {
   document.getElementById('modalDetail').classList.remove('active');
 }
 
+// ── Inventario: buscador de Centro de Operación ──
+// Mismo patrón que el buscador de CO de Colaboradores: un input visible con el
+// texto y un hidden 'f-co' con el id. Al conservar ese id, saveDevice(),
+// fillForm() y clearForm() siguen leyendo y escribiendo donde ya lo hacían.
+let _invCoFiltrado = [];
+
+function _invCoOpciones() {
+  return (CAT.centros_operaciones || []).map(c => ({
+    id:     c.g207_id,
+    nombre: `${c.g207_co} — ${c.g207_descripcion_co}`,
+  }));
+}
+function _invEscHtml(s) {
+  // Escapa dejando que el navegador lo haga: el nombre del centro viene de la
+  // base y se inyecta con innerHTML.
+  const div = document.createElement('div');
+  div.textContent = String(s == null ? '' : s);
+  return div.innerHTML;
+}
+// Se pinta por índice y no por nombre: así el nombre del centro nunca tiene
+// que viajar dentro de un atributo onmousedown, con lo que las comillas y
+// los apóstrofes dejan de ser un problema.
+function _invRenderCoDropdown() {
+  const dd = document.getElementById('f-co-dropdown');
+  if (!dd) return;
+  const q = (document.getElementById('f-co-search')?.value || '').toLowerCase().trim();
+  _invCoFiltrado = _invCoOpciones().filter(c => c.nombre.toLowerCase().includes(q));
+  dd.innerHTML = _invCoFiltrado.length
+    ? _invCoFiltrado.map((c, i) =>
+        `<div class="usr-dropdown-item" onmousedown="invSeleccionarCo(${i})">${_invEscHtml(c.nombre)}</div>`
+      ).join('')
+    : '<div class="usr-dropdown-empty">Sin resultados</div>';
+}
+function invAbrirCoDropdown() {
+  const dd = document.getElementById('f-co-dropdown');
+  if (dd) dd.style.display = 'block';
+  _invRenderCoDropdown();
+}
+function invFiltrarCoDropdown() {
+  // Escribir invalida la selección anterior: si no se vuelve a elegir de la
+  // lista, el blur deja el campo vacío en vez de guardar un CO que ya no
+  // corresponde al texto que se ve.
+  const hidden = document.getElementById('f-co');
+  if (hidden) hidden.value = '';
+  invAbrirCoDropdown();
+}
+function invSeleccionarCo(i) {
+  const c = _invCoFiltrado[i];
+  if (!c) return;
+  document.getElementById('f-co').value        = c.id;
+  document.getElementById('f-co-search').value = c.nombre;
+  invCerrarCoDropdown();
+}
+function invCerrarCoDropdown() {
+  const dd = document.getElementById('f-co-dropdown');
+  if (dd) dd.style.display = 'none';
+
+  // Con un <select> era imposible dejar el campo en un estado inválido. Aquí
+  // hay que forzarlo: si quedó texto escrito sin centro elegido, se intenta
+  // resolver por coincidencia exacta y, si no la hay, se borra — para que no
+  // se vea un CO que en realidad no está seleccionado.
+  const hidden = document.getElementById('f-co');
+  const search = document.getElementById('f-co-search');
+  if (!hidden || !search || hidden.value) return;
+  const escrito = search.value.trim().toLowerCase();
+  if (!escrito) return;
+  const match = _invCoOpciones().find(c => c.nombre.toLowerCase() === escrito);
+  if (match) { hidden.value = match.id; search.value = match.nombre; }
+  else       { search.value = ''; }
+}
+// Deja el buscador mostrando el centro que corresponde a un id (o vacío).
+function _invPintarCo(coId) {
+  const hidden = document.getElementById('f-co');
+  const search = document.getElementById('f-co-search');
+  if (hidden) hidden.value = coId || '';
+  if (search) {
+    const match = _invCoOpciones().find(c => String(c.id) === String(coId));
+    search.value = match ? match.nombre : '';
+  }
+}
+
 async function fillForm(d) {
   document.getElementById('f-tipo').value   = d.tipo_id   || '';
   document.getElementById('f-serial').value = d.serial    || '';
   document.getElementById('f-marca').value  = d.marca_id  || '';
   document.getElementById('f-prop').value   = d.propietario_id || '';
-  document.getElementById('f-co').value     = d.co_id     || '';
+  _invPintarCo(d.co_id);   // pinta hidden + texto visible del buscador
   document.getElementById('f-obs').value    = d.observaciones || '';
   const dptoEl = document.getElementById('f-dpto');
   if (dptoEl && d.departamento_id) {
@@ -832,6 +918,7 @@ function clearForm() {
   const ids = ['f-tipo', 'f-serial', 'f-marca', 'f-prop', 'f-co',
              'f-estado', 'f-nombre-equipo', 'f-valor-promedio', 'f-valor-arrendamiento'];
   ids.forEach(id => { const el = document.getElementById(id); if (el) el.value = ''; });
+  _invPintarCo('');   // el hidden ya quedó vacío arriba; falta el texto visible
   const serialEl = document.getElementById('f-serial');
   if (serialEl) { serialEl.readOnly = false; serialEl.placeholder = ''; }
   const mun = document.getElementById('f-municipio');
@@ -849,8 +936,20 @@ async function saveDevice() {
   const estado = document.getElementById('f-estado')?.value || '';
   const dpto   = document.getElementById('f-dpto').value;
   const mun    = document.getElementById('f-municipio').value;
-  if (!tipo || !prop || !dpto || !mun) {
-    showNotif('Campos requeridos', 'Completa todos los campos obligatorios (*)', 'warning');
+  // El CO ya era obligatorio en el backend (api_dispositivo_crear lo exige),
+  // pero aquí no se validaba: el guardado moría con un error genérico del
+  // servidor. Se nombran los campos que faltan en vez de decir "completa los
+  // obligatorios", que obliga a repasar el formulario entero a ojo.
+  const faltantes = [];
+  if (!tipo) faltantes.push('Tipo dispositivo');
+  if (!prop) faltantes.push('Propietario');
+  if (!co)   faltantes.push('CO');
+  if (!dpto) faltantes.push('Departamento');
+  if (!mun)  faltantes.push('Municipio');
+  if (faltantes.length) {
+    showNotif('Campos requeridos', 'Falta completar: ' + faltantes.join(', ') + '.', 'warning');
+    // El CO es un hidden: hay que llevar el foco al buscador, no al campo.
+    if (!co) document.getElementById('f-co-search')?.focus();
     return;
   }
 
@@ -4449,45 +4548,180 @@ function _pintarAvatar(elId, foto) {
   el.innerHTML = foto ? `<img src="${foto}" alt="">` : _avatarInicialHTML[elId];
 }
 
-function toggleAvatarPanel(ev) {
+// ── Menú del avatar: Perfil / Cerrar sesión ──
+function toggleProfileMenu(ev) {
   ev.stopPropagation();
-  const panel = document.getElementById('avatarPanel');
-  if (!panel) return;
-  panel.classList.contains('hidden') ? abrirAvatarPanel() : cerrarAvatarPanel();
+  const menu = document.getElementById('profileDropdownMenu');
+  if (!menu) return;
+  menu.classList.contains('hidden') ? abrirProfileMenu() : cerrarProfileMenu();
 }
 
-function abrirAvatarPanel() {
+function abrirProfileMenu() {
   cerrarBellPanel();
-  const btn   = document.getElementById('miAvatar');
-  const panel = document.getElementById('avatarPanel');
-  if (!btn || !panel) return;
+  const btn  = document.getElementById('miAvatar');
+  const menu = document.getElementById('profileDropdownMenu');
+  if (!btn || !menu) return;
   // Mismo truco que el panel de la campana: se mueve al <body> para no
   // quedar recortado por el overflow:hidden del header al hacer scroll.
-  if (panel.parentElement !== document.body) document.body.appendChild(panel);
+  if (menu.parentElement !== document.body) document.body.appendChild(menu);
   const rect = btn.getBoundingClientRect();
-  panel.style.top   = (rect.bottom + 10) + 'px';
-  panel.style.right = (window.innerWidth - rect.right) + 'px';
-  panel.classList.remove('hidden');
-  const foto = _getAvatarFoto();
-  _pintarAvatar('avatarPanelPreview', foto);
-  const btnQuitar = document.getElementById('avatarPanelQuitar');
-  if (btnQuitar) btnQuitar.style.display = foto ? '' : 'none';
+  menu.style.top   = (rect.bottom + 10) + 'px';
+  menu.style.right = (window.innerWidth - rect.right) + 'px';
+  menu.classList.remove('hidden');
 }
-function cerrarAvatarPanel() {
-  document.getElementById('avatarPanel')?.classList.add('hidden');
+function cerrarProfileMenu() {
+  document.getElementById('profileDropdownMenu')?.classList.add('hidden');
 }
 
 document.addEventListener('click', (ev) => {
-  const panel = document.getElementById('avatarPanel');
-  if (!panel || panel.classList.contains('hidden')) return;
+  const menu = document.getElementById('profileDropdownMenu');
+  if (!menu || menu.classList.contains('hidden')) return;
   const btn = document.getElementById('miAvatar');
-  const dentro = panel.contains(ev.target) || (btn && btn.contains(ev.target));
-  if (!dentro) cerrarAvatarPanel();
+  const dentro = menu.contains(ev.target) || (btn && btn.contains(ev.target));
+  if (!dentro) cerrarProfileMenu();
 });
 
 window.addEventListener('resize', () => {
-  const panel = document.getElementById('avatarPanel');
-  if (panel && !panel.classList.contains('hidden')) abrirAvatarPanel();
+  const menu = document.getElementById('profileDropdownMenu');
+  if (menu && !menu.classList.contains('hidden')) abrirProfileMenu();
+});
+
+// ── Modal 1: datos del perfil ──
+function abrirProfileModal() {
+  cerrarProfileMenu();
+  const overlay = document.getElementById('profileModalOverlay');
+  if (!overlay) return;
+  _refrescarAvatarPerfil();
+  overlay.classList.remove('hidden');
+}
+function cerrarProfileModal() {
+  document.getElementById('profileModalOverlay')?.classList.add('hidden');
+}
+
+// Pinta la foto en el modal y marca si es ampliable. La clase 'con-foto'
+// es la que hace que el cursor invite a hacer clic: sin foto no hay nada
+// que ampliar y el clic no debe hacer nada.
+function _refrescarAvatarPerfil() {
+  const foto = _getAvatarFoto();
+  _pintarAvatar('profileModalAvatar', foto);
+  document.getElementById('profileModalAvatar')?.classList.toggle('con-foto', !!foto);
+}
+
+document.getElementById('btnAbrirPerfil')?.addEventListener('click', abrirProfileModal);
+document.getElementById('profileModalClose')?.addEventListener('click', cerrarProfileModal);
+// Clic en el fondo oscuro cierra; clic dentro de la caja no.
+document.getElementById('profileModalOverlay')?.addEventListener('click', (ev) => {
+  if (ev.target.id === 'profileModalOverlay') cerrarProfileModal();
+});
+
+// ── Modal 2: cambiar contraseña ──
+function abrirPassModal() {
+  _limpiarFormPassword();
+  document.getElementById('passModalOverlay')?.classList.remove('hidden');
+  document.getElementById('pass_actual')?.focus();
+}
+function cerrarPassModal() {
+  document.getElementById('passModalOverlay')?.classList.add('hidden');
+  _limpiarFormPassword();
+}
+
+// Los campos NO se conservan entre aperturas: son contraseñas, no deben
+// quedar escritas en el DOM después de cerrar. También se devuelven a
+// type=password por si quedaron visibles con el ojito.
+function _limpiarFormPassword() {
+  ['pass_actual', 'pass_nueva', 'pass_confirmar'].forEach(id => {
+    const el = document.getElementById(id);
+    if (el) { el.value = ''; el.type = 'password'; }
+  });
+  document.querySelectorAll('.pass-ver i').forEach(i => {
+    i.className = 'fa-solid fa-eye';
+  });
+  const msg = document.getElementById('profilePassMsg');
+  if (msg) { msg.textContent = ''; msg.className = 'profile-pass-msg'; }
+}
+
+function _mostrarMsgPassword(texto, tipo) {
+  const msg = document.getElementById('profilePassMsg');
+  if (!msg) return;
+  msg.textContent = texto;
+  msg.className = 'profile-pass-msg ' + tipo;   // 'error' | 'ok'
+}
+
+document.getElementById('btnAbrirCambioPass')?.addEventListener('click', abrirPassModal);
+document.getElementById('passModalClose')?.addEventListener('click', cerrarPassModal);
+document.getElementById('btnCancelarPass')?.addEventListener('click', cerrarPassModal);
+document.getElementById('passModalOverlay')?.addEventListener('click', (ev) => {
+  if (ev.target.id === 'passModalOverlay') cerrarPassModal();
+});
+
+// Mostrar/ocultar cada campo. Ayuda a no equivocarse escribiendo a ciegas.
+document.querySelectorAll('.pass-ver').forEach(btn => {
+  btn.addEventListener('click', () => {
+    const input = document.getElementById(btn.dataset.target);
+    if (!input) return;
+    const visible = input.type === 'text';
+    input.type = visible ? 'password' : 'text';
+    const icono = btn.querySelector('i');
+    if (icono) icono.className = visible ? 'fa-solid fa-eye' : 'fa-solid fa-eye-slash';
+  });
+});
+
+// Escape cierra de arriba hacia abajo: primero el visor de la foto,
+// luego el de contraseña, y de último el del perfil.
+document.addEventListener('keydown', (ev) => {
+  if (ev.key !== 'Escape') return;
+  const visor = document.getElementById('fotoVisorOverlay');
+  const pass  = document.getElementById('passModalOverlay');
+  if (visor && !visor.classList.contains('hidden')) return cerrarFotoVisor();
+  if (pass && !pass.classList.contains('hidden'))   return cerrarPassModal();
+  cerrarProfileModal();
+});
+
+// ── Cambio de contraseña ──
+document.getElementById('formCambiarPassword')?.addEventListener('submit', async (ev) => {
+  ev.preventDefault();
+  const btn       = document.getElementById('btnCambiarPassword');
+  const actual    = document.getElementById('pass_actual').value;
+  const nueva     = document.getElementById('pass_nueva').value;
+  const confirmar = document.getElementById('pass_confirmar').value;
+
+  // Validaciones de cortesía: el backend las repite todas, esto solo evita
+  // el viaje al servidor para errores obvios.
+  if (!actual || !nueva || !confirmar) {
+    return _mostrarMsgPassword('Debes llenar los tres campos.', 'error');
+  }
+  if (nueva !== confirmar) {
+    return _mostrarMsgPassword('La confirmación no coincide con la contraseña nueva.', 'error');
+  }
+
+  btn.disabled = true;
+  const textoOriginal = btn.textContent;
+  btn.textContent = 'Actualizando...';
+
+  const res = await apiFetch(API.cambiarPassword, 'POST', { actual, nueva, confirmar });
+
+  btn.disabled = false;
+  btn.textContent = textoOriginal;
+
+  if (res.ok) {
+    _limpiarFormPassword();
+    _mostrarMsgPassword('Tu contraseña fue actualizada. Úsala la próxima vez que inicies sesión.', 'ok');
+    showNotification('success', 'Contraseña actualizada',
+      'Tu contraseña de Systraker fue cambiada correctamente.');
+    // Se cierra solo y deja a la vista el modal de perfil. El aviso queda
+    // en la notificación del header, así que no se pierde la confirmación.
+    setTimeout(cerrarPassModal, 1600);
+  } else {
+    _mostrarMsgPassword(res.error || 'No se pudo cambiar la contraseña.', 'error');
+  }
+});
+
+// ── Foto de perfil ──
+// El lápiz de la esquina cambia la imagen; hacer clic en la foto misma la
+// abre en grande, y eliminarla solo se puede desde ahí.
+document.getElementById('profileModalAvatarBtn')?.addEventListener('click', (ev) => {
+  ev.stopPropagation();   // no abrir el visor al tocar el botón de la cámara
+  document.getElementById('avatarFileInput')?.click();
 });
 
 document.getElementById('avatarFileInput')?.addEventListener('change', (ev) => {
@@ -4497,20 +4731,40 @@ document.getElementById('avatarFileInput')?.addEventListener('change', (ev) => {
   reader.onload = () => {
     _setAvatarFoto(reader.result);
     _pintarAvatar('miAvatar', reader.result);
-    _pintarAvatar('avatarPanelPreview', reader.result);
-    const btnQuitar = document.getElementById('avatarPanelQuitar');
-    if (btnQuitar) btnQuitar.style.display = '';
+    _refrescarAvatarPerfil();
   };
   reader.readAsDataURL(file);
 });
 
-document.getElementById('avatarPanelQuitar')?.addEventListener('click', () => {
+// ── Visor de la foto en grande ──
+function abrirFotoVisor() {
+  const foto = _getAvatarFoto();
+  if (!foto) return;   // sin foto no hay nada que ampliar
+  const img = document.getElementById('fotoVisorImg');
+  if (img) img.src = foto;
+  document.getElementById('fotoVisorOverlay')?.classList.remove('hidden');
+}
+function cerrarFotoVisor() {
+  document.getElementById('fotoVisorOverlay')?.classList.add('hidden');
+}
+
+document.getElementById('profileModalAvatar')?.addEventListener('click', abrirFotoVisor);
+// Accesible con teclado: el div tiene role="button" y tabindex="0".
+document.getElementById('profileModalAvatar')?.addEventListener('keydown', (ev) => {
+  if (ev.key === 'Enter' || ev.key === ' ') { ev.preventDefault(); abrirFotoVisor(); }
+});
+document.getElementById('fotoVisorCerrar')?.addEventListener('click', cerrarFotoVisor);
+document.getElementById('fotoVisorOverlay')?.addEventListener('click', (ev) => {
+  if (ev.target.id === 'fotoVisorOverlay') cerrarFotoVisor();
+});
+
+document.getElementById('fotoVisorEliminar')?.addEventListener('click', () => {
   _removeAvatarFoto();
   _pintarAvatar('miAvatar', '');
-  _pintarAvatar('avatarPanelPreview', '');
-  document.getElementById('avatarPanelQuitar').style.display = 'none';
+  _refrescarAvatarPerfil();
   const input = document.getElementById('avatarFileInput');
-  if (input) input.value = '';
+  if (input) input.value = '';   // permite volver a elegir el MISMO archivo
+  cerrarFotoVisor();
 });
 
 // ============================================================
@@ -4542,6 +4796,7 @@ window.addEventListener('DOMContentLoaded', async () => {
       ['f-marca', 'f-nombre-equipo', 'f-valor-promedio', 'f-valor-arrendamiento',
        'f-prop', 'f-co', 'f-estado', 'f-obs']
         .forEach(id => { const el = document.getElementById(id); if (el) el.value = ''; });
+      _invPintarCo('');   // 'f-co' es hidden: también hay que borrar lo visible
 
       const dptoEl = document.getElementById('f-dpto');
       if (dptoEl) dptoEl.value = '';

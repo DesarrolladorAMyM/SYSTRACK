@@ -781,6 +781,29 @@ function showNotif(title, msg, type = 'success', duration = 3500) {
     if(fCargo  && perfil.cargo_txt)                fCargo.value  = perfil.cargo_txt;
   }
 
+  /* Contraparte de precargarDocumentoEnFormulario para el cierre de sesión.
+     Esa función solo rellena los campos VACÍOS —a propósito, para no pisar lo
+     que el usuario esté escribiendo—, así que si el formulario se queda con
+     los datos del que se fue, el siguiente que se identifica los sigue viendo
+     hasta recargar la página. Aquí se vacía para que vuelva a rellenarse. */
+  function limpiarFormularioAgregar(){
+    const form = document.getElementById('formAgregarReq');
+    if(!form) return;
+    form.reset();
+
+    // reset() vacía los <input>, pero los selects buscables guardan aparte el
+    // id elegido (hidden) y la etiqueta mostrada: hay que limpiarlos por su
+    // propia API o quedarían apuntando a la selección anterior.
+    ['sdr_centro', 'sdr_categoria', 'sdr_subcategoria'].forEach(id => {
+      document.getElementById(id)?._sdr?.reset();
+    });
+    // La subcategoría vuelve a depender de que se elija una categoría.
+    document.getElementById('sdr_subcategoria')?._sdr?.deshabilitar();
+
+    const nombreArchivo = document.getElementById('fileInputName');
+    if(nombreArchivo) nombreArchivo.textContent = 'Ningún archivo seleccionado';
+  }
+
   /*  MODAL DE IDENTIFICACIÓN  */
   const idModalOverlay = document.getElementById('idModalOverlay');
   const idModalInput   = document.getElementById('idModalInput');
@@ -1105,6 +1128,11 @@ function showNotif(title, msg, type = 'success', duration = 3500) {
           return;
         }
 
+        // El perfil se guardó en sessionStorage ANTES de este modal, con los
+        // datos incompletos. Sin este refresco, el modal de perfil seguiría
+        // mostrando el área, el cargo y el correo viejos toda la sesión.
+        if(resp.perfil) setPerfil(resp.perfil);
+
         actualizarModalOverlay.classList.add('hidden');
         showNotif('¡Datos actualizados!', 'Gracias por confirmar tu información.', 'success');
         // Recién aquí se marca la sesión como iniciada (ver nota en confirmarDocumento).
@@ -1180,12 +1208,13 @@ function showNotif(title, msg, type = 'success', duration = 3500) {
     clearDocumento();
 
     // Limpia todo lo que quedaba pintado en pantalla de la sesión anterior
-    // (antes solo se borraban las variables, pero la tabla y la campanita
-    // seguían mostrando los datos viejos hasta la próxima recarga).
+    // (antes solo se borraban las variables, pero la tabla, la campanita y el
+    // formulario seguían mostrando los datos viejos hasta la próxima recarga).
     NOTIF = { notificaciones: [], vencidos: [], pendientes_calificar: [], total_alertas: 0 };
     cerrarBellPanel();
     actualizarBell();
     actualizarChipsDocumento();
+    limpiarFormularioAgregar();
     page = 1;
     renderMisReq();
 
@@ -1220,18 +1249,89 @@ function showNotif(title, msg, type = 'success', duration = 3500) {
   const profileModalAvatar  = document.getElementById('profileModalAvatar');
   const profileModalInput   = document.getElementById('profileModalAvatarInput');
 
-  const profileModalAvatarQuitar = document.getElementById('profileModalAvatarQuitar');
+  const fotoVisorOverlay = document.getElementById('fotoVisorOverlay');
+
+  // Pinta la foto (o las iniciales) y marca si es ampliable. La clase
+  // 'con-foto' es la que le pone el cursor de zoom: sin foto, el clic no
+  // hace nada y no debe insinuar que sí.
+  function _pintarAvatarPerfil(){
+    const avatarUrl = getAvatar(getDocumento());
+    profileModalAvatar.innerHTML = avatarUrl
+      ? ('<img src="' + avatarUrl + '" alt="">')
+      : iniciales(getPerfil().nombre);
+    profileModalAvatar.classList.toggle('con-foto', !!avatarUrl);
+  }
+
+  function _txt(id, valor){
+    const el = document.getElementById(id);
+    if(!el) return;
+    el.textContent = valor || '—';
+    // El title deja leer completo lo que el ancho de la fila recorta.
+    if(valor) el.title = valor; else el.removeAttribute('title');
+  }
+
+  function _pintarDatosPerfil(){
+    const perfil = getPerfil();
+    _pintarAvatarPerfil();
+    _txt('profileModalNombre', perfil.nombre);
+    document.getElementById('profileModalCargo').textContent = perfil.cargo_txt || '';
+    _txt('profileModalDoc',    getDocumento());
+    _txt('profileModalCorreo', perfil.email);
+    _txt('profileModalArea',   perfil.area_txt);
+    _txt('profileModalCentro', perfil.co_texto);
+
+    // Perfiles guardados antes de este cambio no traen 'estado' en
+    // sessionStorage. Si se entró al portal, el backend ya exigió Estado=1,
+    // así que "Activo" es el valor correcto para ese caso.
+    const estadoTxt = perfil.estado || 'Activo';
+    const activo    = perfil.estado ? !!perfil.estado_activo : true;
+    const badge     = document.getElementById('profileModalEstado');
+    if(badge){
+      badge.textContent = estadoTxt;
+      badge.classList.toggle('ok',  activo);
+      badge.classList.toggle('off', !activo);
+    }
+  }
+
+  /* El perfil de sessionStorage es una foto tomada al entrar: puede venir de
+     una sesión abierta ANTES de que existieran estos campos (y entonces el
+     área sale vacía), o haber quedado viejo si alguien cambió los datos en la
+     base. Por eso el modal pinta primero lo que tiene —abre sin esperar— y en
+     paralelo pide los datos frescos. Si la red falla, se queda con la caché. */
+  function _refrescarPerfilDesdeBackend(){
+    const doc = getDocumento();
+    if(!doc) return;
+    fetch('/SYSTRACK/requerimiento/api/validar-cedula/', {
+      method:  'POST',
+      headers: {'Content-Type': 'application/json'},
+      body:    JSON.stringify({ cedula: doc })
+    })
+    .then(r => r.json())
+    .then(resp => {
+      if(!resp || !resp.ok) return;
+      setPerfil({
+        nombre:    resp.nombre,
+        email:     resp.email,
+        id_cargo:  resp.id_cargo,
+        cargo_txt: resp.cargo_txt,
+        id_co:     resp.id_co,
+        co_texto:  resp.co_texto,
+        id_area:   resp.id_area,
+        area_txt:  resp.area_txt,
+        estado:        resp.estado,
+        estado_activo: resp.estado_activo,
+      });
+      // Solo repinta si el modal sigue abierto: si ya lo cerraron, repintar
+      // no aporta nada y los datos quedan igual guardados para la próxima.
+      if(!profileModalOverlay.classList.contains('hidden')) _pintarDatosPerfil();
+    })
+    .catch(() => {});
+  }
 
   function abrirModalPerfil(){
-    const doc       = getDocumento();
-    const perfil    = getPerfil();
-    const avatarUrl = getAvatar(doc);
-    profileModalAvatar.innerHTML = avatarUrl ? ('<img src="' + avatarUrl + '" alt="">') : iniciales(perfil.nombre);
-    profileModalAvatarQuitar.style.display = avatarUrl ? '' : 'none';
-    document.getElementById('profileModalNombre').textContent    = perfil.nombre    || '—';
-    document.getElementById('profileModalCargo').textContent     = perfil.cargo_txt || '';
-    document.getElementById('profileModalDocGrande').textContent = doc || '—';
+    _pintarDatosPerfil();
     profileModalOverlay.classList.remove('hidden');
+    _refrescarPerfilDesdeBackend();
   }
   function cerrarModalPerfil(){
     profileModalOverlay.classList.add('hidden');
@@ -1248,20 +1348,47 @@ function showNotif(title, msg, type = 'success', duration = 3500) {
     const reader = new FileReader();
     reader.onload = () => {
       setAvatar(getDocumento(), reader.result);
-      profileModalAvatar.innerHTML = '<img src="' + reader.result + '" alt="">';
-      profileModalAvatarQuitar.style.display = '';
+      _pintarAvatarPerfil();
       actualizarChipsDocumento();
     };
     reader.readAsDataURL(file);
   });
 
-  profileModalAvatarQuitar.addEventListener('click', () => {
-    const doc = getDocumento();
-    removeAvatar(doc);
-    profileModalAvatar.innerHTML = iniciales(getPerfil().nombre);
-    profileModalAvatarQuitar.style.display = 'none';
-    profileModalInput.value = '';
+  /* ===== VISOR DE LA FOTO EN GRANDE =====
+     Único sitio desde donde se elimina la foto, para no dejar un enlace
+     suelto de "Quitar foto" colgando bajo el avatar. */
+  function abrirFotoVisor(){
+    const foto = getAvatar(getDocumento());
+    if(!foto) return;   // sin foto no hay nada que ampliar
+    const img = document.getElementById('fotoVisorImg');
+    if(img) img.src = foto;
+    fotoVisorOverlay.classList.remove('hidden');
+  }
+  function cerrarFotoVisor(){
+    fotoVisorOverlay.classList.add('hidden');
+  }
+
+  profileModalAvatar.addEventListener('click', abrirFotoVisor);
+  // Accesible con teclado: el div tiene role="button" y tabindex="0".
+  profileModalAvatar.addEventListener('keydown', (e) => {
+    if(e.key === 'Enter' || e.key === ' '){ e.preventDefault(); abrirFotoVisor(); }
+  });
+  document.getElementById('fotoVisorCerrar').addEventListener('click', cerrarFotoVisor);
+  fotoVisorOverlay.addEventListener('click', (e) => { if(e.target === fotoVisorOverlay) cerrarFotoVisor(); });
+
+  document.getElementById('fotoVisorEliminar').addEventListener('click', () => {
+    removeAvatar(getDocumento());
+    _pintarAvatarPerfil();
+    profileModalInput.value = '';   // permite volver a elegir el MISMO archivo
     actualizarChipsDocumento();
+    cerrarFotoVisor();
+  });
+
+  // Escape cierra de arriba hacia abajo: primero el visor, luego el perfil.
+  document.addEventListener('keydown', (e) => {
+    if(e.key !== 'Escape') return;
+    if(!fotoVisorOverlay.classList.contains('hidden'))      { cerrarFotoVisor();  return; }
+    if(!profileModalOverlay.classList.contains('hidden'))   { cerrarModalPerfil(); }
   });
 
   /* ===== SEGUIMIENTO ===== */

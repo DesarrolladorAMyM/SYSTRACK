@@ -202,6 +202,51 @@ def subcategorias(request):
     return JsonResponse({'ok': True, 'subcategorias': subs})
 
 
+def _perfil_usuario(usuario):
+    """Arma el perfil que el portal guarda en sessionStorage y muestra en el
+    modal del avatar.
+
+    Vive en una función aparte porque lo consumen DOS endpoints: validar_cedula
+    (al entrar) y api_actualizar_datos_usuario (después de que el usuario
+    corrige sus datos). Si solo lo armara el primero, el perfil de la sesión
+    se quedaría con el área, el cargo y el correo viejos.
+    """
+    co_texto = ''
+    id_co_limpio = (usuario.IdCO or '').strip()
+    if id_co_limpio:
+        co = CentroOperacion.objects.using(DB).filter(IdCo=id_co_limpio).first()
+        if co:
+            co_texto = co.Descripcion
+
+    cargo_txt = ''
+    if usuario.IdCargo:
+        cargo = Cargo.objects.using(DB).filter(IdCargo=usuario.IdCargo).first()
+        if cargo:
+            cargo_txt = cargo.Descripcion
+
+    area_txt = ''
+    if usuario.IdArea:
+        area = Area.objects.using(DB).filter(IdArea=usuario.IdArea).first()
+        if area:
+            area_txt = area.NombreArea
+
+    return {
+        'nombre':    usuario.NombreCompleto,
+        'email':     usuario.Email or '',
+        'id_cargo':  usuario.IdCargo or '',
+        'cargo_txt': cargo_txt,
+        'id_co':     id_co_limpio,
+        'co_texto':  co_texto,
+        'id_area':   usuario.IdArea or '',
+        'area_txt':  area_txt,
+        # mv_Usuarios.Estado no tiene tabla de catálogo: Estado=1 es el único
+        # valor que deja entrar (ambos endpoints filtran así). Se resuelve a
+        # texto aquí para no mandarle el número crudo al frontend.
+        'estado':        'Activo' if usuario.Estado == 1 else 'Inactivo',
+        'estado_activo': usuario.Estado == 1,
+    }
+
+
 @csrf_exempt
 @require_POST
 def validar_cedula(request):
@@ -219,33 +264,10 @@ def validar_cedula(request):
     except Usuario.DoesNotExist:
         return JsonResponse({'ok': False, 'error': 'Cédula no encontrada o usuario inhabilitado.'})
 
-    co_texto = ''
-    id_co_limpio = (usuario.IdCO or '').strip()
-    if id_co_limpio:
-        try:
-            co = CentroOperacion.objects.using(DB).get(IdCo=id_co_limpio)
-            co_texto = co.Descripcion
-        except CentroOperacion.DoesNotExist:
-            pass
-
-    cargo_txt = ''
-    if usuario.IdCargo:
-        try:
-            cargo = Cargo.objects.using(DB).get(IdCargo=usuario.IdCargo)
-            cargo_txt = cargo.Descripcion
-        except Cargo.DoesNotExist:
-            pass
-
     return JsonResponse({
-        'ok':        True,
-        'nombre':    usuario.NombreCompleto,
-        'email':     usuario.Email or '',
-        'id_cargo':  usuario.IdCargo or '',
-        'cargo_txt': cargo_txt,
-        'id_co':     id_co_limpio,
-        'co_texto':  co_texto,
-        'id_area':   usuario.IdArea or '',
+        'ok': True,
         'datos_actualizados': bool(usuario.DatosActualizados),
+        **_perfil_usuario(usuario),
     })
 
 
@@ -307,7 +329,10 @@ def api_actualizar_datos_usuario(request):
     usuario.DatosActualizados = True
     usuario.save(using=DB, update_fields=['IdCargo', 'IdCO', 'IdArea', 'Email', 'DatosActualizados'])
 
-    return JsonResponse({'ok': True})
+    # Se devuelve el perfil ya resuelto para que el portal refresque el que
+    # tiene en sessionStorage: lo guardó ANTES de este modal, con los datos
+    # incompletos que el usuario acaba de corregir.
+    return JsonResponse({'ok': True, 'perfil': _perfil_usuario(usuario)})
 
 
 @require_GET

@@ -40,22 +40,83 @@
   <button type="button" class="profile-dropdown-item danger" id="btnCerrarSesion"><i class="fa-solid fa-right-from-bracket"></i> Cerrar sesión</button>
 </div>
 
-<!-- MODAL: perfil del usuario -->
+<!-- MODAL: perfil del usuario.
+     Mismo diseño que el modal de perfil del dashboard (banda + foto montada +
+     filas de datos), pero SIN cambio de contraseña: en el portal se entra con
+     el número de documento, no hay contraseña que cambiar. -->
 <div class="id-modal-overlay hidden" id="profileModalOverlay">
-  <div class="id-modal-box" id="profileModalBox">
+  <div class="profile-modal-box" id="profileModalBox">
     <button class="id-modal-close" id="profileModalClose" title="Cerrar" aria-label="Cerrar"><i class="fa-solid fa-xmark"></i></button>
+
+    <div class="profile-modal-banner"></div>
+
     <div class="profile-modal-avatar-wrap">
-      <div class="profile-modal-avatar" id="profileModalAvatar"></div>
-      <button type="button" class="profile-modal-avatar-edit" id="profileModalAvatarBtn" title="Cambiar foto"><i class="fa-solid fa-camera"></i></button>
+      <!-- Clic en la foto = verla completa. El lápiz es el que la cambia. -->
+      <div class="profile-modal-avatar" id="profileModalAvatar" title="Ver foto"
+           role="button" tabindex="0"></div>
+      <button type="button" class="profile-modal-avatar-edit" id="profileModalAvatarBtn"
+              title="Cambiar foto" aria-label="Cambiar foto"><i class="fa-solid fa-camera"></i></button>
       <input type="file" id="profileModalAvatarInput" accept="image/*" style="display:none;">
     </div>
-    <button type="button" id="profileModalAvatarQuitar" style="display:none;background:none;border:none;color:var(--text-secondary);font-size:12.5px;text-decoration:underline;cursor:pointer;margin:-10px 0 4px;">Quitar foto</button>
-    <h3 id="profileModalNombre">—</h3>
+
+    <h3 class="profile-modal-nombre" id="profileModalNombre">—</h3>
     <p class="profile-modal-cargo" id="profileModalCargo"></p>
-    <div class="profile-modal-doc-label">Número de documento</div>
-    <div class="profile-modal-doc-grande" id="profileModalDocGrande">—</div>
-    <button class="btn-submit" id="profileModalCerrarSesion" style="width:100%;margin-top:8px;background:var(--danger,#ef4444);">CERRAR SESIÓN</button>
+
+    <div class="profile-datos">
+      <div class="profile-dato">
+        <div class="profile-dato-icon"><i class="fa-solid fa-id-card"></i></div>
+        <div class="profile-dato-body">
+          <span class="profile-dato-label">Documento</span>
+          <span class="profile-dato-valor" id="profileModalDoc">—</span>
+        </div>
+      </div>
+      <div class="profile-dato">
+        <div class="profile-dato-icon"><i class="fa-solid fa-envelope"></i></div>
+        <div class="profile-dato-body">
+          <span class="profile-dato-label">Correo</span>
+          <span class="profile-dato-valor" id="profileModalCorreo">—</span>
+        </div>
+      </div>
+      <div class="profile-dato">
+        <div class="profile-dato-icon"><i class="fa-solid fa-sitemap"></i></div>
+        <div class="profile-dato-body">
+          <span class="profile-dato-label">Área</span>
+          <span class="profile-dato-valor" id="profileModalArea">—</span>
+        </div>
+      </div>
+      <div class="profile-dato">
+        <div class="profile-dato-icon"><i class="fa-solid fa-location-dot"></i></div>
+        <div class="profile-dato-body">
+          <span class="profile-dato-label">Centro de operación</span>
+          <span class="profile-dato-valor" id="profileModalCentro">—</span>
+        </div>
+      </div>
+      <div class="profile-dato">
+        <div class="profile-dato-icon"><i class="fa-solid fa-circle-check"></i></div>
+        <div class="profile-dato-body">
+          <span class="profile-dato-label">Estado</span>
+          <span class="profile-dato-valor"><span class="profile-dato-badge ok" id="profileModalEstado">—</span></span>
+        </div>
+      </div>
+    </div>
+
+    <div class="profile-modal-acciones">
+      <button type="button" class="profile-modal-logout" id="profileModalCerrarSesion">
+        <i class="fa-solid fa-right-from-bracket"></i> Cerrar sesión
+      </button>
+    </div>
   </div>
+</div>
+
+<!-- VISOR: foto de perfil en grande. Es el único sitio desde donde se elimina,
+     así el modal de perfil no carga con un enlace suelto de "Quitar foto". -->
+<div class="foto-visor-overlay hidden" id="fotoVisorOverlay">
+  <button type="button" class="foto-visor-cerrar" id="fotoVisorCerrar"
+          title="Cerrar" aria-label="Cerrar"><i class="fa-solid fa-xmark"></i></button>
+  <img id="fotoVisorImg" src="" alt="Foto de perfil">
+  <button type="button" class="foto-visor-eliminar" id="fotoVisorEliminar">
+    <i class="fa-solid fa-trash"></i> Eliminar foto
+  </button>
 </div>
 
 <!-- MODAL: corregir requerimiento rechazado por el técnico -->

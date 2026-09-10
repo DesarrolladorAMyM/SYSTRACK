@@ -8,7 +8,7 @@ import json
 import re
 from datetime import date
 from django.http import JsonResponse, HttpResponse
-from requerimientos.models import Usuario,CentroOperacion,Cargo,TipoUsuario,Requerimiento
+from requerimientos.models import Usuario,CentroOperacion,Cargo,TipoUsuario,Requerimiento,Area
 
 from django.views.decorators.http import require_GET,require_POST
 from django.views.decorators.http import require_http_methods
@@ -74,8 +74,54 @@ CHECKLIST_NOTIF_DESDE = date(2026, 8, 26)
 # VISTA PRINCIPAL  Renderiza el dashboard HTML
 @login_required(login_url='login')
 def dashboard(request):
-   
-    return render(request, 'dashboard/dashboard.html')
+    """Renderiza el dashboard, con los datos del perfil del usuario.
+
+    El nombre y el documento ya están en la sesión desde el login (ver
+    index.views.Login), pero el cargo no: se resuelve aquí con una consulta
+    liviana, en vez de crear un endpoint aparte para un dato que se lee una
+    sola vez al cargar la pantalla.
+
+    Si el usuario de Django no está enlazado a mv_Usuarios (req_user_id en
+    None), el perfil sigue funcionando: muestra lo que haya y el cargo
+    queda vacío.
+    """
+    documento = request.session.get('usuario') or request.user.username
+    perfil = {
+        'nombre':    request.session.get('req_user_nombre') or request.user.get_full_name() or documento,
+        'documento': documento,
+        'cargo':     '',
+        'correo':    request.user.email or '',
+        'area':      '',
+        'estado':    '',
+        'estado_activo': False,
+    }
+
+    req_user_id = request.session.get('req_user_id')
+    if req_user_id:
+        usr = (Usuario.objects.using('requerimientos')
+               .filter(IdUsuario=req_user_id).first())
+        if usr:
+            # mv_Usuarios manda sobre el correo del usuario de Django: es el
+            # que mantiene el área y el que usa el portal para notificar.
+            if usr.Email:
+                perfil['correo'] = usr.Email
+            if usr.IdCargo:
+                cargo = (Cargo.objects.using('requerimientos')
+                         .filter(IdCargo=usr.IdCargo).first())
+                if cargo:
+                    perfil['cargo'] = cargo.Descripcion
+            if usr.IdArea:
+                area = (Area.objects.using('requerimientos')
+                        .filter(IdArea=usr.IdArea).first())
+                if area:
+                    perfil['area'] = area.NombreArea
+            # mv_Usuarios.Estado no tiene tabla de catálogo: el login exige
+            # Estado=1 (ver index.views.Login), así que ese es el único valor
+            # que significa "activo". Cualquier otro se muestra como inactivo.
+            perfil['estado_activo'] = (usr.Estado == 1)
+            perfil['estado'] = 'Activo' if usr.Estado == 1 else 'Inactivo'
+
+    return render(request, 'dashboard/dashboard.html', {'perfil': perfil})
 
 
 
@@ -86,6 +132,77 @@ def _json_ok(data):
 
 def _json_err(msg, status=400):
     return JsonResponse({'ok': False, 'error': msg}, status=status)
+
+
+# ═══════════════════════════════════════════════════
+# PERFIL — cambio de contraseña
+# ═══════════════════════════════════════════════════
+
+@login_required(login_url='login')
+@require_POST
+def api_cambiar_password(request):
+    """Cambia la contraseña de acceso a Systraker del usuario logueado.
+
+    Es la MISMA contraseña con la que se inicia sesión (usuario de Django;
+    el username es la cédula, ver index.views.Login).
+
+    Exige la contraseña actual a propósito: sin ese requisito, cualquiera
+    que encontrara un equipo con la sesión abierta podría apoderarse de la
+    cuenta cambiándole la clave.
+
+    Se valida con check_password y NO con authenticate() porque el proyecto
+    usa django-axes: un authenticate() fallido aquí le contaría intentos
+    fallidos al usuario y podría bloquearle el login por equivocarse
+    escribiendo su clave actual en su propio perfil.
+
+    Las contraseñas nunca se registran en el log.
+    """
+    from django.contrib.auth import update_session_auth_hash
+    from django.contrib.auth.password_validation import validate_password
+    from django.core.exceptions import ValidationError
+    from django.utils import translation
+
+    try:
+        body = json.loads(request.body)
+    except json.JSONDecodeError:
+        return _json_err('JSON inválido')
+
+    actual    = body.get('actual') or ''
+    nueva     = body.get('nueva') or ''
+    confirmar = body.get('confirmar') or ''
+
+    if not actual or not nueva or not confirmar:
+        return _json_err('Debes llenar los tres campos.')
+    if nueva != confirmar:
+        return _json_err('La confirmación no coincide con la contraseña nueva.')
+    if not request.user.check_password(actual):
+        return _json_err('La contraseña actual no es correcta.')
+    if nueva == actual:
+        return _json_err('La contraseña nueva debe ser distinta de la actual.')
+
+    # Reglas de complejidad de AUTH_PASSWORD_VALIDATORS (settings.py): las
+    # mismas que exige Django al crear un usuario, para no tener dos varas
+    # de medir distintas.
+    #
+    # translation.override('es') solo para esta llamada: LANGUAGE_CODE del
+    # proyecto es 'en-us', así que sin esto los mensajes le saldrían al
+    # usuario en inglés en medio de una interfaz en español. Django ya trae
+    # estas traducciones, no hay que escribirlas. No se cambia el idioma
+    # global para no alterar nada más de la aplicación.
+    try:
+        with translation.override('es'):
+            validate_password(nueva, user=request.user)
+    except ValidationError as e:
+        return _json_err(' '.join(e.messages))
+
+    request.user.set_password(nueva)
+    request.user.save(update_fields=['password'])
+
+    # Django invalida la sesión cuando cambia el hash de la contraseña. Sin
+    # esto el usuario quedaría deslogueado justo después de cambiarla.
+    update_session_auth_hash(request, request.user)
+
+    return _json_ok({'mensaje': 'Tu contraseña fue actualizada.'})
 
 
 # ═══════════════════════════════════════════════════
