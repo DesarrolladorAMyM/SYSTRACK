@@ -54,6 +54,7 @@ const API = {
   checklistItems:     `${BASE}/inventario/api/checklist/items/`,
   checklistItemCrear: `${BASE}/inventario/api/checklist/items/crear/`,
   checklistItemEditar:(pk) => `${BASE}/inventario/api/checklist/items/${pk}/editar/`,
+  checklistItemEliminar:(pk) => `${BASE}/inventario/api/checklist/items/${pk}/eliminar/`,
 
   // ── Novedades Generales ──
   novedadesTipos:       `${BASE}/inventario/api/novedades/tipos/`,
@@ -113,6 +114,15 @@ function getCookie(name) {
   const parts = val.split(`; ${name}=`);
   if (parts.length === 2) return parts.pop().split(';').shift();
   return '';
+}
+
+// Escapa texto que va a inyectarse con innerHTML, dejando que lo haga el
+// navegador. Lo usan el buscador de CO y la lista de preguntas del checklist:
+// ambos pintan texto que viene de la base.
+function _escHtml(s) {
+  const div = document.createElement('div');
+  div.textContent = String(s == null ? '' : s);
+  return div.innerHTML;
 }
 
 // Deja el botón con spinner mientras corre la acción y lo devuelve a como
@@ -843,13 +853,6 @@ function _invCoOpciones() {
     nombre: `${c.g207_co} — ${c.g207_descripcion_co}`,
   }));
 }
-function _invEscHtml(s) {
-  // Escapa dejando que el navegador lo haga: el nombre del centro viene de la
-  // base y se inyecta con innerHTML.
-  const div = document.createElement('div');
-  div.textContent = String(s == null ? '' : s);
-  return div.innerHTML;
-}
 // Se pinta por índice y no por nombre: así el nombre del centro nunca tiene
 // que viajar dentro de un atributo onmousedown, con lo que las comillas y
 // los apóstrofes dejan de ser un problema.
@@ -860,7 +863,7 @@ function _invRenderCoDropdown() {
   _invCoFiltrado = _invCoOpciones().filter(c => c.nombre.toLowerCase().includes(q));
   dd.innerHTML = _invCoFiltrado.length
     ? _invCoFiltrado.map((c, i) =>
-        `<div class="usr-dropdown-item" onmousedown="invSeleccionarCo(${i})">${_invEscHtml(c.nombre)}</div>`
+        `<div class="usr-dropdown-item" onmousedown="invSeleccionarCo(${i})">${_escHtml(c.nombre)}</div>`
       ).join('')
     : '<div class="usr-dropdown-empty">Sin resultados</div>';
 }
@@ -2842,9 +2845,15 @@ async function abrirAdminPreguntasChecklist() {
   document.getElementById('modalAdminPreguntas').classList.add('active');
 }
 
+// Última lista pintada en "Administrar preguntas". La guarda para que el
+// botón de eliminar pueda mostrar el texto de la pregunta en la confirmación
+// sin volver a pedirla al servidor.
+let _chkItemsAdmin = [];
+
 async function _cargarYRenderAdminPreguntas() {
   const res = await apiFetch(API.checklistItems);
   const items = res.ok ? res.data : [];
+  _chkItemsAdmin = items;
 
   const secciones = [...new Set(items.map(it => it.seccion).filter(Boolean))].sort();
   document.getElementById('chk-secciones-list').innerHTML =
@@ -2867,9 +2876,14 @@ async function _cargarYRenderAdminPreguntas() {
     html += `
       <div style="display:flex;align-items:center;justify-content:space-between;gap:10px;padding:8px 0;border-bottom:1px solid rgba(0,0,0,.06);">
         <span style="font-size:13.5px;${it.activo ? '' : 'color:var(--text-light);text-decoration:line-through;'}">${it.pregunta}</span>
-        <label style="display:flex;align-items:center;gap:6px;font-size:12px;color:var(--text-light);flex-shrink:0;">
-          <input type="checkbox" ${it.activo ? 'checked' : ''} onchange="toggleItemChecklistActivo(${it.id}, this.checked)"> Activa
-        </label>
+        <div style="display:flex;align-items:center;gap:12px;flex-shrink:0;">
+          <label style="display:flex;align-items:center;gap:6px;font-size:12px;color:var(--text-light);">
+            <input type="checkbox" ${it.activo ? 'checked' : ''} onchange="toggleItemChecklistActivo(${it.id}, this.checked)"> Activa
+          </label>
+          <button type="button" class="chk-item-borrar" title="Eliminar pregunta"
+                  aria-label="Eliminar pregunta"
+                  onclick="eliminarItemChecklist(${it.id})"><i class="fas fa-trash"></i></button>
+        </div>
       </div>`;
   });
   if (grupoActual !== null) html += '</div>';
@@ -2893,6 +2907,32 @@ async function toggleItemChecklistActivo(id, activo) {
   const res = await apiFetch(API.checklistItemEditar(id), 'PUT', { activo });
   if (!res.ok) { showNotif('Error', res.error || 'No se pudo actualizar', 'warning'); return; }
   await _cargarYRenderAdminPreguntas();
+}
+
+function eliminarItemChecklist(id) {
+  const it = _chkItemsAdmin.find(x => x.id === id);
+  if (!it) return;
+
+  document.getElementById('confirmSub').textContent = it.pregunta;
+  // Se dice explícitamente que el historial no se toca: si no, borrar una
+  // pregunta ya respondida da miedo y nadie se atreve, que es justo lo que
+  // llevó a que quedaran preguntas de prueba dando vueltas.
+  document.getElementById('confirmBody').innerHTML = `
+    Eliminarás del catálogo la pregunta <strong>${_escHtml(it.pregunta)}</strong>.<br><br>
+    Los checklists ya respondidos <strong>no se modifican</strong>: conservan la
+    respuesta y el texto con el que se preguntó en su momento.`;
+
+  document.getElementById('btnConfirmDel').onclick = async () => {
+    const res = await apiFetch(API.checklistItemEliminar(id), 'DELETE');
+    if (!res.ok) { showNotif('Error', res.error || 'No se pudo eliminar la pregunta', 'warning'); return; }
+    closeModal('modalConfirm');
+    showNotif('Eliminada', `La pregunta "${it.pregunta}" fue eliminada del catálogo`, 'success');
+    await _cargarYRenderAdminPreguntas();
+    // El filtro de la pantalla Checklist solo lista tipos CON preguntas
+    // activas: si esta era la última de su tipo, ese tipo debe desaparecer.
+    cargarChecklistTiposDisponibles();
+  };
+  document.getElementById('modalConfirm').classList.add('active');
 }
 
 // ============================================================
@@ -4252,7 +4292,7 @@ async function cargarNotificacionesBell() {
   if (panel && !panel.classList.contains('hidden')) renderBellPanel();
 }
 
-// "Marcar como leído" — para 'licencia', 'aprobacion', 'checklist', 'nuevo'
+// "Marcar como leído" — para 'licencia', 'aprobacion', 'nuevo'
 // y 'prestamo'. 'vencido' y 'sin_asignar' NUNCA se pueden ocultar: son
 // alertas que necesitan una acción real, no que se ignoren.
 //
@@ -4273,9 +4313,6 @@ async function _bellMarcarLeida(tipo, referenciaId, referenciaFecha) {
   } else if (tipo === 'aprobacion') {
     BELL_DATA.pendientes_aprobacion = BELL_DATA.pendientes_aprobacion
       .filter(p => !(p.id === referenciaId && p.fecha === referenciaFecha));
-  } else if (tipo === 'checklist') {
-    BELL_DATA.checklist_pendiente = BELL_DATA.checklist_pendiente
-      .filter(d => !(d.id === referenciaId && d.fecha === referenciaFecha));
   } else if (tipo === 'nuevo') {
     BELL_DATA.nuevos_sin_asignar = BELL_DATA.nuevos_sin_asignar
       .filter(n => !(n.id === referenciaId && n.fecha === referenciaFecha));
@@ -4312,7 +4349,8 @@ async function bellMarcarTodasLeidas() {
   BELL_DATA.licencias_por_vencer  = [];
   BELL_DATA.nuevos_sin_asignar    = [];
   BELL_DATA.prestamos_realizados  = [];
-  BELL_DATA.checklist_pendiente   = [];
+  // checklist_pendiente NO se vacía: no es marcable, así que "marcar todas"
+  // tampoco puede hacerla desaparecer. Se queda hasta que se haga.
   renderBellBadge();
   renderBellPanel();
 
@@ -4379,8 +4417,9 @@ function _construirBellItems() {
     mensaje: `${d.tipo} — registrado el ${d.fecha}`,
     fecha: `Registrado el ${d.fecha}`,
     icono: 'fa-clipboard-check', onClick: () => _irAChecklistDispositivo(d.serial),
-    dismissible: true, refId: d.id, refFecha: d.fecha,
-    onLeida: () => _bellMarcarLeida('checklist', d.id, d.fecha),
+    // Sin chulito: el checklist pendiente no se silencia. Se quita haciéndolo
+    // (o pasando el equipo a un estado inactivo), no marcándolo como visto.
+    dismissible: false,
   }));
   // 'vencidos' son los que están asignados A MÍ (ver api_notificaciones_bell),
   // así que el destino natural es mi propia bandeja, no la cola de asignación.

@@ -1567,13 +1567,49 @@ def api_checklist_item_editar(request, pk):
 
 
 @login_required(login_url='login')
+@require_http_methods(['DELETE'])
+@requiere_pantalla('checklist', bloquear_solo_lectura=True)
+def api_checklist_item_eliminar(request, pk):
+    """
+    Borra una pregunta del catálogo del checklist.
+
+    Se puede borrar aunque ya se haya respondido en checklists anteriores:
+    RespuestaChecklist.g238_item es SET_NULL y guarda aparte el texto con el
+    que se preguntó (g238_item_desc), así que el historial se sigue leyendo
+    igual. Por eso esto es un borrado real y no un "desactivar" — para eso ya
+    está el chulito de Activa.
+    """
+    item = get_object_or_404(ItemChecklist, pk=pk)
+    pregunta = item.g236_pregunta
+    usos = RespuestaChecklist.objects.filter(g238_item_id=pk).count()
+    item.delete()
+    return _json_ok({'pregunta': pregunta, 'respuestas_conservadas': usos})
+
+
+@login_required(login_url='login')
 @require_http_methods(['GET'])
 def api_checklist_stats(request):
-    """Resumen para el encabezado de la pantalla de Checklist."""
-    total = Dispositivo.objects.exclude(g212_estado__g201_descripcion__in=ESTADOS_INACTIVOS).count()
-    con_checklist = ChecklistDispositivo.objects.filter(g237_dispositivo__isnull=False) \
-        .exclude(g237_dispositivo__g212_estado__g201_descripcion__in=ESTADOS_INACTIVOS) \
-        .values('g237_dispositivo_id').distinct().count()
+    """Resumen para el encabezado de la pantalla de Checklist.
+
+    Solo cuenta dispositivos de tipos que TIENEN preguntas configuradas (hoy
+    únicamente Portátil). Antes contaba todos los activos, así que sumaba
+    simcards, licencias y periféricos —que no tienen checklist ni lo van a
+    tener— a un contador de "pendientes" imposible de bajar a cero. Es el
+    mismo criterio que ya usaba la campanita (ver api_notificaciones_bell):
+    tenían que dar lo mismo y se contradecían.
+    """
+    tipos_con_checklist = ItemChecklist.objects.filter(
+        g236_tipo_dispositivo__isnull=False, g236_estado=True
+    ).values_list('g236_tipo_dispositivo_id', flat=True).distinct()
+
+    revisables = (Dispositivo.objects
+                  .exclude(g212_estado__g201_descripcion__in=ESTADOS_INACTIVOS)
+                  .filter(g212_tipo_id__in=tipos_con_checklist))
+
+    total = revisables.count()
+    con_checklist = (ChecklistDispositivo.objects
+                     .filter(g237_dispositivo__in=revisables)
+                     .values('g237_dispositivo_id').distinct().count())
     return _json_ok({
         'total': total,
         'con_checklist': con_checklist,
@@ -4819,11 +4855,14 @@ def api_notificaciones_bell(request):
         .select_related('g212_tipo')
         .order_by('-g212_fecha_registro')
     )
+    # A propósito NO se filtra por 'leidas': el checklist pendiente no se
+    # puede silenciar. Marcarlo como leído lo escondía para siempre —la fecha
+    # de la clave es la de registro del equipo, que nunca cambia— sin que el
+    # checklist se hubiera hecho. Se queda hasta que se haga de verdad, o
+    # hasta que el equipo pase a un estado inactivo.
     checklist_pendiente = []
     for d in checklist_pendiente_qs:
         fecha_str = d.g212_fecha_registro.strftime('%d/%m/%Y') if d.g212_fecha_registro else ''
-        if ('checklist', d.g212_id, fecha_str) in leidas:
-            continue
         checklist_pendiente.append({
             'id':     d.g212_id,
             'serial': d.g212_serial,
@@ -4855,7 +4894,9 @@ def api_notificaciones_bell(request):
 def api_notificacion_bell_marcar_leida(request):
     """
     Marca como leída una alerta de la campanita (solo 'licencia', 'aprobacion',
-    'nuevo', 'prestamo' o 'checklist' — 'vencido'/'sin_asignar' no son marcables, ver api_notificaciones_bell).
+    'nuevo' o 'prestamo'). No son marcables 'vencido'/'sin_asignar' ni
+    'checklist': las tres siguen pendientes hasta que se resuelvan de verdad
+    (ver api_notificaciones_bell).
     Body: {tipo, referencia_id, referencia_fecha}
     """
     req_user_id = request.session.get('req_user_id')
@@ -4871,7 +4912,7 @@ def api_notificacion_bell_marcar_leida(request):
     referencia_id    = body.get('referencia_id')
     referencia_fecha = body.get('referencia_fecha')
 
-    if tipo not in ('licencia', 'aprobacion', 'nuevo', 'prestamo', 'checklist') or not referencia_id or not referencia_fecha:
+    if tipo not in ('licencia', 'aprobacion', 'nuevo', 'prestamo') or not referencia_id or not referencia_fecha:
         return _json_err('Datos incompletos.')
 
     NotificacionBellLeida.objects.get_or_create(
@@ -4909,11 +4950,12 @@ def api_notificacion_bell_marcar_todas(request):
     if not isinstance(notificaciones, list):
         return _json_err('Datos incompletos.')
 
-    # 'vencido' y 'sin_asignar' no aparecen aquí: no son marcables porque
-    # siguen pendientes hasta que se resuelvan de verdad (ver el endpoint de
-    # arriba y api_notificaciones_bell). Las que no cumplan se ignoran en
-    # silencio en vez de tumbar todo el lote por una fila mal formada.
-    MARCABLES = ('licencia', 'aprobacion', 'nuevo', 'prestamo', 'checklist')
+    # 'vencido', 'sin_asignar' y 'checklist' no aparecen aquí: no son
+    # marcables porque siguen pendientes hasta que se resuelvan de verdad (ver
+    # el endpoint de arriba y api_notificaciones_bell). Las que no cumplan se
+    # ignoran en silencio en vez de tumbar todo el lote por una fila mal
+    # formada.
+    MARCABLES = ('licencia', 'aprobacion', 'nuevo', 'prestamo')
     claves = []
     for n in notificaciones:
         if not isinstance(n, dict):

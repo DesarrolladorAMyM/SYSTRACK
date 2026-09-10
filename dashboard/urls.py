@@ -50,6 +50,7 @@ urlpatterns = [
     path('api/checklist/items/',                   views.api_checklist_items,         name='api_checklist_items'),
     path('api/checklist/items/crear/',              views.api_checklist_item_crear,    name='api_checklist_item_crear'),
     path('api/checklist/items/<int:pk>/editar/',    views.api_checklist_item_editar,   name='api_checklist_item_editar'),
+    path('api/checklist/items/<int:pk>/eliminar/',  views.api_checklist_item_eliminar, name='api_checklist_item_eliminar'),
 
     #  Novedades Generales
     path('api/novedades/tipos/',                    views.api_novedades_tipos,         name='api_novedades_tipos'),

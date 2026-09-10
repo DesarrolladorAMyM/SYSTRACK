@@ -31,7 +31,9 @@
     .app-container{max-width:1600px;margin:0 auto;}
 
     /* NOTIFICATION */
-    .notification-container{position:fixed;top:20px;right:20px;z-index:9999;display:flex;flex-direction:column;gap:12px;max-width:380px;}
+    /* Por encima de todo, incluida la confirmación de borrado: si falla el
+       borrado el aviso de error sale mientras esa confirmación sigue abierta. */
+    .notification-container{position:fixed;top:20px;right:20px;z-index:10001;display:flex;flex-direction:column;gap:12px;max-width:380px;}
     .notification{background:white;border-radius:var(--radius-lg);padding:16px 20px;box-shadow:var(--shadow-xl);display:flex;align-items:center;gap:12px;animation:slideInRight .4s ease;border-left:4px solid var(--danger);}
     .notification.success{border-left-color:var(--primary-light);}
     .notification-icon{width:40px;height:40px;border-radius:50%;display:flex;align-items:center;justify-content:center;flex-shrink:0;}
@@ -235,6 +237,11 @@
     /* MODALES */
     .modal-overlay{position:fixed;top:0;left:0;width:100%;height:100%;background:var(--bg-overlay);display:none;align-items:center;justify-content:center;z-index:9998;backdrop-filter:blur(6px);padding:16px;box-sizing:border-box;}
     .modal-overlay.active{display:flex;}
+    /* La confirmación de borrado se abre ENCIMA de otro modal (ej. "Administrar
+       preguntas"). Con el z-index compartido de .modal-overlay ganaba el que
+       estuviera más abajo en el HTML, así que la confirmación quedaba detrás y
+       parecía que el botón no hacía nada. */
+    #modalConfirm{z-index:10000;}
     .modal-form{background:white;border-radius:var(--radius-xl);width:700px;max-width:100%;max-height:90vh;overflow:hidden;display:flex;flex-direction:column;box-shadow:var(--shadow-xl);animation:modalIn .3s ease;}
     .modal-form-body{padding:24px 28px;overflow-y:auto;flex:1;min-height:0;}
     @keyframes modalIn{from{opacity:0;transform:translateY(-24px) scale(.97);}to{opacity:1;transform:translateY(0) scale(1);}}
@@ -575,6 +582,14 @@
     .chk-seccion{margin-bottom:18px;border:1px solid var(--border);border-radius:var(--radius-md);overflow:hidden;}
     .chk-seccion:last-child{margin-bottom:0;}
     .chk-seccion-title{background:linear-gradient(135deg,var(--primary) 0%,var(--primary-light) 100%);color:#fff;font-size:11.5px;font-weight:700;letter-spacing:.03em;text-transform:uppercase;padding:8px 12px;}
+    /* Borrar pregunta: apagado hasta que se apunta, para que no compita con
+       el chulito de "Activa", que es la accion del dia a dia. */
+    .chk-item-borrar{
+      width:26px;height:26px;border-radius:7px;border:1px solid transparent;
+      background:none;color:var(--text-light);font-size:12px;cursor:pointer;
+      display:flex;align-items:center;justify-content:center;transition:.15s;
+    }
+    .chk-item-borrar:hover{background:#fee2e2;border-color:#fecaca;color:#dc2626;}
     .chk-seccion-table{width:100%;border-collapse:collapse;font-size:13px;}
     .chk-seccion-table th{text-align:left;padding:7px 10px;background:var(--surface-2,#f6f8fd);color:var(--text-light);font-size:11px;font-weight:700;text-transform:uppercase;letter-spacing:.02em;border-bottom:1px solid var(--border);}
     .chk-seccion-table td{padding:7px 10px;border-bottom:1px solid var(--border);vertical-align:middle;}
