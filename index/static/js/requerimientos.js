@@ -1857,8 +1857,11 @@ function showNotif(title, msg, type = 'success', duration = 3500) {
     formAgregarReq.addEventListener('submit', async (e) => {
       e.preventDefault();
       const btnEnviar = formAgregarReq.querySelector('.btn-submit');
+      // Crear el requerimiento puede tardar (además del INSERT dispara el
+      // correo de confirmación y el de asignación), así que el botón muestra
+      // un spinner: sin él, el único indicio de que algo pasaba era el texto.
       btnEnviar.disabled = true;
-      btnEnviar.textContent = 'Enviando...';
+      btnEnviar.innerHTML = '<i class="fa-solid fa-spinner fa-spin"></i> Enviando...';
 
       const perfil  = getPerfil();
       const selCat  = document.getElementById('f_categoria');

@@ -4884,6 +4884,83 @@ def api_notificacion_bell_marcar_leida(request):
 
 
 @login_required(login_url='login')
+@require_POST
+def api_notificacion_bell_marcar_todas(request):
+    """
+    Marca como leídas varias alertas de la campanita de una sola vez.
+
+    La lista la manda el frontend y no se calcula aquí a propósito: el usuario
+    marca lo que TIENE A LA VISTA en el panel. Si el servidor recalculara las
+    pendientes, una alerta que entrara entre que se abrió el panel y se pulsó
+    el botón quedaría marcada como leída sin que nadie la hubiera visto.
+
+    Body: {notificaciones: [{tipo, referencia_id, referencia_fecha}, ...]}
+    """
+    req_user_id = request.session.get('req_user_id')
+    if not req_user_id:
+        return _json_err('Sesión inválida.')
+
+    try:
+        body = json.loads(request.body)
+    except json.JSONDecodeError:
+        return _json_err('JSON inválido')
+
+    notificaciones = body.get('notificaciones')
+    if not isinstance(notificaciones, list):
+        return _json_err('Datos incompletos.')
+
+    # 'vencido' y 'sin_asignar' no aparecen aquí: no son marcables porque
+    # siguen pendientes hasta que se resuelvan de verdad (ver el endpoint de
+    # arriba y api_notificaciones_bell). Las que no cumplan se ignoran en
+    # silencio en vez de tumbar todo el lote por una fila mal formada.
+    MARCABLES = ('licencia', 'aprobacion', 'nuevo', 'prestamo', 'checklist')
+    claves = []
+    for n in notificaciones:
+        if not isinstance(n, dict):
+            continue
+        tipo    = n.get('tipo')
+        ref_id  = n.get('referencia_id')
+        ref_fec = n.get('referencia_fecha')
+        if tipo not in MARCABLES or not ref_id or not ref_fec:
+            continue
+        claves.append((tipo, ref_id, str(ref_fec)))
+
+    if not claves:
+        return _json_ok({'marcadas': 0})
+
+    # Se descartan las que este usuario ya tenía marcadas (puede haberlas
+    # marcado en otra pestaña) con UNA sola consulta, en vez de dejar que
+    # choquen contra la restricción única al insertar.
+    #
+    # OJO: aquí NO se puede usar bulk_create(ignore_conflicts=True) — SQL
+    # Server no lo soporta (supports_ignore_conflicts es False) y Django
+    # levanta NotSupportedError, o sea un 500.
+    ya_marcadas = {
+        (t, i, f) for t, i, f in
+        NotificacionBellLeida.objects
+        .filter(g235_usuario_id=req_user_id, g235_tipo__in=MARCABLES)
+        .values_list('g235_tipo', 'g235_referencia_id', 'g235_referencia_fecha')
+    }
+    nuevas = [c for c in claves if c not in ya_marcadas]
+
+    creadas = 0
+    for tipo, ref_id, ref_fec in nuevas:
+        # get_or_create y no bulk_create: entre la consulta de arriba y este
+        # insert otra pestaña pudo marcar la misma alerta, y esa carrera no
+        # debe tumbar todo el lote.
+        _, creada = NotificacionBellLeida.objects.get_or_create(
+            g235_usuario_id=req_user_id,
+            g235_tipo=tipo,
+            g235_referencia_id=ref_id,
+            g235_referencia_fecha=ref_fec,
+        )
+        if creada:
+            creadas += 1
+
+    return _json_ok({'marcadas': creadas})
+
+
+@login_required(login_url='login')
 @require_http_methods(['GET'])
 def api_colaboradores_ti(request):
     """Lista simple de usuarios activos (solo técnicos, TipoUsuario 7 u 8) para el selector de asignación."""

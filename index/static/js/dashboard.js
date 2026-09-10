@@ -35,6 +35,7 @@ const API = {
   reqTicAccion:      (id) => `${BASE}/inventario/api/req-tic/${id}/accion/`,
   notificacionesBell: `${BASE}/inventario/api/notificaciones-bell/`,
   marcarLeidaBell:    `${BASE}/inventario/api/notificaciones-bell/marcar-leida/`,
+  marcarTodasBell:    `${BASE}/inventario/api/notificaciones-bell/marcar-todas/`,
 
   // ── Perfil ──
   cambiarPassword:    `${BASE}/inventario/api/perfil/cambiar-password/`,
@@ -112,6 +113,25 @@ function getCookie(name) {
   const parts = val.split(`; ${name}=`);
   if (parts.length === 2) return parts.pop().split(';').shift();
   return '';
+}
+
+// Deja el botón con spinner mientras corre la acción y lo devuelve a como
+// estaba al terminar, pase lo que pase. El restaurar va en el finally a
+// propósito: si falla la petición, el botón tiene que volver a servir; y si
+// se cierra el modal, la próxima vez que se abra no puede aparecer todavía
+// diciendo "Guardando...".
+async function _conSpinner(btnId, textoCargando, accion) {
+  const btn = document.getElementById(btnId);
+  if (!btn) return accion();
+  const original = btn.innerHTML;
+  btn.disabled  = true;
+  btn.innerHTML = `<i class="fas fa-spinner fa-spin"></i> ${textoCargando}`;
+  try {
+    return await accion();
+  } finally {
+    btn.disabled  = false;
+    btn.innerHTML = original;
+  }
 }
 
 async function apiFetch(url, method = 'GET', body = null) {
@@ -2502,11 +2522,13 @@ async function guardarChecklistNuevo() {
     resp_area:     document.getElementById('chk-resp-area').value,
     resp_cargo:    document.getElementById('chk-resp-cargo').value,
   };
-  const res = await apiFetch(API.checklistDispositivoGuardar(d.id), 'POST', body);
-  if (!res.ok) { showNotif('Error', res.error || 'No se pudo guardar el checklist', 'warning'); return; }
-  showNotif(' Guardado', `Checklist del equipo ${d.serial} guardado correctamente`, 'success');
-  cargarChecklistStats();
-  _volverBusquedaChecklist();
+  await _conSpinner('btnGuardarChecklistNuevo', 'Guardando...', async () => {
+    const res = await apiFetch(API.checklistDispositivoGuardar(d.id), 'POST', body);
+    if (!res.ok) { showNotif('Error', res.error || 'No se pudo guardar el checklist', 'warning'); return; }
+    showNotif(' Guardado', `Checklist del equipo ${d.serial} guardado correctamente`, 'success');
+    cargarChecklistStats();
+    _volverBusquedaChecklist();
+  });
 }
 
 let _chkDetId = null;
@@ -2613,10 +2635,12 @@ async function guardarEdicionChecklist() {
     resp_cargo:    document.getElementById('chkdet-resp-cargo').value,
   };
 
-  const res = await apiFetch(API.checklistEditar(_chkDetId), 'PUT', body);
-  if (!res.ok) { showNotif('Error', res.error || 'No se pudo guardar', 'warning'); return; }
-  showNotif(' Actualizado', 'El checklist fue corregido correctamente', 'success');
-  closeModal('modalChecklistDetalle');
+  await _conSpinner('btnChkDetalleGuardar', 'Guardando...', async () => {
+    const res = await apiFetch(API.checklistEditar(_chkDetId), 'PUT', body);
+    if (!res.ok) { showNotif('Error', res.error || 'No se pudo guardar', 'warning'); return; }
+    showNotif(' Actualizado', 'El checklist fue corregido correctamente', 'success');
+    closeModal('modalChecklistDetalle');
+  });
 }
 
 function descargarChecklistPdf(id) {
@@ -3048,34 +3072,36 @@ async function guardarNovedad() {
     observacion: _novCamposRespuestas[campoId] || '',
   }));
   const body = { tipo_id: tipoId, campos };
-  const res = await apiFetch(API.novedadesGuardar, 'POST', body);
-  if (!res.ok) { showNotif('Error', res.error || 'No se pudo guardar la novedad', 'warning'); return; }
+  await _conSpinner('btnGuardarNovedad', 'Guardando...', async () => {
+    const res = await apiFetch(API.novedadesGuardar, 'POST', body);
+    if (!res.ok) { showNotif('Error', res.error || 'No se pudo guardar la novedad', 'warning'); return; }
 
-  // Los adjuntos se suben en un segundo paso — novedadesGuardar recibe JSON
-  // puro y no puede llevar binarios (mismo patrón que Requerimientos).
-  if (_novAdjuntosStaged.length > 0) {
-    const fallos = [];
-    for (const archivo of _novAdjuntosStaged) {
-      const fd = new FormData();
-      fd.append('archivo', archivo);
-      try {
-        const ra = await fetch(API.novedadesAdjuntar(res.data.id), {
-          method: 'POST', headers: { 'X-CSRFToken': getCookie('csrftoken') }, body: fd,
-        });
-        const respA = await ra.json();
-        if (!respA.ok) fallos.push(archivo.name);
-      } catch {
-        fallos.push(archivo.name);
+    // Los adjuntos se suben en un segundo paso — novedadesGuardar recibe JSON
+    // puro y no puede llevar binarios (mismo patrón que Requerimientos).
+    if (_novAdjuntosStaged.length > 0) {
+      const fallos = [];
+      for (const archivo of _novAdjuntosStaged) {
+        const fd = new FormData();
+        fd.append('archivo', archivo);
+        try {
+          const ra = await fetch(API.novedadesAdjuntar(res.data.id), {
+            method: 'POST', headers: { 'X-CSRFToken': getCookie('csrftoken') }, body: fd,
+          });
+          const respA = await ra.json();
+          if (!respA.ok) fallos.push(archivo.name);
+        } catch {
+          fallos.push(archivo.name);
+        }
+      }
+      if (fallos.length > 0) {
+        showNotif('Algunos adjuntos no se subieron', fallos.join(', '), 'warning', 6000);
       }
     }
-    if (fallos.length > 0) {
-      showNotif('Algunos adjuntos no se subieron', fallos.join(', '), 'warning', 6000);
-    }
-  }
 
-  showNotif(' Registrada', 'La novedad fue registrada correctamente', 'success');
-  closeModal('modalRegistrarNovedad');
-  loadNovedades();
+    showNotif(' Registrada', 'La novedad fue registrada correctamente', 'success');
+    closeModal('modalRegistrarNovedad');
+    loadNovedades();
+  });
 }
 
 // ── Detalle ──
@@ -3553,15 +3579,17 @@ function clearAsignacion() { tempDevices = []; renderTempDevices(); }
 async function guardarAsignacion() {
   // Enviamos SOLO los dispositivos nuevos que el usuario agregó en esta sesión.
   // El backend los acumula sin borrar los anteriores (reemplazar: false por defecto).
-  const res = await apiFetch(API.asignar(colabEditId), 'POST', {
-    dispositivos: tempDevices.map(d => d.id),
-    reemplazar: false,
+  await _conSpinner('btnGuardarAsignacionDisp', 'Guardando...', async () => {
+    const res = await apiFetch(API.asignar(colabEditId), 'POST', {
+      dispositivos: tempDevices.map(d => d.id),
+      reemplazar: false,
+    });
+    if (!res.ok) { showNotif('Error', res.error || 'No se pudo guardar', 'warning'); return; }
+    const c = colabData.find(x => x.id === colabEditId);
+    closeModal('modalAsignar');
+    showNotif(' Asignación guardada', `Los dispositivos fueron asignados a ${c ? c.nombre : ''}`, 'success', 4000);
+    loadColaboradores();
   });
-  if (!res.ok) { showNotif('Error', res.error || 'No se pudo guardar', 'warning'); return; }
-  const c = colabData.find(x => x.id === colabEditId);
-  closeModal('modalAsignar');
-  showNotif(' Asignación guardada', `Los dispositivos fueron asignados a ${c ? c.nombre : ''}`, 'success', 4000);
-  loadColaboradores();
 }
 
 async function eliminarAsignacion(colabId, devId) {
@@ -3875,18 +3903,20 @@ async function guardarActa() {
     firma_entrega: getSigData('sig-entrega'),
   };
   if (dispositivosIds) payload.dispositivos_ids = dispositivosIds;
-  const res = await apiFetch(API.acta(colabEditId), 'POST', payload);
-  if (!res.ok) { showNotif('Error', res.error || 'No se pudo guardar el acta', 'warning'); return; }
-  const c = colabData.find(x => x.id === colabEditId);
-  showNotif('📄 Acta generada', `Acta de ${tipo} creada exitosamente para ${c ? c.nombre : ''}`, 'success', 5000);
-  clearSig('sig-recibe');
-  clearSig('sig-entrega');
-  document.getElementById('acta-correo').value = '';
-  document.getElementById('acta-tipo').value    = '';
-  document.getElementById('acta-proceso').value = '';
-  await loadColaboradores();
-  const cActualizado = colabData.find(x => x.id === colabEditId);
-  if (cActualizado) renderActaHist(cActualizado);
+  await _conSpinner('btnGuardarActa', 'Generando...', async () => {
+    const res = await apiFetch(API.acta(colabEditId), 'POST', payload);
+    if (!res.ok) { showNotif('Error', res.error || 'No se pudo guardar el acta', 'warning'); return; }
+    const c = colabData.find(x => x.id === colabEditId);
+    showNotif('📄 Acta generada', `Acta de ${tipo} creada exitosamente para ${c ? c.nombre : ''}`, 'success', 5000);
+    clearSig('sig-recibe');
+    clearSig('sig-entrega');
+    document.getElementById('acta-correo').value = '';
+    document.getElementById('acta-tipo').value    = '';
+    document.getElementById('acta-proceso').value = '';
+    await loadColaboradores();
+    const cActualizado = colabData.find(x => x.id === colabEditId);
+    if (cActualizado) renderActaHist(cActualizado);
+  });
 }
 
 function initSignaturePads(ids) {
@@ -4159,14 +4189,16 @@ async function guardarEquipo() {
   if (!nombre)    { showNotif('Campo requerido', 'El nombre del equipo es obligatorio', 'warning'); return; }
   if (!id_estado) { showNotif('Campo requerido', 'Debes seleccionar un estado', 'warning'); return; }
 
-  const res = await apiFetch(API.equipoAdminGuardar, 'POST', {
-    id_equipo, nombre, descripcion, id_responsable, id_estado,
-  });
-  if (!res.ok) { showNotif('Error', res.error || 'No se pudo guardar el equipo', 'warning'); return; }
+  await _conSpinner('btnGuardarEquipo', 'Guardando...', async () => {
+    const res = await apiFetch(API.equipoAdminGuardar, 'POST', {
+      id_equipo, nombre, descripcion, id_responsable, id_estado,
+    });
+    if (!res.ok) { showNotif('Error', res.error || 'No se pudo guardar el equipo', 'warning'); return; }
 
-  showNotif(id_equipo ? 'Actualizado' : 'Equipo creado', `"${nombre}" guardado correctamente`, 'success');
-  closeModal('modalEquipo');
-  loadEquiposAdmin();
+    showNotif(id_equipo ? 'Actualizado' : 'Equipo creado', `"${nombre}" guardado correctamente`, 'success');
+    closeModal('modalEquipo');
+    loadEquiposAdmin();
+  });
 }
 
 function eliminarEquipoAdmin(id) {
@@ -4263,6 +4295,34 @@ async function _bellMarcarLeida(tipo, referenciaId, referenciaFecha) {
   }
 }
 
+// Marca de una sola vez todas las notificaciones marcables que están A LA
+// VISTA en el panel. Los vencidos y los sin asignar se quedan: siguen
+// pendientes hasta que se resuelvan de verdad, igual que en el portal.
+async function bellMarcarTodasLeidas() {
+  const marcables = _construirBellItems().filter(it => it.dismissible);
+  if (!marcables.length) return;
+
+  const lote = marcables.map(it => ({
+    tipo: it.tipo, referencia_id: it.refId, referencia_fecha: it.refFecha,
+  }));
+
+  // Se vacía primero y se repinta: el panel responde al instante y no queda
+  // la sensación de que el clic no hizo nada mientras viaja la petición.
+  BELL_DATA.pendientes_aprobacion = [];
+  BELL_DATA.licencias_por_vencer  = [];
+  BELL_DATA.nuevos_sin_asignar    = [];
+  BELL_DATA.prestamos_realizados  = [];
+  BELL_DATA.checklist_pendiente   = [];
+  renderBellBadge();
+  renderBellPanel();
+
+  try {
+    await apiFetch(API.marcarTodasBell, 'POST', { notificaciones: lote });
+  } catch (e) {
+    console.error('No se pudieron marcar todas las notificaciones como leídas:', e);
+  }
+}
+
 // Construye la lista de items visibles, compartida entre el badge y el
 // panel para que siempre cuenten exactamente lo mismo.
 function _construirBellItems() {
@@ -4277,14 +4337,19 @@ function _construirBellItems() {
     mensaje: `Solicitado por ${p.solicitante}`,
     fecha: `Creado el ${p.fecha}`,
     icono: 'fa-user-check', onClick: () => _irARequerimiento(p.codigo),
-    dismissible: true, onLeida: () => _bellMarcarLeida('aprobacion', p.id, p.fecha),
+    // refId/refFecha: lo que necesita el backend para marcarla. Van en el item
+    // para que "marcar todas" arme su lote desde aquí y no tenga que repetir
+    // qué arreglo de BELL_DATA corresponde a cada tipo.
+    dismissible: true, refId: p.id, refFecha: p.fecha,
+    onLeida: () => _bellMarcarLeida('aprobacion', p.id, p.fecha),
   }));
   BELL_DATA.licencias_por_vencer.forEach(l => items.push({
     tipo: 'licencia', titulo: `Licencia ${l.software} ${l.vencida ? 'venció' : 'por vencer'}`,
     mensaje: `Dispositivo: ${l.serial_dispositivo}`,
     fecha: `${l.vencida ? 'Venció' : 'Vence'} el ${l.fecha_vencimiento}`,
     icono: 'fa-key', onClick: () => _irADispositivo(l.serial_dispositivo),
-    dismissible: true, onLeida: () => _bellMarcarLeida('licencia', l.id, l.fecha_vencimiento),
+    dismissible: true, refId: l.id, refFecha: l.fecha_vencimiento,
+    onLeida: () => _bellMarcarLeida('licencia', l.id, l.fecha_vencimiento),
   }));
   // El título depende de si el requerimiento ya tiene técnico. Con la
   // asignación automática por categoría lo normal es que sí, y decir "sin
@@ -4298,21 +4363,24 @@ function _construirBellItems() {
     fecha: `Creado el ${n.fecha}`,
     icono: 'fa-inbox',
     onClick: () => _irARequerimiento(n.codigo, _pantallaDeRequerimiento(n)),
-    dismissible: true, onLeida: () => _bellMarcarLeida('nuevo', n.id, n.fecha),
+    dismissible: true, refId: n.id, refFecha: n.fecha,
+    onLeida: () => _bellMarcarLeida('nuevo', n.id, n.fecha),
   }));
   BELL_DATA.prestamos_realizados.forEach(p => items.push({
     tipo: 'prestamo', titulo: `Préstamo realizado: ${p.equipo}`,
     mensaje: `${p.solicitante}${p.area ? ' — ' + p.area : ''}`,
     fecha: `Prestado el ${p.fecha}`,
     icono: 'fa-hand-holding', onClick: () => _irAPrestamoEquipos(p.equipo),
-    dismissible: true, onLeida: () => _bellMarcarLeida('prestamo', p.id, p.fecha),
+    dismissible: true, refId: p.id, refFecha: p.fecha,
+    onLeida: () => _bellMarcarLeida('prestamo', p.id, p.fecha),
   }));
   BELL_DATA.checklist_pendiente.forEach(d => items.push({
     tipo: 'checklist', titulo: `Falta el checklist de ${d.serial}`,
     mensaje: `${d.tipo} — registrado el ${d.fecha}`,
     fecha: `Registrado el ${d.fecha}`,
     icono: 'fa-clipboard-check', onClick: () => _irAChecklistDispositivo(d.serial),
-    dismissible: true, onLeida: () => _bellMarcarLeida('checklist', d.id, d.fecha),
+    dismissible: true, refId: d.id, refFecha: d.fecha,
+    onLeida: () => _bellMarcarLeida('checklist', d.id, d.fecha),
   }));
   // 'vencidos' son los que están asignados A MÍ (ver api_notificaciones_bell),
   // así que el destino natural es mi propia bandeja, no la cola de asignación.
@@ -4436,6 +4504,11 @@ function renderBellPanel() {
   if (!list) return;
 
   const items = _construirBellItems();
+
+  // El botón se decide ANTES del return de la lista vacía: si no, al marcar
+  // la última notificación se quedaría visible sobre un panel sin nada.
+  const btnTodas = document.getElementById('btnBellMarcarTodas');
+  if (btnTodas) btnTodas.classList.toggle('hidden', !items.some(it => it.dismissible));
 
   if (items.length === 0) {
     list.innerHTML = '<div class="bell-panel-empty">No tienes notificaciones nuevas.</div>';
@@ -5626,18 +5699,20 @@ async function guardarPlanReq() {
   const plan = document.getElementById('plan-f-planaccion').value.trim();
   if (!plan) return showNotification('warning', 'Campo requerido', 'Describe el plan de acción');
 
-  const res = await apiFetch(API.reqTicAccion(planReqId), 'POST', {
-    accion: 'plan',
-    plan_accion: plan,
-  });
+  await _conSpinner('btnGuardarPlanReq', 'Guardando...', async () => {
+    const res = await apiFetch(API.reqTicAccion(planReqId), 'POST', {
+      accion: 'plan',
+      plan_accion: plan,
+    });
 
-  if (res.ok) {
-    closeModal('modalPlanReq');
-    showNotification('success', 'Plan guardado', 'El requerimiento quedó en proceso');
-    cargarRequerimientos();
-  } else {
-    showNotification('warning', 'Error', res.error || 'No se pudo guardar el plan');
-  }
+    if (res.ok) {
+      closeModal('modalPlanReq');
+      showNotification('success', 'Plan guardado', 'El requerimiento quedó en proceso');
+      cargarRequerimientos();
+    } else {
+      showNotification('warning', 'Error', res.error || 'No se pudo guardar el plan');
+    }
+  });
 }
 
 
@@ -5648,19 +5723,21 @@ async function guardarSolucionReq() {
   if (!solucion) return showNotification('warning', 'Campo requerido', 'Describe la solución del requerimiento');
   const fecha = new Date().toISOString().slice(0, 10); // no hay input de fecha en el HTML, se usa la fecha actual
 
-  const res = await apiFetch(API.reqTicAccion(solReqId), 'POST', {
-    accion: 'solucionar',
-    solucion,
-    fecha_solucion: fecha,
-  });
+  await _conSpinner('btnGuardarSolucion', 'Solucionando...', async () => {
+    const res = await apiFetch(API.reqTicAccion(solReqId), 'POST', {
+      accion: 'solucionar',
+      solucion,
+      fecha_solucion: fecha,
+    });
 
-  if (res.ok) {
-    closeModal('modalSolucionarReq');
-    showNotification('success', 'Requerimiento solucionado', 'El requerimiento fue marcado como cerrado');
-    cargarRequerimientos();
-  } else {
-    showNotification('warning', 'Error', res.error || 'No se pudo guardar la solución');
-  }
+    if (res.ok) {
+      closeModal('modalSolucionarReq');
+      showNotification('success', 'Requerimiento solucionado', 'El requerimiento fue marcado como cerrado');
+      cargarRequerimientos();
+    } else {
+      showNotification('warning', 'Error', res.error || 'No se pudo guardar la solución');
+    }
+  });
 }
 
 
@@ -6098,32 +6175,34 @@ async function guardarAsignacionReq() {
     return showNotification('warning', 'Campo requerido', 'Selecciona un colaborador');
   }
 
-  const res = await apiFetch(API.reqTicAccion(asigReqId), 'POST', {
-    accion: 'reasignar',
-    id_usuario_asig: colaborador || null,
-    categoria_id: categoria || null,
-    subcategoria_id: subcategoria || null,
-  });
+  await _conSpinner('btnGuardarAsignacionReq', 'Guardando...', async () => {
+    const res = await apiFetch(API.reqTicAccion(asigReqId), 'POST', {
+      accion: 'reasignar',
+      id_usuario_asig: colaborador || null,
+      categoria_id: categoria || null,
+      subcategoria_id: subcategoria || null,
+    });
 
-  if (res.ok) {
-    closeModal('modalAsignarReq');
-    // El backend avisa si el requerimiento se fue a aprobación en vez de
-    // asignarse — hay que decirlo, o parecería que la asignación falló.
-    if (res.data && res.data.aprobacion_requerida) {
-      showNotification('info', 'Enviado a aprobación',
-        res.data.mensaje || 'El requerimiento quedó pendiente de aprobación del jefe de área', 7000);
+    if (res.ok) {
+      closeModal('modalAsignarReq');
+      // El backend avisa si el requerimiento se fue a aprobación en vez de
+      // asignarse — hay que decirlo, o parecería que la asignación falló.
+      if (res.data && res.data.aprobacion_requerida) {
+        showNotification('info', 'Enviado a aprobación',
+          res.data.mensaje || 'El requerimiento quedó pendiente de aprobación del jefe de área', 7000);
+      } else {
+        const esReasignacion = asigOrigen === 'misreq';
+        showNotification('success',
+          esReasignacion ? 'Requerimiento reasignado' : 'Asignación guardada',
+          esReasignacion ? 'El requerimiento fue reasignado correctamente' : 'El requerimiento fue asignado correctamente'
+        );
+      }
+      if (asigOrigen === 'misreq') cargarRequerimientos();
+      else cargarAsignar();
     } else {
-      const esReasignacion = asigOrigen === 'misreq';
-      showNotification('success',
-        esReasignacion ? 'Requerimiento reasignado' : 'Asignación guardada',
-        esReasignacion ? 'El requerimiento fue reasignado correctamente' : 'El requerimiento fue asignado correctamente'
-      );
+      showNotification('warning', 'Error', res.error || 'No se pudo asignar');
     }
-    if (asigOrigen === 'misreq') cargarRequerimientos();
-    else cargarAsignar();
-  } else {
-    showNotification('warning', 'Error', res.error || 'No se pudo asignar');
-  }
+  });
 }
 /* ── Render tabla ── */
 function renderAsignar() {

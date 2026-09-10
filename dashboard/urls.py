@@ -108,6 +108,7 @@ urlpatterns = [
      
      path('api/notificaciones-bell/', views.api_notificaciones_bell, name='api_notificaciones_bell'),
      path('api/notificaciones-bell/marcar-leida/', views.api_notificacion_bell_marcar_leida, name='api_notificacion_bell_marcar_leida'),
+     path('api/notificaciones-bell/marcar-todas/', views.api_notificacion_bell_marcar_todas, name='api_notificacion_bell_marcar_todas'),
 
      path('api/indicadores/resumen/',   views.api_indicadores_resumen,   name='api_indicadores_resumen'),
      path('api/indicadores/tendencia/', views.api_indicadores_tendencia, name='api_indicadores_tendencia'),
