@@ -618,8 +618,14 @@ function initMapa(ubicaciones) {
     mapaInstance = L.map('mapaColombia', {
       zoomControl: true, scrollWheelZoom: false,
     }).setView([4.5709, -74.2973], 5);
-    L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
-      attribution: '© OpenStreetMap', maxZoom: 18,
+    // OSM bloqueó los mosaicos con 403: su servidor comunitario lo pagan
+    // voluntarios y no admite apps de empresa, y además los subdominios
+    // {s}.tile.openstreetmap.org están descontinuados. CARTO sirve mosaicos
+    // derivados de OSM; la atribución completa es obligatoria por licencia.
+    L.tileLayer('https://{s}.basemaps.cartocdn.com/rastertiles/voyager/{z}/{x}/{y}{r}.png', {
+      attribution: '&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors &copy; <a href="https://carto.com/attributions">CARTO</a>',
+      subdomains: 'abcd',
+      maxZoom: 20,
     }).addTo(mapaInstance);
   }
   renderMapaMarkers('');
