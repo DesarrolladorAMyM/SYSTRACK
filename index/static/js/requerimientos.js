@@ -1982,6 +1982,23 @@ function showNotif(title, msg, type = 'success', duration = 3500) {
     document.getElementById('editreq-subcategoria-txt').textContent = resp.subcategoria_texto || '—';
     document.getElementById('f_edit_descripcion').value  = resp.descripcion || '';
 
+    // Adjunto: se limpia lo que hubiera quedado de una corrección anterior y
+    // se muestra el que ya tiene hoy, si tiene.
+    _editReqArchivo = null;
+    const inputArch = document.getElementById('f_edit_archivo');
+    if(inputArch) inputArch.value = '';
+    document.getElementById('editReqFileName').textContent = 'Ningún archivo seleccionado';
+
+    const cajaActual = document.getElementById('editreq-adjunto-actual');
+    const linkActual = document.getElementById('editreq-adjunto-link');
+    if(resp.adjunto_actual && cajaActual && linkActual){
+      linkActual.textContent = resp.adjunto_actual.nombre;
+      linkActual.href        = resp.adjunto_actual.url;
+      cajaActual.style.display = '';
+    } else if(cajaActual){
+      cajaActual.style.display = 'none';
+    }
+
     editReqOverlay.classList.remove('hidden');
   }
 
@@ -1989,7 +2006,18 @@ function showNotif(title, msg, type = 'success', duration = 3500) {
     editReqOverlay.classList.add('hidden');
   }
   document.getElementById('editarReqModalClose').addEventListener('click', cerrarModalEditarReq);
+  document.getElementById('editarReqCancelar').addEventListener('click', cerrarModalEditarReq);
   editReqOverlay.addEventListener('click', (e) => { if(e.target === editReqOverlay) cerrarModalEditarReq(); });
+
+  // Archivo elegido para la corrección. Se guarda aparte del <input> porque el
+  // envío es en dos pasos (JSON y luego el binario), igual que al crear.
+  let _editReqArchivo = null;
+  document.getElementById('f_edit_archivo').addEventListener('change', (e) => {
+    const f = e.target.files && e.target.files[0];
+    _editReqArchivo = f || null;
+    document.getElementById('editReqFileName').textContent =
+      f ? f.name : 'Ningún archivo seleccionado';
+  });
 
   editReqForm.addEventListener('submit', async (e) => {
     e.preventDefault();
@@ -2003,7 +2031,8 @@ function showNotif(title, msg, type = 'success', duration = 3500) {
       descripcion:         document.getElementById('f_edit_descripcion').value.trim(),
     };
     const btn = editReqForm.querySelector('.btn-submit');
-    btn.disabled = true; btn.textContent = 'Guardando...';
+    btn.disabled = true;
+    btn.innerHTML = '<i class="fa-solid fa-spinner fa-spin"></i> Guardando...';
     try {
       const r    = await fetch(`/SYSTRACK/requerimiento/api/corregir/${codigo}/`, {
         method: 'POST', headers: {'Content-Type':'application/json'}, body: JSON.stringify(body),
@@ -2014,6 +2043,26 @@ function showNotif(title, msg, type = 'success', duration = 3500) {
         editReqError.classList.add('show');
         return;
       }
+      // El adjunto va en un segundo paso: corregir/ recibe JSON puro y no
+      // puede llevar el binario. Mismo endpoint que usa "Agregar
+      // requerimiento", así que el archivo queda en mm_ImagenesAdjuntos y el
+      // técnico lo ve en el dashboard igual que cualquier otro adjunto.
+      if(_editReqArchivo){
+        const fd = new FormData();
+        fd.append('archivo', _editReqArchivo);
+        try {
+          const ra    = await fetch(`/SYSTRACK/requerimiento/api/adjuntar/${codigo}/`, { method:'POST', body: fd });
+          const respA = await ra.json();
+          if(!respA.ok){
+            // La corrección YA se guardó: se avisa del archivo sin decir que
+            // falló todo, o el usuario volvería a enviarla por las dudas.
+            showNotif('Adjunto no se pudo subir', respA.error || 'La corrección se guardó, pero el archivo falló.', 'error', 6000);
+          }
+        } catch(eAdj){
+          showNotif('Adjunto no se pudo subir', 'La corrección se guardó, pero el archivo falló por conexión.', 'error', 6000);
+        }
+      }
+
       cerrarModalEditarReq();
       showNotif('Corregido', `${resp.codigo} fue corregido y notificado al técnico.`, 'success');
       const doc = getDocumento();

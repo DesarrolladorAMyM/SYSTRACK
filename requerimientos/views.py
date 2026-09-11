@@ -665,6 +665,19 @@ def api_corregir_requerimiento(request, codigo):
             sub = SubCategoria.objects.using(DB).filter(IdSubCategoria=req.IdSubCategoria).first()
             subcategoria_texto = sub.Descripcion if sub else ''
 
+        # El último adjunto, para que el modal muestre qué archivo tiene hoy.
+        # Es el mismo criterio del dashboard (ver api_mis_req_tic): de varios
+        # adjuntos se ve el más reciente, así que ese es el que el usuario
+        # necesita saber que va a reemplazar si sube uno nuevo.
+        img = (ImagenAdjunta.objects.using(DB)
+               .filter(CodReq=req.Codigo).order_by('-IdImagen').first())
+        adjunto_actual = None
+        if img:
+            adjunto_actual = {
+                'nombre': img.NombreImagen,
+                'url':    f'{settings.MEDIA_URL}{ADJUNTO_CARPETA}/{img.IdImagen}_{img.NombreImagen}',
+            }
+
         return JsonResponse({
             'ok': True,
             'codigo':              req.codigo(),
@@ -677,6 +690,7 @@ def api_corregir_requerimiento(request, codigo):
             'descripcion':         req.Requerimiento or '',
             'motivo_rechazo':      req.MotivoRechazo or '',
             'rechazado_por':       req.NombreUsuariAsig or '',
+            'adjunto_actual':      adjunto_actual,
         })
 
     # POST — guardar la corrección

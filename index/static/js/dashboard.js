@@ -6395,15 +6395,20 @@ document.getElementById('btnConfirmRechazar')?.addEventListener('click', async (
     showNotif('Motivo requerido', 'Escribe el motivo del rechazo', 'warning');
     return;
   }
-  const res = await apiFetch(API.reqTicAccion(_rechazarReqId), 'POST', { accion: 'rechazar', motivo });
-  if (!res.ok) { showNotif('Error', res.error || 'No se pudo rechazar el requerimiento', 'warning'); return; }
-  showNotif(
-    'Requerimiento rechazado',
-    `${res.data.codigo} fue rechazado — se notificó al solicitante para que lo corrija.`,
-    'success'
-  );
-  closeModal('modalRechazarReq');
-  cargarRequerimientos();
+  // Rechazar no solo escribe: dispara el correo al solicitante avisándole que
+  // debe corregir, así que puede tardar. El spinner evita que alguien crea que
+  // no pasó nada y vuelva a pulsar.
+  await _conSpinner('btnConfirmRechazar', 'Rechazando...', async () => {
+    const res = await apiFetch(API.reqTicAccion(_rechazarReqId), 'POST', { accion: 'rechazar', motivo });
+    if (!res.ok) { showNotif('Error', res.error || 'No se pudo rechazar el requerimiento', 'warning'); return; }
+    showNotif(
+      'Requerimiento rechazado',
+      `${res.data.codigo} fue rechazado — se notificó al solicitante para que lo corrija.`,
+      'success'
+    );
+    closeModal('modalRechazarReq');
+    cargarRequerimientos();
+  });
 });
 
 async function cargarAsignar() {

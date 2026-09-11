@@ -121,36 +121,46 @@
 
 <!-- MODAL: corregir requerimiento rechazado por el técnico -->
 <div class="id-modal-overlay hidden" id="editarReqModalOverlay">
-  <div class="id-modal-box" style="max-width:560px;">
+  <div class="editreq-box">
     <button class="id-modal-close" id="editarReqModalClose" title="Cerrar" aria-label="Cerrar"><i class="fa-solid fa-xmark"></i></button>
-    <div class="id-modal-icon"><i class="fa-solid fa-pen-to-square"></i></div>
-    <h3>Corregir requerimiento</h3>
-    <p id="editreq-codigo-label" style="color:var(--text-secondary);font-size:13.5px;margin:-4px 0 16px;"></p>
 
-    <div style="background:#fef2f2;border:1px solid #fecaca;border-radius:8px;padding:12px 14px;
-                margin-bottom:18px;text-align:left;font-size:13px;color:#991b1b;">
-      <strong>Motivo del rechazo (<span id="editreq-quien-rechazo"></span>):</strong>
-      <div id="editreq-motivo-texto" style="margin-top:4px;"></div>
+    <!-- Cabecera: qué requerimiento es y por qué lo devolvieron. Va arriba y
+         en rojo porque es lo primero que el usuario necesita leer. -->
+    <div class="editreq-header">
+      <div class="editreq-header-icon"><i class="fa-solid fa-rotate-left"></i></div>
+      <div class="editreq-header-body">
+        <h3>Corregir requerimiento</h3>
+        <span id="editreq-codigo-label"></span>
+      </div>
     </div>
 
-    <form id="formEditarReq" novalidate style="text-align:left;display:flex;flex-direction:column;gap:14px;">
+    <div class="editreq-motivo">
+      <div class="editreq-motivo-title">
+        <i class="fa-solid fa-circle-exclamation"></i>
+        Motivo del rechazo — <span id="editreq-quien-rechazo"></span>
+      </div>
+      <div class="editreq-motivo-texto" id="editreq-motivo-texto"></div>
+    </div>
+
+    <form id="formEditarReq" novalidate>
       <input type="hidden" id="editreq_codigo">
       <!-- Centro y correo no se editan aquí, pero viajan igual en el guardado -->
       <input type="hidden" id="f_edit_centro">
       <input type="hidden" id="f_edit_correo">
+      <input type="hidden" id="f_edit_categoria">
+      <input type="hidden" id="f_edit_subcategoria">
 
-      <div class="form-field">
-        <label>Categoría</label>
-        <div id="editreq-categoria-txt" style="padding:12px 14px;border:2px solid var(--border);
-             border-radius:var(--radius-md);background:#f8fafc;color:var(--text-secondary);font-size:14px;"></div>
-        <input type="hidden" id="f_edit_categoria">
-      </div>
-
-      <div class="form-field">
-        <label>Subcategoría</label>
-        <div id="editreq-subcategoria-txt" style="padding:12px 14px;border:2px solid var(--border);
-             border-radius:var(--radius-md);background:#f8fafc;color:var(--text-secondary);font-size:14px;"></div>
-        <input type="hidden" id="f_edit_subcategoria">
+      <!-- Categoría y subcategoría no se pueden cambiar al corregir: van como
+           dato de contexto, en dos columnas para no comerse el alto del modal. -->
+      <div class="editreq-fijos">
+        <div class="editreq-fijo">
+          <span class="editreq-fijo-label">Categoría</span>
+          <span class="editreq-fijo-valor" id="editreq-categoria-txt">—</span>
+        </div>
+        <div class="editreq-fijo">
+          <span class="editreq-fijo-label">Subcategoría</span>
+          <span class="editreq-fijo-valor" id="editreq-subcategoria-txt">—</span>
+        </div>
       </div>
 
       <div class="form-field">
@@ -159,8 +169,31 @@
           placeholder="Describe el requerimiento con el mayor detalle posible..." required></textarea>
       </div>
 
+      <!-- Adjunto: si lo rechazaron por una foto o un soporte, aquí se manda
+           el nuevo sin tener que crear otro requerimiento. -->
+      <div class="form-field">
+        <label for="f_edit_archivo">Adjuntar archivo</label>
+        <div class="editreq-adjunto-actual" id="editreq-adjunto-actual" style="display:none;">
+          <i class="fa-solid fa-paperclip"></i>
+          <span>Adjunto actual:</span>
+          <a id="editreq-adjunto-link" href="#" target="_blank" rel="noopener"></a>
+        </div>
+        <div class="file-input-wrap">
+          <label class="file-input-btn" for="f_edit_archivo">
+            <i class="fa-solid fa-paperclip"></i> Elegir archivo
+          </label>
+          <span class="file-input-name" id="editReqFileName">Ningún archivo seleccionado</span>
+          <input type="file" id="f_edit_archivo" name="archivo">
+        </div>
+        <span class="editreq-hint">Opcional. Máximo 5 MB. El técnico verá el más reciente.</span>
+      </div>
+
       <div class="id-modal-error" id="editreqModalError"></div>
-      <button type="submit" class="btn-submit" style="width:100%;">GUARDAR CORRECCIÓN</button>
+
+      <div class="editreq-acciones">
+        <button type="button" class="editreq-btn-cancelar" id="editarReqCancelar">Cancelar</button>
+        <button type="submit" class="btn-submit">GUARDAR CORRECCIÓN</button>
+      </div>
     </form>
   </div>
 </div>
@@ -169,17 +202,17 @@
 <style>
   #registroModalOverlay .id-modal-box,
   #actualizarModalOverlay .id-modal-box,
-  #editarReqModalOverlay .id-modal-box{
+  #editarReqModalOverlay .editreq-box{
     max-height:88vh;
     overflow-y:auto;
     -webkit-overflow-scrolling:touch;
   }
   #registroModalOverlay .id-modal-box::-webkit-scrollbar,
   #actualizarModalOverlay .id-modal-box::-webkit-scrollbar,
-  #editarReqModalOverlay .id-modal-box::-webkit-scrollbar{ width:6px; }
+  #editarReqModalOverlay .editreq-box::-webkit-scrollbar{ width:6px; }
   #registroModalOverlay .id-modal-box::-webkit-scrollbar-thumb,
   #actualizarModalOverlay .id-modal-box::-webkit-scrollbar-thumb,
-  #editarReqModalOverlay .id-modal-box::-webkit-scrollbar-thumb{
+  #editarReqModalOverlay .editreq-box::-webkit-scrollbar-thumb{
     background:rgba(0,0,0,0.15); border-radius:999px;
   }
   #registroModalOverlay #formRegistroUsuario .form-field,

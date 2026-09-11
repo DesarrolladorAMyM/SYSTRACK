@@ -679,6 +679,77 @@
   }
   .foto-visor-eliminar:hover{background:#dc2626;border-color:#dc2626;color:#fff;}
 
+  /* ===== MODAL: CORREGIR REQUERIMIENTO RECHAZADO =====
+     Caja propia y no .id-modal-box: este modal es un formulario alineado a la
+     izquierda, no un aviso centrado. */
+  .editreq-box{
+    background:#fff;border-radius:18px;padding:24px;max-width:560px;width:100%;
+    box-shadow:var(--shadow-xl);text-align:left;position:relative;
+  }
+
+  .editreq-header{display:flex;align-items:center;gap:13px;margin-bottom:16px;padding-right:36px;}
+  .editreq-header-icon{
+    width:44px;height:44px;flex-shrink:0;border-radius:12px;
+    background:#fef2f2;color:#dc2626;
+    display:flex;align-items:center;justify-content:center;font-size:18px;
+  }
+  .editreq-header-body h3{font-size:17px;font-weight:700;color:var(--text-primary);margin:0 0 2px;}
+  .editreq-header-body span{font-size:13px;color:var(--text-secondary);font-family:'DM Mono',monospace;}
+
+  /* El motivo del rechazo es lo primero que hay que leer: por eso va antes del
+     formulario y con la barra roja a la izquierda. */
+  .editreq-motivo{
+    background:#fef2f2;border-left:3px solid #dc2626;border-radius:0 10px 10px 0;
+    padding:12px 14px;margin-bottom:20px;
+  }
+  .editreq-motivo-title{
+    display:flex;align-items:center;gap:7px;
+    font-size:12px;font-weight:700;color:#b91c1c;text-transform:uppercase;letter-spacing:.03em;
+  }
+  .editreq-motivo-texto{margin-top:6px;font-size:13.5px;color:#7f1d1d;line-height:1.5;}
+
+  #formEditarReq{display:flex;flex-direction:column;gap:16px;}
+
+  /* Categoría y subcategoría: son contexto, no campos. Se ven como datos y no
+     como inputs deshabilitados, que invitan a intentar escribir en ellos. */
+  .editreq-fijos{display:grid;grid-template-columns:1fr 1fr;gap:10px;}
+  .editreq-fijo{
+    background:#f8fafc;border:1px solid var(--border);border-radius:10px;
+    padding:9px 12px;display:flex;flex-direction:column;gap:2px;min-width:0;
+  }
+  .editreq-fijo-label{
+    font-size:9.5px;font-weight:700;letter-spacing:.05em;
+    text-transform:uppercase;color:var(--text-light);
+  }
+  .editreq-fijo-valor{
+    font-size:13px;font-weight:600;color:var(--text-primary);
+    overflow:hidden;text-overflow:ellipsis;white-space:nowrap;
+  }
+
+  .editreq-adjunto-actual{
+    display:flex;align-items:center;gap:7px;flex-wrap:wrap;
+    background:#f1f5f9;border-radius:8px;padding:8px 11px;margin-bottom:8px;
+    font-size:12.5px;color:var(--text-secondary);
+  }
+  .editreq-adjunto-actual a{color:var(--primary);font-weight:600;text-decoration:underline;
+    overflow:hidden;text-overflow:ellipsis;white-space:nowrap;max-width:100%;}
+  .editreq-hint{display:block;margin-top:6px;font-size:11.5px;color:var(--text-light);}
+
+  .editreq-acciones{display:flex;gap:10px;}
+  .editreq-acciones .btn-submit{flex:1;}
+  .editreq-btn-cancelar{
+    flex:0 0 auto;padding:13px 22px;border-radius:var(--radius-md);
+    border:1.5px solid var(--border);background:#fff;color:var(--text-secondary);
+    font-size:13.5px;font-weight:700;cursor:pointer;transition:.15s;
+    font-family:'DM Sans',sans-serif;
+  }
+  .editreq-btn-cancelar:hover{background:#f1f5f9;color:var(--text-primary);}
+
+  @media (max-width:520px){
+    .editreq-fijos{grid-template-columns:1fr;}
+    .editreq-acciones{flex-direction:column-reverse;}
+  }
+
   /* ===== SEGUIMIENTO: HERO DE BÚSQUEDA ===== */
   .seg-search-hero{
     display:flex;flex-direction:column;align-items:center;text-align:center;gap:6px;
