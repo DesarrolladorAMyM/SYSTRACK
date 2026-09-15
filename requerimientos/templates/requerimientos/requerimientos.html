@@ -242,6 +242,9 @@
   #screen-equipos .equipo-badge.disponible{ background:#dcfce7; color:#15803d; }
   #screen-equipos .equipo-badge.no-disponible{ background:#fee2e2; color:#b91c1c; }
   #screen-equipos .equipo-badge.prestado-otro{ background:#f1f5f9; color:#64748b; white-space:nowrap; }
+  /* El equipo que tiene el propio usuario: antes aqui iba el boton Devolver.
+     La devolucion ahora se registra en TIC al entregar el equipo. */
+  #screen-equipos .equipo-badge.es-mio{ background:#dbeafe; color:#1e40af; white-space:nowrap; }
 </style>
 <div class="id-modal-overlay hidden" id="registroModalOverlay">
   <div class="id-modal-box" style="max-width:480px;">
@@ -384,21 +387,7 @@
 </div>
 
 <!-- MODAL: confirmar devolución de equipo -->
-<div class="id-modal-overlay hidden" id="confirmarDevolucionOverlay">
-  <div class="id-modal-box" style="max-width:420px;">
-    <button class="id-modal-close" id="confirmarDevolucionClose" title="Cerrar" aria-label="Cerrar"><i class="fa-solid fa-xmark"></i></button>
-    <div class="id-modal-icon"><i class="fa-solid fa-rotate-left"></i></div>
-    <h3>Confirmar devolución</h3>
-    <p>¿Confirmas la devolución de <strong id="cdEquipoNombre">este equipo</strong>? Quedará disponible nuevamente para préstamo.</p>
 
-    <div class="id-modal-error" id="confirmarDevolucionError"></div>
-
-    <div style="display:flex; gap:10px; margin-top:6px;">
-      <button type="button" class="btn-submit" id="confirmarDevolucionCancelar" style="width:50%; background:#f1f5f9; color:#334155;">CANCELAR</button>
-      <button type="button" class="btn-submit" id="confirmarDevolucionSubmit" style="width:50%;">CONFIRMAR</button>
-    </div>
-  </div>
-</div>
 
 <!-- MODAL: chat de soporte (Microsoft Teams) -->
 <style>

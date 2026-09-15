@@ -33,6 +33,7 @@ const API = {
   categoriasReq:     `${BASE}/inventario/api/categorias-req/`,
   subcategoriasReq:  (categoriaId) => `${BASE}/inventario/api/subcategorias-req/?categoria_id=${categoriaId}`,
   reqTicAccion:      (id) => `${BASE}/inventario/api/req-tic/${id}/accion/`,
+  reqTicAdjSolucion: (id) => `${BASE}/inventario/api/req-tic/${id}/adjuntar-solucion/`,
   notificacionesBell: `${BASE}/inventario/api/notificaciones-bell/`,
   marcarLeidaBell:    `${BASE}/inventario/api/notificaciones-bell/marcar-leida/`,
   marcarTodasBell:    `${BASE}/inventario/api/notificaciones-bell/marcar-todas/`,
@@ -69,6 +70,7 @@ const API = {
   novedadesAdjuntar:      (pk) => `${BASE}/inventario/api/novedades/${pk}/adjuntar/`,
   novedadesAdjuntoEliminar: (pk) => `${BASE}/inventario/api/novedades/adjuntos/${pk}/eliminar/`,
   novedadesAdjuntosZip:   (pk) => `${BASE}/inventario/api/novedades/${pk}/adjuntos/zip/`,
+  novedadesPdf:           (pk) => `${BASE}/inventario/api/novedades/${pk}/pdf/`,
 
   // ── Préstamo de Equipos ──
   equiposAdmin:        `${BASE}/inventario/api/prestamo-equipos/`,
@@ -76,6 +78,11 @@ const API = {
   equipoAdminGuardar:  `${BASE}/inventario/api/prestamo-equipos/guardar/`,
   equipoAdminEliminar: (pk) => `${BASE}/inventario/api/prestamo-equipos/${pk}/eliminar/`,
   equipoAdminHistorial: (pk) => `${BASE}/inventario/api/prestamo-equipos/${pk}/historial/`,
+  equipoAdminDevolver: (pk) => `${BASE}/inventario/api/prestamo-equipos/${pk}/devolver/`,
+  equipoDetalle:       (pk) => `${BASE}/inventario/api/prestamo-equipos/${pk}/detalle/`,
+  equipoAccGuardar:    (pk) => `${BASE}/inventario/api/prestamo-equipos/${pk}/accesorios/guardar/`,
+  equipoAccEliminar:   (pk, a) => `${BASE}/inventario/api/prestamo-equipos/${pk}/accesorios/${a}/eliminar/`,
+  prestamoAccGuardar:  (pk) => `${BASE}/inventario/api/prestamo-equipos/${pk}/prestamo-accesorios/`,
 };
 let CAT = {};
 
@@ -230,7 +237,7 @@ const FILTROS_SECCION = {
   'mis-requerimientos':       { inputs: ['req-search'], onReset: () => { reqActPage = 1; reqCerPage = 1; } },
   'gestion-usuarios':         { inputs: ['usr-search'], onReset: () => { usrPage = 1; } },
   'asignar-requerimientos':   { inputs: ['asig-search'], onReset: () => { asigPage = 1; } },
-  'historial-requerimientos': { inputs: ['hreq-search'], onReset: () => { hreqPage = 1; } },
+  'historial-requerimientos': { inputs: ['hreq-search', 'hreq-estado-filtro'], onReset: () => { hreqPage = 1; } },
   'checklist':                { inputs: [], onReset: () => { _resetChecklistScreen(); } },
   'novedades':                { inputs: ['nov-search', 'nov-filter-tipo', 'nov-filter-desde', 'nov-filter-hasta'], onReset: () => { novPage = 1; } },
 };
@@ -3150,52 +3157,199 @@ async function guardarNovedad() {
   });
 }
 
-// ── Detalle ──
+// ── Detalle (vista tipo acta) ──
+// Misma idea que la "Vista de Checklist": el documento se arma aquí en HTML
+// para verlo al instante, y el PDF lo genera el servidor (api_novedades_pdf)
+// con las mismas secciones y las evidencias como anexos. No cambia nada del
+// registro: usa el mismo endpoint de detalle de siempre.
+
+// DEBE coincidir con NOVEDAD_PDF_EXT_IMAGEN en dashboard/views.py: la vista y
+// el PDF numeran los anexos con la misma regla (imágenes primero, luego PDF).
+// SVG queda fuera porque el servidor no lo puede incrustar.
+const NOV_ANEXO_EXT_IMAGEN = ['jpg', 'jpeg', 'png', 'gif', 'webp', 'bmp'];
+
+function _novCodigo(id) {
+  return 'NOV-' + String(id).padStart(4, '0');
+}
+
+// _escHtml no escapa comillas, y aquí los nombres de archivo van dentro de
+// atributos (href, download, title): un archivo llamado 'foto "1".jpg'
+// rompería el atributo.
+function _novAttr(valor) {
+  return String(valor == null ? '' : valor)
+    .replace(/&/g, '&amp;')
+    .replace(/"/g, '&quot;')
+    .replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;');
+}
 
 async function verNovedadDetalle(id) {
-  const res = await apiFetch(API.novedadesDetalle(id));
-  if (!res.ok) { showNotif('Error', 'No se pudo cargar la novedad', 'warning'); return; }
-  const n = res.data;
-  document.getElementById('nov-det-sub').textContent = `${n.tipo} — ${n.fecha} — ${n.responsable}`;
-  const wrap = document.getElementById('nov-det-campos');
-  if (n.respuestas.length === 0) {
-    wrap.innerHTML = '';
-  } else {
-    wrap.innerHTML = `
-      <div class="chk-seccion">
-        <div class="chk-seccion-title"><i class="fas fa-list-check"></i> Campos</div>
-        <table class="data-table chk-mini-table">
-          <thead><tr><th>Campo</th><th>Observación</th></tr></thead>
-          <tbody>${n.respuestas.map(r => `
-            <tr><td>${r.campo}</td><td>${r.observacion || '—'}</td></tr>`).join('')}</tbody>
-        </table>
-      </div>`;
-  }
-
-  const seccionAdj = document.getElementById('nov-det-adjuntos-seccion');
-  const adjuntos = n.adjuntos || [];
-  _novDetalleId = n.id;
-  if (adjuntos.length === 0) {
-    seccionAdj.style.display = 'none';
-  } else {
-    seccionAdj.style.display = '';
-    document.getElementById('nov-det-adjuntos-descargar-todos').style.display = adjuntos.length > 1 ? '' : 'none';
-    document.getElementById('nov-det-adjuntos').innerHTML = adjuntos.map(a => {
-      const esImagen = ADJUNTO_EXT_IMAGEN.includes((a.nombre.split('.').pop() || '').toLowerCase());
-      return `
-        <div class="nov-adjunto-card">
-          <a href="${a.url}" target="_blank" rel="noopener" title="Abrir ${a.nombre}" style="display:contents;">
-            ${esImagen
-              ? `<img src="${a.url}" alt="${a.nombre}">`
-              : `<div class="nov-adjunto-icono"><i class="fas fa-file-lines"></i></div>`}
-            <div class="nov-adjunto-nombre">${a.nombre}</div>
-          </a>
-          <a class="nov-adjunto-descargar" href="${a.url}" download="${a.nombre}" title="Descargar ${a.nombre}"><i class="fas fa-download"></i></a>
-        </div>`;
-    }).join('');
-  }
-
+  _novDetalleId = id;
+  const body = document.getElementById('novActaBody');
+  body.innerHTML = `<div class="empty-state"><i class="fas fa-spinner fa-spin"></i><p>Cargando registro…</p></div>`;
+  document.getElementById('nov-det-titulo').textContent = 'Registro de novedad';
+  document.getElementById('btnNovDescargarTodos').style.display = 'none';
   document.getElementById('modalDetalleNovedad').classList.add('active');
+
+  const res = await apiFetch(API.novedadesDetalle(id));
+  // Si mientras cargaba se abrió otra novedad, esta respuesta ya no aplica.
+  if (_novDetalleId !== id) return;
+  if (!res.ok) {
+    body.innerHTML = `<div class="empty-state"><i class="fas fa-triangle-exclamation"></i><p>No se pudo cargar la novedad.</p></div>`;
+    return;
+  }
+  const n = res.data;
+  document.getElementById('nov-det-titulo').textContent = `${_novCodigo(n.id)} · ${n.tipo}`;
+  document.getElementById('btnNovDescargarTodos').style.display = (n.adjuntos || []).length > 1 ? '' : 'none';
+  body.innerHTML = _construirVistaNovedadHTML(n);
+}
+
+function _construirVistaNovedadHTML(n) {
+  const codigo = _novCodigo(n.id);
+  const partes = String(n.fecha || '').split(' ');
+  const fecha = partes[0] || '—';
+  const hora = partes[1] || '—';
+
+  const texto = v => (v && String(v).trim())
+    ? _escHtml(String(v)).replace(/\n/g, '<br>')
+    : '<span class="nov-acta-vacio">Sin información</span>';
+  const fila = (etiqueta, valorHtml) => `<tr><th>${_escHtml(etiqueta)}</th><td>${valorHtml}</td></tr>`;
+
+  let num = 0;
+  const seccion = (titulo, cuerpo, extra = '') => `
+    <section class="nov-acta-seccion">
+      <div class="nov-acta-seccion-tit"><span>${++num}</span> ${titulo}${extra}</div>
+      ${cuerpo}
+    </section>`;
+
+  // Anexos: imágenes primero, luego PDF, luego el resto — misma regla que el PDF.
+  const ext = a => (String(a.nombre).split('.').pop() || '').toLowerCase();
+  const clase = a => NOV_ANEXO_EXT_IMAGEN.includes(ext(a)) ? 0 : (ext(a) === 'pdf' ? 1 : 2);
+  const adjuntos = (n.adjuntos || []).slice().sort((x, y) => (clase(x) - clase(y)) || (x.id - y.id));
+  let anexo = 0;
+  const numeroAnexo = new Map();
+  adjuntos.forEach(a => { if (clase(a) < 2) numeroAnexo.set(a.id, ++anexo); });
+
+  const icono = a => {
+    const e = ext(a);
+    if (e === 'pdf') return '<i class="fas fa-file-pdf" style="color:#dc2626"></i>';
+    if (['doc', 'docx'].includes(e)) return '<i class="fas fa-file-word" style="color:#2563eb"></i>';
+    if (['xls', 'xlsx', 'csv'].includes(e)) return '<i class="fas fa-file-excel" style="color:#16a34a"></i>';
+    if (['zip', 'rar', '7z'].includes(e)) return '<i class="fas fa-file-zipper" style="color:#a16207"></i>';
+    return '<i class="fas fa-file-lines" style="color:#64748b"></i>';
+  };
+
+  const imagenes = adjuntos.filter(a => clase(a) === 0);
+  const archivos = adjuntos.filter(a => clase(a) !== 0);
+
+  const galeria = imagenes.length ? `
+    <div class="nov-acta-galeria">
+      ${imagenes.map(a => `
+        <div class="nov-acta-foto">
+          <a href="${_novAttr(encodeURI(a.url))}" target="_blank" rel="noopener" title="Abrir ${_novAttr(a.nombre)}">
+            <img src="${_novAttr(encodeURI(a.url))}" alt="${_novAttr(a.nombre)}" loading="lazy">
+          </a>
+          <div class="nov-acta-foto-pie">
+            <b>Anexo ${numeroAnexo.get(a.id)}</b>
+            <span title="${_novAttr(a.nombre)}">${_escHtml(a.nombre)}</span>
+            <a class="nov-acta-foto-bajar" href="${_novAttr(encodeURI(a.url))}" download="${_novAttr(a.nombre)}" title="Descargar"><i class="fas fa-download"></i></a>
+          </div>
+        </div>`).join('')}
+    </div>` : '';
+
+  const lista = archivos.length ? `
+    <div class="nov-acta-archivos">
+      ${archivos.map(a => `
+        <a class="nov-acta-archivo" href="${_novAttr(encodeURI(a.url))}" download="${_novAttr(a.nombre)}" title="Descargar ${_novAttr(a.nombre)}">
+          ${icono(a)}
+          <span>${_escHtml(a.nombre)}</span>
+          <small>${numeroAnexo.has(a.id)
+            ? `Anexo ${numeroAnexo.get(a.id)} · se agrega al final del PDF`
+            : 'Solo descarga · no se incluye en el PDF'}</small>
+          <i class="fas fa-download nov-acta-archivo-bajar"></i>
+        </a>`).join('')}
+    </div>` : '';
+
+  const secciones = [
+    seccion('Datos generales del registro', `
+      <table class="nov-acta-tabla">
+        ${fila('Número de registro', `<strong>${codigo}</strong>`)}
+        ${fila('Tipo de novedad', _escHtml(n.tipo))}
+        ${fila('Fecha del registro', _escHtml(fecha))}
+        ${fila('Hora del registro', _escHtml(hora))}
+        ${fila('Registrado por', _escHtml(n.responsable || '—'))}
+      </table>`),
+    seccion('Detalle de la novedad', (n.respuestas || []).length
+      ? `<table class="nov-acta-tabla">${n.respuestas.map(r => fila(r.campo || '—', texto(r.observacion))).join('')}</table>`
+      : `<div class="nov-acta-vacio-bloque">Este registro no tiene campos diligenciados.</div>`),
+  ];
+  if (n.observaciones && String(n.observaciones).trim()) {
+    secciones.push(seccion('Observaciones generales', `<div class="nov-acta-texto">${texto(n.observaciones)}</div>`));
+  }
+  secciones.push(seccion('Evidencias adjuntas',
+    adjuntos.length ? galeria + lista : `<div class="nov-acta-vacio-bloque">Este registro no tiene evidencias adjuntas.</div>`,
+    `<em>${adjuntos.length}</em>`));
+
+  return `
+    <article class="nov-acta-hoja">
+      <header class="nov-acta-cab">
+        <div class="nov-acta-cab-izq">
+          <div class="nov-acta-sello"><i class="fas fa-bullhorn"></i></div>
+          <div style="min-width:0">
+            <div class="nov-acta-eyebrow">Formato de registro de novedades e incidencias</div>
+            <div class="nov-acta-titulo">${_escHtml(n.tipo)}</div>
+            <div class="nov-acta-area">Tecnología de la Información y la Comunicación</div>
+          </div>
+        </div>
+        <div class="nov-acta-cab-der">
+          <div><span>Registro</span><strong>${codigo}</strong></div>
+          <div><span>Fecha</span><strong>${_escHtml(fecha)}</strong></div>
+          <div><span>Hora</span><strong>${_escHtml(hora)}</strong></div>
+        </div>
+      </header>
+      <div class="nov-acta-contenido">${secciones.join('')}</div>
+      <footer class="nov-acta-pie">
+        <i class="fas fa-shield-halved"></i>
+        <span>Documento generado por SYSTRAKER a partir del registro ${codigo}. En el PDF las imágenes van como anexos y los PDF adjuntos se agregan al final.</span>
+      </footer>
+    </article>`;
+}
+
+/* Genera el PDF en el servidor. Con fetch + spinner y no con un enlace
+   directo: cuando hay varias fotos el servidor tarda unos segundos armando
+   los anexos, y sin indicador parece que el botón no hizo nada. */
+async function descargarNovedadPdf() {
+  if (!_novDetalleId) return;
+  const id = _novDetalleId;
+  await _conSpinner('btnNovPdf', 'Generando PDF...', async () => {
+    try {
+      const r = await fetch(API.novedadesPdf(id), { credentials: 'same-origin' });
+      const tipo = r.headers.get('Content-Type') || '';
+      if (r.redirected) {
+        showNotif('Sesión expirada', 'Vuelve a iniciar sesión para descargar el PDF', 'warning');
+        return;
+      }
+      if (!r.ok || !tipo.includes('application/pdf')) {
+        showNotif('Error', 'No se pudo generar el PDF de la novedad', 'warning');
+        return;
+      }
+      const blob = await r.blob();
+      const m = (r.headers.get('Content-Disposition') || '').match(/filename="([^"]+)"/);
+      const nombre = m ? m[1] : `Novedad_${_novCodigo(id)}.pdf`;
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement('a');
+      a.href = url;
+      a.download = nombre;
+      document.body.appendChild(a);
+      a.click();
+      a.remove();
+      setTimeout(() => URL.revokeObjectURL(url), 5000);
+      showNotif('PDF generado', `${nombre} se está descargando`, 'success');
+    } catch (e) {
+      console.error('Error generando PDF de novedad:', e);
+      showNotif('Error', 'No se pudo generar el PDF de la novedad', 'warning');
+    }
+  });
 }
 
 function _novDescargarTodosAdjuntos() {
@@ -4003,40 +4157,8 @@ function updateSigSize(id, val) {
 // PRÉSTAMO DE EQUIPOS
 // ============================================================
 let equiposAdminData = [];
-let equiposAdminCatalogos = { estados: [], usuarios: [] };
+let equiposAdminCatalogos = { estados: [] };
 
-let _eqRespData = [];
-
-function eqAbrirResponsableDropdown() {
-  const dd = document.getElementById('eq-responsable-dropdown');
-  if (dd) { dd.style.display = 'block'; eqFiltrarResponsable(); }
-}
-function eqCerrarResponsableDropdown() {
-  const dd = document.getElementById('eq-responsable-dropdown');
-  if (dd) dd.style.display = 'none';
-}
-function eqFiltrarResponsable() {
-  const q  = (document.getElementById('eq-responsable-search')?.value || '').toLowerCase();
-  const dd = document.getElementById('eq-responsable-dropdown');
-  if (!dd) return;
-  const filtrado = _eqRespData.filter(u => u.NombreCompleto.toLowerCase().includes(q));
-  if (!filtrado.length) {
-    dd.innerHTML = `<div class="usr-dropdown-empty">Sin resultados</div>`;
-    return;
-  }
-  dd.innerHTML = filtrado.map(u =>
-    `<div class="usr-dropdown-item" onmousedown="eqSeleccionarResponsable(${u.IdUsuario},'${u.NombreCompleto.replace(/'/g,"\\'")}')">${u.NombreCompleto}</div>`
-  ).join('');
-}
-function eqSeleccionarResponsable(id, nombre) {
-  document.getElementById('eq-responsable').value        = id;
-  document.getElementById('eq-responsable-search').value = nombre;
-  eqCerrarResponsableDropdown();
-}
-function eqLimpiarResponsable() {
-  document.getElementById('eq-responsable').value        = '';
-  document.getElementById('eq-responsable-search').value = '';
-}
 
 async function loadEquiposAdmin() {
   const tbody = document.getElementById('equipo-tbody');
@@ -4070,20 +4192,134 @@ function _renderEquiposAdmin() {
   
   tbody.innerHTML = data.length === 0
     ? `<tr><td colspan="5"><div class="empty-state"><i class="fas fa-laptop"></i><p>No se encontraron equipos</p></div></td></tr>`
-    : data.map(e => `
+    : data.map(e => {
+      const p = e.prestamo_activo;
+      // El boton de devolucion sale por ESTADO, no por prestamo: un equipo
+      // que figura DISPONIBLE no debe ofrecer "devolver". El flujo normal es
+      // que al prestarlo desde el portal pase a NO DISPONIBLE, y ahi aparece.
+      const puedeDevolver = !!p && !e.disponible;
+      // Caso raro: hay prestamo abierto pero el equipo quedo marcado
+      // DISPONIBLE (a alguien le cambiaron el estado a mano en vez de cerrar
+      // el prestamo). No se ofrece el boton, pero tampoco se esconde: si no
+      // se marca, ese prestamo queda invisible y abierto para siempre.
+      const inconsistente = !!p && e.disponible;
+      return `
       <tr>
-        <td><strong>${e.nombre}</strong></td>
-        <td>${e.descripcion || '—'}</td>
-        <td>${e.responsable}</td>
+        <td><strong>${_escHtml(e.nombre)}</strong></td>
+        <td>${_escHtml(e.descripcion || '') || '—'}</td>
+        <td>
+          ${p
+            ? `<div class="eq-prestado">
+                 <span class="eq-prestado-nombre">${_escHtml(p.solicitante)}</span>
+                 <span class="eq-prestado-fecha">Desde ${_escHtml(p.fecha)}</span>
+                 ${inconsistente
+                   ? `<span class="eq-inconsistente" title="El préstamo sigue abierto pero el equipo figura disponible. Edita el equipo y ponlo en NO DISPONIBLE para poder registrar la devolución.">
+                        <i class="fas fa-triangle-exclamation"></i> Revisar estado
+                      </span>`
+                   : ''}
+               </div>`
+            : `<span style="color:var(--text-light)">—</span>`}
+        </td>
         <td>${_eqEstadoBadge(e.estado)}</td>
         <td>
           <div class="tbl-actions">
+            ${puedeDevolver
+              ? `<button class="tbl-btn success" title="Registrar devolución"
+                    onclick='abrirDevolucionEquipo(${e.id_equipo})'><i class="fas fa-rotate-left"></i></button>`
+              : ''}
+            <button class="tbl-btn edit" title="Ver detalles y accesorios"
+                    onclick='abrirDetalleEquipo(${e.id_equipo})'><i class="fas fa-boxes-packing"></i></button>
             <button class="tbl-btn info" title="Ver historial" onclick='abrirHistorialEquipoModal(${e.id_equipo}, ${JSON.stringify(e.nombre)})'><i class="fas fa-history"></i></button>
-            <button class="tbl-btn edit" onclick="openEquipoModal(${e.id_equipo})"><i class="fas fa-edit"></i></button>
-            <button class="tbl-btn del"  onclick="eliminarEquipoAdmin(${e.id_equipo})"><i class="fas fa-trash-alt"></i></button>
+            <button class="tbl-btn edit" title="Editar" onclick="openEquipoModal(${e.id_equipo})"><i class="fas fa-edit"></i></button>
+            <button class="tbl-btn del"  title="Eliminar" onclick="eliminarEquipoAdmin(${e.id_equipo})"><i class="fas fa-trash-alt"></i></button>
           </div>
         </td>
-      </tr>`).join('');
+      </tr>`;
+    }).join('');
+}
+
+/* ── Devolución de un equipo ──
+   Solo existe aquí, en el dashboard. Antes la hacía el propio solicitante
+   desde el portal, pero eso liberaba el equipo sin que nadie comprobara que
+   de verdad lo hubiera traído a TIC. Ahora la registra quien lo recibe. */
+let _devolucionEquipoId = null;
+
+function abrirDevolucionEquipo(idEquipo) {
+  const eq = equiposAdminData.find(x => x.id_equipo === idEquipo);
+  if (!eq || !eq.prestamo_activo) {
+    showNotif('Sin préstamo', 'Este equipo no tiene un préstamo abierto', 'warning');
+    return;
+  }
+  if (eq.disponible) {
+    showNotif('Equipo disponible',
+      'Este equipo figura como disponible, así que no hay nada que devolver.', 'warning');
+    return;
+  }
+  _devolucionEquipoId = idEquipo;
+  const p = eq.prestamo_activo;
+
+  document.getElementById('dev-equipo-nombre').textContent = eq.nombre || '—';
+  document.getElementById('dev-solicitante').textContent   = p.solicitante || '—';
+  document.getElementById('dev-cedula').textContent        = p.cedula || '—';
+  document.getElementById('dev-area').textContent          = p.area || '—';
+  document.getElementById('dev-fecha').textContent         = p.fecha || '—';
+  document.getElementById('dev-fecha-estimada').textContent = p.fecha_estimada || 'Sin fecha estimada';
+  document.getElementById('dev-observaciones').value       = '';
+
+  const obsPrev = document.getElementById('dev-obs-previa');
+  if (obsPrev) {
+    obsPrev.textContent   = p.observaciones || '';
+    obsPrev.style.display = p.observaciones ? '' : 'none';
+  }
+
+  // El checklist se pide al abrir, no se cachea: entre que se cargó la tabla
+  // y se abre este modal alguien pudo corregir qué salió.
+  _devAccesorios = [];
+  _devPintarAccesorios([], true);
+  apiFetch(API.equipoDetalle(idEquipo)).then(res => {
+    if (!res.ok || !res.equipo.prestamo_activo) { _devPintarAccesorios([]); return; }
+    // Solo lo que SALIÓ se puede devolver. Pedir de vuelta algo que nunca se
+    // entregó sería acusar a la persona de perder lo que no se llevó.
+    _devAccesorios = res.equipo.prestamo_activo.accesorios.filter(a => a.entregado);
+    _devPintarAccesorios(_devAccesorios);
+  });
+
+  openModal('modalDevolucionEquipo');
+}
+
+async function confirmarDevolucionEquipo() {
+  if (!_devolucionEquipoId) return;
+  const obs = document.getElementById('dev-observaciones')?.value.trim() || '';
+
+  await _conSpinner('btnConfirmarDevolucion', 'Registrando...', async () => {
+    const accesorios = _devAccesorios.map(a => {
+      const k = _accKey(a);
+      return {
+        id: a.id, id_accesorio: a.id_accesorio,
+        devuelto: !!document.getElementById(`dev-acc-${k}`)?.checked,
+        observacion: document.getElementById(`dev-acc-obs-${k}`)?.value.trim() || '',
+      };
+    });
+
+    const res = await apiFetch(API.equipoAdminDevolver(_devolucionEquipoId), 'POST',
+                               { observaciones: obs, accesorios });
+    if (!res.ok) {
+      showNotif('Error', res.error || 'No se pudo registrar la devolución', 'warning');
+      return;
+    }
+    closeModal('modalDevolucionEquipo');
+
+    const faltan = res.faltantes || [];
+    showNotif(
+      faltan.length ? 'Devolución con faltantes' : 'Devolución registrada',
+      faltan.length
+        ? `${res.equipo} quedó disponible, pero no volvió: ${faltan.join(', ')}.`
+        : `${res.equipo} quedó disponible — se cerró el préstamo de ${res.solicitante}.`,
+      faltan.length ? 'warning' : 'success'
+    );
+    _devolucionEquipoId = null;
+    loadEquiposAdmin();
+  });
 }
 
 /* ── Modal: historial de préstamos de un equipo (con buscador) ── */
@@ -4188,7 +4424,7 @@ async function openEquipoModal(id = null) {
   // reflejar cambios recientes en la BD (nuevos estados, usuarios, etc.)
   const res = await apiFetch(API.equiposAdminCat);
   if (res.ok) {
-    equiposAdminCatalogos = { estados: res.estados || [], usuarios: res.usuarios || [] };
+    equiposAdminCatalogos = { estados: res.estados || [] };
   } else {
     showNotif('Error', 'No se pudieron cargar los catálogos de estado/responsable', 'warning');
   }
@@ -4198,12 +4434,10 @@ async function openEquipoModal(id = null) {
     .filter(e => [3, 4].includes(e.IdEstado))
     .map(e => `<option value="${e.IdEstado}">${e.Descripcion}</option>`).join('');
 
-  _eqRespData = equiposAdminCatalogos.usuarios || [];
 
   document.getElementById('eq-id-equipo').value = '';
   document.getElementById('eq-nombre').value = '';
   document.getElementById('eq-descripcion').value = '';
-  eqLimpiarResponsable();
   selEstado.value = '';
 
   if (id) {
@@ -4213,9 +4447,6 @@ async function openEquipoModal(id = null) {
       document.getElementById('eq-id-equipo').value = eq.id_equipo;
       document.getElementById('eq-nombre').value = eq.nombre;
       document.getElementById('eq-descripcion').value = eq.descripcion || '';
-      const respItem = _eqRespData.find(u => String(u.IdUsuario) === String(eq.id_responsable));
-      document.getElementById('eq-responsable').value        = eq.id_responsable || '';
-      document.getElementById('eq-responsable-search').value = respItem ? respItem.NombreCompleto : '';
       selEstado.value = eq.id_estado || '';
     }
   } else {
@@ -4229,7 +4460,6 @@ async function guardarEquipo() {
   const id_equipo   = document.getElementById('eq-id-equipo').value || null;
   const nombre      = document.getElementById('eq-nombre').value.trim();
   const descripcion = document.getElementById('eq-descripcion').value.trim();
-  const id_responsable = document.getElementById('eq-responsable').value || null;
   const id_estado   = document.getElementById('eq-estado').value || null;
 
   if (!nombre)    { showNotif('Campo requerido', 'El nombre del equipo es obligatorio', 'warning'); return; }
@@ -4237,7 +4467,7 @@ async function guardarEquipo() {
 
   await _conSpinner('btnGuardarEquipo', 'Guardando...', async () => {
     const res = await apiFetch(API.equipoAdminGuardar, 'POST', {
-      id_equipo, nombre, descripcion, id_responsable, id_estado,
+      id_equipo, nombre, descripcion, id_estado,
     });
     if (!res.ok) { showNotif('Error', res.error || 'No se pudo guardar el equipo', 'warning'); return; }
 
@@ -5736,8 +5966,39 @@ function openSolucionarReqModal(req) {
   document.getElementById('sol-f-costo').value                = req.costo || '';
   document.getElementById('sol-f-solucion').value             = '';
   document.getElementById('sol-f-archivo').value               = '';
-  document.getElementById('sol-f-archivo-actual').textContent = req.archivo_acciones ? `Archivo actual: ${req.archivo_acciones}` : '';
+
+  // Los archivos se acumulan en memoria hasta que se guarda, asi que hay que
+  // vaciarlos: si no, las evidencias de un requerimiento se colarian en el
+  // siguiente que se abra.
+  _solArchivos = [];
+  _solRenderArchivos();
+
+  // Si ya hay evidencias subidas antes, se muestran como enlaces.
+  const previos = document.getElementById('sol-archivos-previos');
+  if (previos) {
+    const lista = req.adjuntos_solucion || [];
+    previos.innerHTML = lista.length
+      ? `<div class="form-hint" style="margin-bottom:6px">Evidencias ya guardadas:</div>` +
+        lista.map(a => `<a class="sol-archivo-previo" href="${a.url}" target="_blank" rel="noopener">
+             <i class="fas fa-file-arrow-down"></i> ${_escHtml(a.nombre)}</a>`).join('')
+      : '';
+  }
+
+  solToggleDatos(false);   // siempre abre con los datos plegados
   openModal('modalSolucionarReq');
+}
+
+/* Pliega/despliega los datos de consulta del requerimiento. */
+function solToggleDatos(forzar) {
+  const caja = document.getElementById('solDatos');
+  const txt  = document.getElementById('solToggleTexto');
+  const btn  = document.getElementById('solToggleDatos');
+  if (!caja) return;
+  const abrir = (forzar === undefined) ? caja.hidden : forzar;
+  caja.hidden = !abrir;
+  btn?.classList.toggle('abierto', abrir);
+  if (txt) txt.textContent = abrir ? 'Ocultar datos del requerimiento'
+                                   : 'Ver datos del requerimiento';
 }
 
 async function guardarPlanReq() {
@@ -5768,21 +6029,109 @@ async function guardarSolucionReq() {
   if (!solucion) return showNotification('warning', 'Campo requerido', 'Describe la solución del requerimiento');
   const fecha = new Date().toISOString().slice(0, 10); // no hay input de fecha en el HTML, se usa la fecha actual
 
+  // OJO: antes aquí solo se mandaba la solución y la fecha. El backend SIEMPRE
+  // supo recibir costo y plan_accion (ver api_req_tic_accion), pero como el
+  // frontend no los enviaba, lo que el técnico escribía en esos dos campos se
+  // perdía al cerrar el modal sin ningún aviso.
+  const costo = document.getElementById('sol-f-costo')?.value.trim() || '';
+  const plan  = document.getElementById('sol-f-plan')?.value.trim()  || '';
+
   await _conSpinner('btnGuardarSolucion', 'Solucionando...', async () => {
     const res = await apiFetch(API.reqTicAccion(solReqId), 'POST', {
       accion: 'solucionar',
       solucion,
       fecha_solucion: fecha,
+      costo,
+      plan_accion: plan,
     });
 
-    if (res.ok) {
-      closeModal('modalSolucionarReq');
-      showNotification('success', 'Requerimiento solucionado', 'El requerimiento fue marcado como cerrado');
-      cargarRequerimientos();
-    } else {
+    if (!res.ok) {
       showNotification('warning', 'Error', res.error || 'No se pudo guardar la solución');
+      return;
     }
+
+    // El archivo va en una segunda llamada porque la anterior manda JSON y no
+    // puede llevar binarios (mismo esquema de dos pasos del portal). Va DESPUÉS
+    // de que la solución quedó guardada: si el archivo falla, el requerimiento
+    // ya está solucionado y solo se pierde la evidencia, no el trabajo.
+    let avisoAdjunto = '';
+    if (_solArchivos.length) {
+      const subidos = await _subirAdjuntosSolucion(solReqId);
+      if (subidos < _solArchivos.length) {
+        avisoAdjunto = ` (${subidos} de ${_solArchivos.length} archivos se adjuntaron)`;
+      }
+    }
+
+    closeModal('modalSolucionarReq');
+    showNotification(
+      'success', 'Requerimiento solucionado',
+      `El requerimiento fue marcado como cerrado${avisoAdjunto}`
+    );
+    cargarRequerimientos();
   });
+}
+
+/* Archivos que el técnico agregó en el modal antes de guardar. */
+let _solArchivos = [];
+
+async function _subirAdjuntosSolucion(reqId) {
+  let ok = 0;
+  for (const archivo of _solArchivos) {
+    try {
+      const fd = new FormData();
+      fd.append('archivo', archivo);
+      const r = await fetch(API.reqTicAdjSolucion(reqId), {
+        method: 'POST',
+        body: fd,
+        headers: { 'X-CSRFToken': getCookie('csrftoken') },
+      });
+      const data = await r.json();
+      if (data.ok) ok++;
+      else console.error('Adjunto rechazado:', archivo.name, data.error);
+    } catch (e) {
+      console.error('Falló el adjunto', archivo.name, e);
+    }
+  }
+  return ok;
+}
+
+/* Lista de archivos elegidos, con opción de quitar alguno antes de enviar. */
+function _solRenderArchivos() {
+  const cont = document.getElementById('sol-archivos-lista');
+  if (!cont) return;
+  if (!_solArchivos.length) {
+    cont.innerHTML = '<div class="sol-archivos-vacio">Ningún archivo seleccionado</div>';
+    return;
+  }
+  cont.innerHTML = _solArchivos.map((a, i) => `
+    <div class="sol-archivo-chip">
+      <i class="fas fa-paperclip"></i>
+      <span class="sol-archivo-nombre" title="${_escHtml(a.name)}">${_escHtml(a.name)}</span>
+      <span class="sol-archivo-peso">${(a.size / 1024).toFixed(0)} KB</span>
+      <button type="button" class="sol-archivo-quitar" title="Quitar"
+              onclick="solQuitarArchivo(${i})"><i class="fas fa-times"></i></button>
+    </div>`).join('');
+}
+
+function solQuitarArchivo(i) {
+  _solArchivos.splice(i, 1);
+  _solRenderArchivos();
+}
+
+function solAgregarArchivos(input) {
+  const MAX = 5 * 1024 * 1024;
+  for (const f of Array.from(input.files || [])) {
+    if (f.size > MAX) {
+      showNotification('warning', 'Archivo muy pesado',
+        `"${f.name}" supera los 5 MB y no se adjuntará.`);
+      continue;
+    }
+    if (!_solArchivos.some(x => x.name === f.name && x.size === f.size)) {
+      _solArchivos.push(f);
+    }
+  }
+  input.value = '';   // permite volver a elegir el MISMO archivo
+  _solRenderArchivos();
 }
 
 
@@ -5874,12 +6223,22 @@ function _soloFecha(f) {
 }
 
 function _reqEstadoBadge(e) {
+  // Los nombres salen de mm_EstadoRequerimiento (los 9). Antes faltaban
+  // ABIERTO, ASIGNADO y los tres de aprobación/corrección, y todos caían en
+  // el estilo de "pendiente".
   const m = {
-    'PENDIENTE':  'req-estado-badge req-estado-pendiente',
-    'EN PROCESO': 'req-estado-badge req-estado-proceso',
-    'RESUELTO':   'req-estado-badge req-estado-resuelto',
-    'CERRADO':    'req-estado-badge req-estado-cerrado',
-    'CALIFICADO': 'req-estado-badge req-estado-calificado',
+    'ABIERTO':              'req-estado-badge req-estado-pendiente',
+    'PENDIENTE':            'req-estado-badge req-estado-pendiente',
+    'ASIGNADO':             'req-estado-badge req-estado-proceso',
+    'EN PROCESO':           'req-estado-badge req-estado-proceso',
+    'RESUELTO':             'req-estado-badge req-estado-resuelto',
+    'CERRADO':              'req-estado-badge req-estado-cerrado',
+    'CALIFICADO':           'req-estado-badge req-estado-calificado',
+    'PENDIENTE APROBACION': 'req-estado-badge req-estado-pendiente',
+    'PENDIENTE APROBACIÓN': 'req-estado-badge req-estado-pendiente',
+    'RECHAZADO':            'req-estado-badge req-estado-rechazado',
+    'REQUIERE CORRECCION':  'req-estado-badge req-estado-rechazado',
+    'REQUIERE CORRECCIÓN':  'req-estado-badge req-estado-rechazado',
   };
   const cls = m[(e || '').toUpperCase()] || 'req-estado-badge req-estado-pendiente';
   return `<span class="${cls}">${e || '—'}</span>`;
@@ -6475,21 +6834,13 @@ async function cargarHistorialReq() {
       renderHReq();
       return;
     }
-    const lista = res.data.requerimientos || [];
-    hreqData = lista.map(r => ({
-      id:                   r.id,
-      consecutivo:          r.consecutivo,
-      fecha_requerimiento:  r.fecha_requerimiento,
-      remitente:            r.remitente,
-      descripcion:          r.descripcion,
-      prioridad:            r.prioridad,
-      asignado:             r.asignado,
-      clasificacion:        r.clasificacion,
-      plan_accion:          r.plan_accion,
-      fecha_solucion:       r.fecha_solucion,
-      solucion:             r.solucion,
-      estado:               r.estado,
-    }));
+    // Se guarda la fila COMPLETA tal como viene de la API. Antes se copiaban
+    // los campos uno por uno, y esa lista se quedo corta: el backend empezo a
+    // mandar correo, cargo, CO, categoria, evaluacion, etc. y la copia los
+    // tiraba a la basura, asi que el modal los mostraba como "Sin informacion"
+    // aunque en la base estuvieran al 100%. Enumerar campos aqui no aporta
+    // nada y se desincroniza sola.
+    hreqData = res.data.requerimientos || [];
     renderHReq();
   } catch(e) {
     console.error('Error cargando historial requerimientos:', e);
@@ -6503,19 +6854,32 @@ async function cargarHistorialReq() {
     }
   }
 }
+/* Filas que pasan el buscador y el filtro de estado.
+   La usan renderHReq() y la exportacion: así lo que se descarga es
+   EXACTAMENTE lo que se está viendo en pantalla, y no hay forma de que
+   las dos se desincronicen. */
+function _hreqFiltrados() {
+  const q = (document.getElementById('hreq-search')?.value || '').toLowerCase();
+  const estado = document.getElementById('hreq-estado-filtro')?.value || '';
+  return hreqData.filter(r =>
+    (!estado || r.estado === estado) &&
+    (!q ||
+      (r.consecutivo  || '').toString().toLowerCase().includes(q) ||
+      (r.remitente    || '').toLowerCase().includes(q) ||
+      (r.descripcion  || '').toLowerCase().includes(q) ||
+      (r.asignado     || '').toLowerCase().includes(q) ||
+      (r.clasificacion|| '').toLowerCase().includes(q))
+  );
+}
+
 /* ── Render ── */
 function renderHReq() {
   const q        = (document.getElementById('hreq-search')?.value || '').toLowerCase();
   const pageSize = parseInt(document.getElementById('hreq-pag-size')?.value || 10);
 
-  let data = hreqData.filter(r =>
-    !q ||
-    (r.consecutivo  || '').toString().toLowerCase().includes(q) ||
-    (r.remitente    || '').toLowerCase().includes(q) ||
-    (r.descripcion  || '').toLowerCase().includes(q) ||
-    (r.asignado     || '').toLowerCase().includes(q) ||
-    (r.clasificacion|| '').toLowerCase().includes(q)
-  );
+  _hreqLlenarFiltroEstados();
+
+  let data = _hreqFiltrados();
 
   if (hreqSortKey) {
     data.sort((a, b) => {
@@ -6537,8 +6901,6 @@ function renderHReq() {
   const tbody = document.getElementById('hreq-tbody');
 
   if (!slice.length) {
-    // Ocultar detalle si no hay datos
-    document.getElementById('hreq-detalle-wrap').style.display = 'none';
     hreqSelId = null;
 
     tbody.innerHTML = `<tr><td colspan="8"
@@ -6570,16 +6932,12 @@ function renderHReq() {
     </td>
     <td onclick="event.stopPropagation()">
       <div class="tbl-actions">
-        <button class="tbl-btn info" title="Ver detalle" onclick="verReq(${r.id})"><i class="fas fa-eye"></i></button>
+        <button class="tbl-btn info" title="Ver línea de tiempo"
+                onclick="hreqAbrirTimeline(${r.id})"><i class="fas fa-eye"></i></button>
       </div>
     </td>
   </tr>`).join('');
 
-    // Si había una selección activa, re-mostrar su detalle
-    if (hreqSelId) {
-      const r = hreqData.find(x => x.id === hreqSelId);
-      if (r) _mostrarDetalleHReq(r);
-    }
   }
 
   const totalPages = Math.ceil(total / pageSize);
@@ -6588,125 +6946,345 @@ function renderHReq() {
   );
 }
 
+/* Llena el filtro con los estados que existen en los datos y cuántos hay de
+   cada uno. Se arma desde hreqData y no desde una lista fija: si mañana
+   aparece un estado nuevo en la tabla, sale solo. */
+function _hreqLlenarFiltroEstados() {
+  const sel = document.getElementById('hreq-estado-filtro');
+  if (!sel) return;
+
+  const conteo = {};
+  hreqData.forEach(r => {
+    const e = r.estado || '—';
+    conteo[e] = (conteo[e] || 0) + 1;
+  });
+  const firma = JSON.stringify(conteo);
+  if (sel.dataset.firma === firma) return;   // ya está pintado, no repintar
+  sel.dataset.firma = firma;
+
+  const actual = sel.value;
+  sel.innerHTML =
+    `<option value="">Todos (${hreqData.length})</option>` +
+    Object.keys(conteo).sort().map(e =>
+      `<option value="${_escHtml(e)}">${_escHtml(e)} (${conteo[e]})</option>`
+    ).join('');
+  sel.value = actual;          // conserva la selección al recargar
+  if (sel.value !== actual) sel.value = '';
+}
+
 /* ── Seleccionar fila y mostrar detalle ── */
-function hreqSeleccionar(id) {
-  // Toggle: si ya estaba seleccionada, colapsa
-  if (hreqSelId === id) {
-    hreqSelId = null;
-    document.getElementById('hreq-detalle-wrap').style.display = 'none';
-    document.querySelectorAll('.hreq-row').forEach(r => r.classList.remove('hreq-row-active'));
+/* ══════════════════════════════════════════════════════════════════
+   HISTORIAL DE REQUERIMIENTOS — Línea de tiempo
+
+   Es la MISMA línea de tiempo que ve el solicitante en el portal
+   (TRIP_STEPS_BASE / buildTripSteps en requerimientos.js). Se copió
+   a propósito en vez de inventar otra: si el técnico y el solicitante
+   vieran etapas distintas del mismo requerimiento, discutirían sobre
+   dos versiones de la verdad. Al cambiar una hay que cambiar la otra.
+
+   La versión anterior no era una línea de tiempo real: ponía el nombre
+   del responsable donde iba la fecha de "Asignado", el texto del plan
+   donde iba la fecha de "Plan de acción", y marcaba "Cerrado" solo si
+   el estado era exactamente CERRADO — con lo cual los 2.358 que ya
+   están CALIFICADO aparecían como si nunca se hubieran cerrado.
+   ══════════════════════════════════════════════════════════════════ */
+
+const HREQ_PASOS_BASE = [
+  { estado: 'Abierto', label: 'Abierto', icon: 'fa-file-pen',
+    detalle: r => r.asignado
+      ? `Registrado el ${r.fecha_requerimiento || '—'}${r.hora_requerimiento ? ' a las ' + r.hora_requerimiento : ''} por ${r.remitente || '—'}.`
+      : `Registrado el ${r.fecha_requerimiento || '—'}${r.hora_requerimiento ? ' a las ' + r.hora_requerimiento : ''} por ${r.remitente || '—'}. Aún no tiene responsable asignado.` },
+
+  { estado: 'Asignado', label: 'Asignado', icon: 'fa-user-check',
+    detalle: r => r.asignado
+      ? `Asignado a ${r.asignado}.${r.fecha_vencimiento ? ' Fecha estimada de solución: ' + r.fecha_vencimiento + '.' : ''}`
+      : 'Todavía no se le ha asignado un responsable.' },
+
+  { estado: 'En Proceso', label: 'En proceso', icon: 'fa-screwdriver-wrench',
+    detalle: r => r.plan_accion || 'Se está trabajando en la solución del requerimiento.' },
+
+  { estado: 'Cerrado', label: 'Cerrado', icon: 'fa-circle-check',
+    detalle: r => r.solucion
+      ? `${r.solucion}${r.fecha_solucion ? '\n\nSolucionado el ' + r.fecha_solucion + (r.hora_solucion ? ' a las ' + r.hora_solucion : '') + '.' : ''}`
+      : 'El requerimiento fue cerrado.' },
+
+  { estado: 'Calificado', label: 'Calificado', icon: 'fa-star',
+    detalle: r => {
+      if (r.estado !== 'Calificado') return 'El solicitante todavía no ha calificado este requerimiento.';
+      if (!r.calificacion)            return 'Este requerimiento ya fue calificado.';
+      return `El solicitante lo calificó con ${r.calificacion} de 5 estrellas.` +
+             (r.comentario_evaluacion ? `\n\n"${r.comentario_evaluacion}"` : '');
+    } },
+];
+
+function _hreqPasos(r) {
+  let pasos = HREQ_PASOS_BASE;
+
+  // Los que pasan por el jefe de área llevan una etapa extra al principio.
+  if (r.requiere_aprobacion) {
+    const rechazado = r.estado === 'Rechazado';
+    pasos = [{
+      estado: rechazado ? 'Rechazado' : 'Pendiente Aprobacion',
+      label:  rechazado ? 'Rechazado' : 'Aprobación',
+      icon:   rechazado ? 'fa-file-circle-xmark' : 'fa-file-signature',
+      detalle: r => {
+        if (r.estado === 'Rechazado') {
+          return `El jefe de área rechazó el requerimiento${r.fecha_aprobacion ? ' el ' + r.fecha_aprobacion : ''}.`;
+        }
+        if (String(r.estado).startsWith('Pendiente Aprobacion')) {
+          return 'Esperando la aprobación del jefe de área.';
+        }
+        return `Aprobado por el jefe de área${r.fecha_aprobacion ? ' el ' + r.fecha_aprobacion : ''}.`;
+      },
+    }, ...pasos];
+  }
+
+  // "Requiere corrección" solo aparece mientras sigue en ese estado: al
+  // corregirlo vuelve a Asignado y la etapa desaparece (igual que el portal).
+  if (r.estado === 'Requiere corrección') {
+    const paso = {
+      estado: 'Requiere corrección',
+      label:  'Requiere corrección',
+      icon:   'fa-file-circle-exclamation',
+      detalle: r => r.motivo_rechazo
+        ? `Se devolvió al solicitante para que lo corrija.\n\nMotivo: "${r.motivo_rechazo}"`
+        : 'Se devolvió al solicitante para que lo corrija.',
+    };
+    const i = pasos.findIndex(p => p.estado === 'Asignado');
+    const at = i >= 0 ? i + 1 : pasos.length;
+    pasos = [...pasos.slice(0, at), paso, ...pasos.slice(at)];
+  }
+
+  return pasos;
+}
+
+/* La fila y el ojito abren lo mismo. */
+function hreqSeleccionar(id) { hreqAbrirTimeline(id); }
+
+function hreqAbrirTimeline(id) {
+  const r = hreqData.find(x => x.id === id);
+  if (!r) { showNotif('Error', 'No se encontró el requerimiento', 'warning'); return; }
+  hreqSelId = id;
+
+  document.getElementById('hreqTripCodigo').textContent = r.consecutivo || '—';
+  document.getElementById('hreqTripEstado').innerHTML   = _reqEstadoBadge(r.estado);
+  document.getElementById('hreqTripDesc').textContent   = r.descripcion || 'Sin descripción';
+
+  _hreqPintarPasos(r);
+  _hreqPintarFicha(r);
+  _hreqPintarEvaluacion(r);
+  _hreqPintarAdjunto(r);
+
+  // Siempre arranca cerrada: si quedara abierta de la vez anterior, el
+  // modal abriria mostrando la ficha y tapando la linea de tiempo.
+  _hreqVerMas(false);
+
+  document.getElementById('hreqTripOverlay').classList.remove('hidden');
+}
+
+/* Cambia entre las dos vistas del modal. No despliega una debajo de la otra:
+   las intercambia, para que la linea de tiempo y la ficha de 13 campos nunca
+   compitan por la misma pantalla. */
+function _hreqVerMas(mostrarFicha) {
+  const vista1 = document.getElementById('hreqTripVista1');
+  const ficha  = document.getElementById('hreqTripMas');
+  const btn    = document.getElementById('hreqTripVerMas');
+  const txt    = document.getElementById('hreqTripVerMasTexto');
+  const ico    = document.getElementById('hreqTripVerMasIcono');
+  if (!vista1 || !ficha || !btn) return;
+
+  vista1.hidden = mostrarFicha;
+  ficha.hidden  = !mostrarFicha;
+  btn.classList.toggle('abierto', mostrarFicha);
+  if (txt) txt.textContent = mostrarFicha ? 'Volver a la línea de tiempo'
+                                          : 'Ver información completa';
+  if (ico) ico.className = mostrarFicha ? 'fas fa-arrow-left' : 'fas fa-list-ul';
+
+  // El modal puede quedar desplazado si la vista anterior era mas larga.
+  btn.closest('.trip-modal-box')?.scrollTo({ top: 0, behavior: 'smooth' });
+}
+
+function hreqCerrarTimeline() {
+  document.getElementById('hreqTripOverlay')?.classList.add('hidden');
+}
+
+function _hreqPintarPasos(r) {
+  const pasos = _hreqPasos(r);
+
+  // El estado del requerimiento dice en qué etapa va. Si no coincide con
+  // ninguna (estado raro o nuevo), se asume que apenas arranca.
+  let idx = pasos.findIndex(p => p.estado === r.estado);
+  if (idx === -1 && String(r.estado).startsWith('Pendiente Aprobacion')) {
+    idx = pasos.findIndex(p => String(p.estado).startsWith('Pendiente Aprobacion'));
+  }
+  if (idx === -1) idx = 0;
+  const esFinal = idx === pasos.length - 1;
+
+  const wrap = document.getElementById('hreqTripSteps');
+  wrap.innerHTML = pasos.map((p, i) => {
+    let cls = '';
+    if (i < idx)       cls = 'done';
+    else if (i === idx) cls = esFinal ? 'done' : 'current';
+    return `
+      <button type="button" class="trip-step ${cls}" data-i="${i}">
+        <div class="trip-step-icon"><i class="fas ${p.icon}"></i></div>
+        <div class="trip-step-label">${_escHtml(p.label)}</div>
+        <div class="trip-step-time">${i === 0 ? _escHtml(r.fecha_requerimiento || '') : ''}</div>
+      </button>`;
+  }).join('');
+
+  // OJO: .trip-step nace con opacity:0 y solo se ve cuando se le agrega
+  // .show. Sin esto la linea de tiempo aparece en blanco. Los pasos se
+  // encienden uno por uno y la barra azul se llena detras, con los mismos
+  // tiempos que el portal para que la animacion se vea identica.
+  const fill = document.getElementById('hreqTripLineFill');
+  if (fill) fill.style.width = '0%';
+  const pct = idx <= 0 ? 0 : (idx / (pasos.length - 1)) * 100;
+  wrap.querySelectorAll('.trip-step').forEach((el, i) => {
+    setTimeout(() => el.classList.add('show'), 180 + i * 220);
+  });
+  setTimeout(() => { if (fill) fill.style.width = pct + '%'; }, 180 + idx * 220 + 160);
+
+  // Detalle desplegable de cada paso
+  const caja   = document.getElementById('hreqTripStepDetail');
+  const clip   = caja.querySelector('.trip-step-detail-clip');
+  const inner  = caja.querySelector('.trip-step-detail-inner');
+  caja.classList.remove('show');
+  clip.style.height = '0px';
+  let abierto = null;
+
+  wrap.querySelectorAll('.trip-step').forEach(el => {
+    el.addEventListener('click', () => {
+      const i = +el.dataset.i;
+      wrap.querySelectorAll('.trip-step').forEach(x => x.classList.remove('selected'));
+
+      if (abierto === i) {          // segundo clic en el mismo paso: cierra
+        abierto = null;
+        caja.classList.remove('show');
+        clip.style.height = '0px';
+        return;
+      }
+      abierto = i;
+      el.classList.add('selected');
+      document.getElementById('hreqTripStepIcon').innerHTML = `<i class="fas ${pasos[i].icon}"></i>`;
+      document.getElementById('hreqTripStepTitle').textContent = pasos[i].label;
+      document.getElementById('hreqTripStepText').textContent  = pasos[i].detalle(r);
+      caja.classList.add('show');
+      clip.style.height = inner.scrollHeight + 'px';
+    });
+  });
+}
+
+function _hreqPintarFicha(r) {
+  const campos = [
+    ['Solicitante',     r.remitente],
+    ['Documento',       r.documento],
+    ['Correo',          r.correo],
+    ['Cargo',           r.cargo],
+    ['Centro de operación', r.co],
+    ['Prioridad',       r.prioridad],
+    ['Clasificación',   r.clasificacion],
+    ['Tipo',            r.tipo_requerimiento],
+    ['Categoría',       r.categoria],
+    ['Subcategoría',    r.subcategoria],
+    ['Responsable',     r.asignado],
+    ['Fecha estimada',  r.fecha_vencimiento],
+    ['Costo',           r.costo != null ? `$ ${Number(r.costo).toLocaleString('es-CO')}` : ''],
+  ];
+  document.getElementById('hreqTripFicha').innerHTML = campos.map(([l, v]) => `
+    <div class="hreq-ficha-item">
+      <div class="hreq-ficha-label">${l}</div>
+      <div class="hreq-ficha-valor ${v ? '' : 'vacio'}">${v ? _escHtml(String(v)) : 'Sin información'}</div>
+    </div>`).join('');
+}
+
+function _hreqPintarEvaluacion(r) {
+  const cont = document.getElementById('hreqTripEval');
+  const etiqueta = `
+    <div class="hreq-seccion-label">
+      <i class="fas fa-star"></i> Evaluación del solicitante
+    </div>`;
+
+  if (!r.calificacion) {
+    // Hay dos motivos distintos para no tener nota y conviene no confundirlos:
+    // que el solicitante aún no haya calificado (puede hacerlo), o que el
+    // requerimiento quedara marcado como Calificado sin que se guardara la
+    // evaluación — 1.969 registros del sistema anterior están así. Decirle
+    // "todavía no ha evaluado" a uno de esos es mentir: ya no va a pasar.
+    const yaCalificado = r.estado === 'Calificado';
+    cont.innerHTML = `
+      <div class="hreq-eval">
+        ${etiqueta}
+        <div class="hreq-eval-vacio">
+          <i class="fas ${yaCalificado ? 'fa-circle-question' : 'fa-hourglass-half'}"></i>
+          <div>
+            <div class="hreq-eval-vacio-titulo">
+              ${yaCalificado ? 'Sin registro de la evaluación' : 'Pendiente de calificar'}
+            </div>
+            <div class="hreq-eval-vacio-texto">
+              ${yaCalificado
+                ? 'El requerimiento figura como calificado, pero no quedó guardada la nota.'
+                : 'El solicitante aún no ha evaluado este requerimiento.'}
+            </div>
+          </div>
+        </div>
+      </div>`;
     return;
   }
 
-  hreqSelId = id;
-  const r = hreqData.find(x => x.id === id);
-  if (!r) return;
+  const estrellas = Array.from({ length: 5 }, (_, i) =>
+    `<i class="fas fa-star ${i < r.calificacion ? 'on' : ''}"></i>`).join('');
 
-  // Marcar fila activa
-  document.querySelectorAll('.hreq-row').forEach(row => row.classList.remove('hreq-row-active'));
-  document.querySelectorAll('.hreq-row').forEach(row => {
-    if (row.querySelector('.serial-mono')?.textContent.trim() == r.consecutivo) {
-      row.classList.add('hreq-row-active');
-    }
-  });
-
-  _mostrarDetalleHReq(r);
+  cont.innerHTML = `
+    <div class="hreq-eval">
+      ${etiqueta}
+      <div class="hreq-eval-nota">
+        <span class="hreq-eval-stars">${estrellas}</span>
+        <span class="hreq-eval-num">${r.calificacion} de 5</span>
+      </div>
+      ${r.comentario_evaluacion
+        ? `<div class="hreq-eval-coment">
+             <i class="fas fa-quote-left"></i>
+             <p>${_escHtml(r.comentario_evaluacion)}</p>
+           </div>`
+        : `<div class="hreq-eval-sin-coment">El solicitante no dejó comentario.</div>`}
+    </div>`;
 }
 
-function _mostrarDetalleHReq(r) {
-  _pintarTimelineHReq(r);
+function _hreqPintarAdjunto(r) {
+  const cont = document.getElementById('hreqTripAdjunto');
+  // Se pinta el bloque aunque no haya archivo: un vacio sin explicacion deja
+  // dudando si el requerimiento no trae adjunto o si la pantalla fallo.
+  cont.innerHTML = `
+    <div class="hreq-adjunto">
+      <div class="hreq-seccion-label">
+        <i class="fas fa-paperclip"></i> Archivo adjunto
+      </div>
+      ${r.tiene_adjunto
+        ? `<a class="hreq-adjunto-link" href="${r.url_adjunto}" target="_blank" rel="noopener"
+              title="Abrir ${_escHtml(r.nombre_adjunto)}">
+             <i class="fas fa-file-arrow-down"></i>
+             <span class="hreq-adjunto-nombre">${_escHtml(r.nombre_adjunto)}</span>
+           </a>`
+        : `<div class="hreq-adjunto-vacio">Este requerimiento no tiene archivos adjuntos.</div>`
+      }
+    </div>`;
+}
 
-  // Fecha solución
-  const elFecha = document.getElementById('hreq-det-fecha-sol');
-  if (r.fecha_solucion) {
-    elFecha.textContent = _soloFecha(r.fecha_solucion);
-    elFecha.style.background = '#dce9ff';
-    elFecha.style.color      = '#1B4698';
-  } else {
-    elFecha.textContent = 'Sin información';
-    elFecha.style.background = '#e5e7eb';
-    elFecha.style.color      = '#6b7280';
+document.getElementById('hreqTripVerMas')?.addEventListener('click', () => {
+  _hreqVerMas(document.getElementById('hreqTripMas')?.hidden === true);
+});
+
+/* Cerrar: botón, clic fuera y Escape. */
+document.getElementById('hreqTripClose')?.addEventListener('click', hreqCerrarTimeline);
+document.getElementById('hreqTripOverlay')?.addEventListener('click', e => {
+  if (e.target.id === 'hreqTripOverlay') hreqCerrarTimeline();
+});
+document.addEventListener('keydown', e => {
+  if (e.key === 'Escape' && !document.getElementById('hreqTripOverlay')?.classList.contains('hidden')) {
+    hreqCerrarTimeline();
   }
-
-  // Solución
-  const elSol = document.getElementById('hreq-det-solucion');
-  if (r.solucion) {
-    elSol.textContent = r.solucion;
-    elSol.style.background = '#dce9ff';
-    elSol.style.color      = '#1B4698';
-  } else {
-    elSol.textContent = 'Sin información';
-    elSol.style.background = '#e5e7eb';
-    elSol.style.color      = '#6b7280';
-  }
-
-  // Estado
-  document.getElementById('hreq-det-estado').innerHTML = _reqEstadoBadge(r.estado);
-
-  // Mostrar panel
-  document.getElementById('hreq-detalle-wrap').style.display = '';
-}
-
-/* ── Línea de tiempo del requerimiento ──
-   Determina, según los datos disponibles, qué etapas ya se
-   cumplieron (done), cuál es la etapa actual (current) y
-   cuáles faltan (pending). */
-function _pintarTimelineHReq(r) {
-  const estado = (r.estado || '').toUpperCase();
-
-  // Cada etapa se marca "cumplida" si su dato ya existe
-  const pasos = [
-    { key: 'recibido',    cumplido: true,                 fecha: r.fecha_requerimiento ? _soloFecha(r.fecha_requerimiento) : null },
-    { key: 'asignado',    cumplido: !!r.asignado,          fecha: r.asignado },
-    { key: 'plan',        cumplido: !!r.plan_accion,       fecha: r.plan_accion },
-    { key: 'solucionado', cumplido: !!(r.fecha_solucion || r.solucion), fecha: r.fecha_solucion ? _soloFecha(r.fecha_solucion) : r.solucion },
-    { key: 'cerrado',     cumplido: estado === 'CERRADO',  fecha: estado === 'CERRADO' ? (r.fecha_solucion ? _soloFecha(r.fecha_solucion) : 'Cerrado') : null },
-  ];
-
-  // La "etapa actual" es la primera pendiente después de la última cumplida
-  let currentIdx = pasos.findIndex(p => !p.cumplido);
-  if (currentIdx === -1) currentIdx = pasos.length; // todo cumplido
-
-  pasos.forEach((p, i) => {
-    const stepEl = document.getElementById(`hreq-tl-${p.key}`);
-    const dateEl = document.getElementById(`hreq-tl-date-${p.key}`);
-    if (!stepEl) return;
-
-    stepEl.classList.remove('done', 'current', 'pending');
-    if (p.cumplido) {
-      stepEl.classList.add('done');
-      if (dateEl) dateEl.textContent = p.fecha || 'Completado';
-    } else if (i === currentIdx) {
-      stepEl.classList.add('current');
-      if (dateEl) dateEl.textContent = 'En curso';
-    } else {
-      stepEl.classList.add('pending');
-      if (dateEl) dateEl.textContent = p.key === 'cerrado' ? 'Pendiente' : 'Sin información';
-    }
-  });
-
-  // Conectores entre pasos: se pintan de azul hasta la última etapa cumplida
-  for (let i = 1; i <= 4; i++) {
-    const lineEl = document.getElementById(`hreq-tl-line-${i}`);
-    if (!lineEl) continue;
-    lineEl.classList.toggle('done', pasos[i - 1].cumplido);
-  }
-}
-
-/* ── Acciones del detalle ── */
-function hreqEvaluacion() {
-  const r = hreqData.find(x => x.id === hreqSelId);
-  if (!r) return;
-  showNotification('info', 'Evaluación', `Evaluación del requerimiento ${r.consecutivo} — en desarrollo`);
-  // Aquí abrirás el modal de evaluación cuando esté lista la API
-}
-
-function hreqDetalles() {
-  const r = hreqData.find(x => x.id === hreqSelId);
-  if (!r) return;
-  showNotification('info', 'Detalles', `Detalles del requerimiento ${r.consecutivo} — en desarrollo`);
-  // Aquí abrirás el modal de detalles cuando esté lista la API
-}
+});
 
 /* ── Sorting ── */
 function sortHReq(key) {
@@ -7087,36 +7665,365 @@ function hreqLoadPage(page) {
 }
 
 /* ── Exportar ── */
-function exportarHistorialReq() {
-  if (!hreqData.length) {
-    showNotification('warning', 'Sin datos', 'No hay registros para exportar');
+function exportarHistorialReq(tipo) {
+  document.querySelectorAll('[id$="-export-menu"]').forEach(m => m.style.display = 'none');
+
+  // Se exporta lo FILTRADO, no hreqData completo: si alguien filtró por
+  // "Calificado" y descarga, espera esos y no los 2.605.
+  const data = _hreqFiltrados();
+  if (!data.length) {
+    showNotification('warning', 'Sin datos', 'No hay registros para exportar con los filtros actuales');
     return;
   }
-  // Exportar con SheetJS (ya está cargado en el proyecto)
-  const XLSX    = window.XLSX;
-  const headers = [
-    'Consecutivo','Fecha Requerimiento','Colaborador Remitente',
-    'Descripción','Prioridad','Colaborador Asignado',
-    'Clasificación','Plan de Acción',
-    'Fecha Solucionado','Solución','Estado'
-  ];
-  const rows = hreqData.map(r => [
-    r.consecutivo        || '',
-    r.fecha_requerimiento|| '',
-    r.remitente          || '',
-    r.descripcion        || '',
-    r.prioridad          || '',
-    r.asignado           || '',
-    r.clasificacion      || '',
-    r.plan_accion        || '',
-    r.fecha_solucion     || '',
-    r.solucion           || '',
-    r.estado             || '',
-  ]);
 
-  const ws = XLSX.utils.aoa_to_sheet([headers, ...rows]);
-  const wb = XLSX.utils.book_new();
-  XLSX.utils.book_append_sheet(wb, ws, 'Historial');
-  XLSX.writeFile(wb, 'historial_requerimientos.xlsx');
-  showNotification('success', 'Exportado', 'Archivo descargado correctamente');
+  const estado = document.getElementById('hreq-estado-filtro')?.value || '';
+  const sufijo = estado ? '_' + estado.toLowerCase().replace(/[^a-z0-9]+/gi, '_') : '';
+  const hoy    = new Date().toISOString().slice(0, 10);
+
+  if (tipo === 'pdf') {
+    if (!window.jspdf) { showNotification('warning', 'Error', 'Librería PDF no cargada'); return; }
+    const { jsPDF } = window.jspdf;
+    const doc = new jsPDF({ orientation: 'landscape', unit: 'mm', format: 'a4' });
+
+    doc.setFillColor(27, 70, 152);
+    doc.rect(0, 0, 297, 18, 'F');
+    doc.setTextColor(255, 255, 255);
+    doc.setFontSize(13);
+    doc.setFont('helvetica', 'bold');
+    doc.text('SYSTRAKER — Historial de Requerimientos', 14, 12);
+    doc.setFontSize(9);
+    doc.setFont('helvetica', 'normal');
+    const fechaTxt = new Date().toLocaleDateString('es-CO', { day: '2-digit', month: 'short', year: 'numeric' });
+    doc.text(`Generado: ${fechaTxt}`, 225, 12);
+
+    // Deja constancia de con qué filtros se sacó: un PDF sin eso se presta a
+    // que alguien lo lea como si fuera el total.
+    doc.setFontSize(8);
+    doc.setTextColor(90);
+    doc.text(
+      `${data.length} registro(s)` + (estado ? ` — filtrado por estado: ${estado}` : ' — todos los estados'),
+      14, 24
+    );
+
+    doc.autoTable({
+      startY: 28,
+      head: [['Consecutivo', 'Fecha', 'Solicitante', 'Prioridad', 'Clasificación',
+              'Responsable', 'Fecha solución', 'Estado', 'Calif.']],
+      body: data.map(r => [
+        r.consecutivo         || '—',
+        r.fecha_requerimiento || '—',
+        r.remitente           || '—',
+        r.prioridad           || '—',
+        r.clasificacion       || '—',
+        r.asignado            || '—',
+        r.fecha_solucion      || '—',
+        r.estado              || '—',
+        r.calificacion ? `${r.calificacion}/5` : '—',
+      ]),
+      styles:     { fontSize: 7.5, cellPadding: 2.5, overflow: 'linebreak' },
+      headStyles: { fillColor: [27, 70, 152], textColor: 255, fontStyle: 'bold' },
+      alternateRowStyles: { fillColor: [245, 247, 252] },
+      columnStyles: { 0: { cellWidth: 24, font: 'courier' }, 8: { cellWidth: 14, halign: 'center' } },
+    });
+
+    const paginas = doc.internal.getNumberOfPages();
+    for (let i = 1; i <= paginas; i++) {
+      doc.setPage(i);
+      doc.setFontSize(8);
+      doc.setTextColor(150);
+      doc.text(`Página ${i} de ${paginas}`, 14, doc.internal.pageSize.height - 6);
+      doc.text('SYSTRAKER © ' + new Date().getFullYear(), 245, doc.internal.pageSize.height - 6);
+    }
+
+    doc.save(`historial_requerimientos${sufijo}_${hoy}.pdf`);
+    showNotification('success', 'PDF generado', `${data.length} registro(s) exportados`);
+    return;
+  }
+
+  // Excel: lo genera el SERVIDOR con openpyxl, igual que el del inventario.
+  // Antes se armaba aquí con SheetJS, pero esa librería viene de un CDN de
+  // 881 KB y cuando no carga el botón no hace nada visible. El servidor no
+  // depende de nada externo. Se le pasan los mismos filtros de la pantalla
+  // para que baje exactamente lo que se está viendo.
+  const params = new URLSearchParams();
+  if (estado) params.set('estado', estado);
+  const q = document.getElementById('hreq-search')?.value.trim() || '';
+  if (q) params.set('q', q);
+
+  window.location.href = `${BASE}/inventario/api/historial-req-tic/exportar/?${params}`;
+  showNotification('success', 'Generando Excel', `${data.length} registro(s) — la descarga empezará en un momento`);
+}
+
+
+/* ══════════════════════════════════════════════════════════════════
+   ACCESORIOS DE EQUIPOS
+
+   El catálogo dice lo que NORMALMENTE va con el equipo; las líneas del
+   préstamo dicen lo que salió de verdad. Son cosas distintas a propósito:
+   sin la segunda no se puede responder "¿le faltó devolver el HDMI?".
+   ══════════════════════════════════════════════════════════════════ */
+
+let _detEquipoId   = null;
+let _detCatalogo    = [];   // accesorios del catálogo del equipo
+let _detHistorial   = [];   // préstamos anteriores, con sus accesorios
+let _detAccPrestamo = [];   // líneas del préstamo abierto
+let _devAccesorios  = [];   // las mismas, al momento de devolver
+
+/* Checklist reutilizado por el modal de devolución y por el de detalle.
+   `modo` = 'devuelto' pide qué volvió; 'entregado' pide qué salió. */
+/* Clave del checkbox. Una linea del catalogo todavia no tiene IdPrestamoAccesorio,
+   asi que se identifica por el id del accesorio. */
+function _accKey(a) {
+  return a.id != null ? `l${a.id}` : `c${a.id_accesorio}`;
+}
+
+function _pintarChecklistAcc(contId, lista, modo, cargando) {
+  const cont = document.getElementById(contId);
+  if (!cont) return;
+
+  if (cargando) {
+    cont.innerHTML = `<div class="dev-acc-vacio"><i class="fas fa-spinner fa-spin"></i> Cargando accesorios...</div>`;
+    return;
+  }
+  if (!lista.length) {
+    cont.innerHTML = `<div class="dev-acc-vacio">Este equipo no tiene accesorios registrados.</div>`;
+    return;
+  }
+
+  const pref = modo === 'devuelto' ? 'dev-acc' : 'det-acc';
+  cont.innerHTML = lista.map(a => {
+    const k = _accKey(a);
+    const marcado = modo === 'devuelto' ? a.devuelto : a.entregado;
+    return `
+    <label class="dev-acc-item">
+      <input type="checkbox" id="${pref}-${k}" ${marcado ? 'checked' : ''}
+             ${modo === 'devuelto' ? `onchange="_devToggleObs('${k}')"` : ''}>
+      <span class="dev-acc-nombre">${_escHtml(a.nombre)}</span>
+      ${(a.id_accesorio === null || a.id_accesorio < 0)
+        ? `<span class="dev-acc-suelto" title="No viene del catálogo del equipo">suelto</span>`
+        : ''}
+      ${modo === 'devuelto'
+        ? `<input class="dev-acc-obs" id="dev-acc-obs-${k}" type="text" maxlength="300"
+                  placeholder="¿Qué pasó?" value="${_escHtml(a.observacion || '')}"
+                  style="display:${a.devuelto ? 'none' : ''}">`
+        : ''}
+    </label>`;
+  }).join('');
+}
+
+function _devPintarAccesorios(lista, cargando) {
+  const wrap = document.getElementById('dev-accesorios-wrap');
+  if (wrap) wrap.style.display = (cargando || lista.length) ? '' : 'none';
+  _pintarChecklistAcc('dev-accesorios', lista, 'devuelto', cargando);
+}
+
+/* La casilla de observación solo aparece cuando algo NO volvió: es donde se
+   explica el faltante, y estorba si está siempre visible. */
+function _devToggleObs(k) {
+  const chk = document.getElementById(`dev-acc-${k}`);
+  const obs = document.getElementById(`dev-acc-obs-${k}`);
+  if (chk && obs) obs.style.display = chk.checked ? 'none' : '';
+}
+
+/* ── Modal: detalle del equipo ── */
+async function abrirDetalleEquipo(idEquipo) {
+  _detEquipoId = idEquipo;
+  openModal('modalDetalleEquipo');
+
+  document.getElementById('det-catalogo').innerHTML =
+    `<div class="dev-acc-vacio"><i class="fas fa-spinner fa-spin"></i> Cargando...</div>`;
+  document.getElementById('det-historial').innerHTML = '';
+  document.getElementById('det-prestamo-wrap').style.display = 'none';
+
+  const res = await apiFetch(API.equipoDetalle(idEquipo));
+  if (!res.ok) {
+    showNotif('Error', res.error || 'No se pudo cargar el detalle', 'warning');
+    closeModal('modalDetalleEquipo');
+    return;
+  }
+  _detPintar(res.equipo);
+}
+
+function _detPintar(eq) {
+  document.getElementById('det-eq-nombre').textContent = eq.nombre || '—';
+  document.getElementById('det-eq-desc').textContent   = eq.descripcion || 'Sin descripción';
+
+  // Catálogo
+  _detCatalogo = eq.catalogo;
+  const cat = document.getElementById('det-catalogo');
+  cat.innerHTML = eq.catalogo.length
+    ? eq.catalogo.map(a => `
+        <div class="det-acc-chip">
+          <i class="fas fa-plug"></i>
+          <span>${_escHtml(a.nombre)}</span>
+          <button type="button" title="Quitar del catálogo"
+                  onclick="detQuitarAccesorio(${a.id})">
+            <i class="fas fa-times"></i>
+          </button>
+        </div>`).join('')
+    : `<div class="dev-acc-vacio">Todavía no hay accesorios. Agrégalos abajo.</div>`;
+
+  // Préstamo abierto
+  const wrap = document.getElementById('det-prestamo-wrap');
+  const p = eq.prestamo_activo;
+  if (p) {
+    wrap.style.display = '';
+    document.getElementById('det-prestamo-info').innerHTML = `
+      <strong>${_escHtml(p.solicitante)}</strong> · ${_escHtml(p.area || 'Sin área')}<br>
+      <span style="color:var(--text-light)">Desde ${_escHtml(p.fecha)}${
+        p.fecha_estimada ? ` · devolución estimada ${_escHtml(p.fecha_estimada)}` : ''}</span>`;
+    _detAccPrestamo = p.accesorios;
+    _pintarChecklistAcc('det-prestamo-accesorios', _detAccPrestamo, 'entregado');
+  } else {
+    wrap.style.display = 'none';
+    _detAccPrestamo = [];
+  }
+
+  // Historial. Cada préstamo lleva accesorios distintos — el mismo equipo sale
+  // hoy con el HDMI y mañana sin él — así que cada fila se puede desplegar
+  // para ver exactamente qué salió y qué volvió en ESE préstamo.
+  _detHistorial = eq.historial;
+  const hist = document.getElementById('det-historial');
+  hist.innerHTML = eq.historial.length
+    ? eq.historial.map((h, i) => {
+        const entregados = h.accesorios.filter(a => a.entregado);
+        const faltaron   = entregados.filter(a => !a.devuelto);
+        return `
+        <div class="det-hist-item">
+          <div class="det-hist-cab" onclick="detToggleHist(${i})">
+            <div style="flex:1;min-width:0">
+              <div class="det-hist-top">
+                <span class="det-hist-nombre">${_escHtml(h.solicitante)}</span>
+                <span class="det-hist-fecha">${_escHtml(h.fecha)}</span>
+              </div>
+              <div class="det-hist-sub">
+                ${h.devolucion
+                  ? `<i class="fas fa-check" style="color:#16a34a"></i> Devuelto ${_escHtml(h.devolucion)}`
+                  : `<i class="fas fa-clock" style="color:#d97706"></i> Sin devolver`}
+                ${entregados.length ? ` · ${entregados.length} accesorio(s)` : ' · sin accesorios'}
+                ${faltaron.length
+                  ? `<span class="det-hist-falta">Faltó: ${_escHtml(faltaron.map(a => a.nombre).join(', '))}</span>`
+                  : ''}
+              </div>
+            </div>
+            ${h.accesorios.length
+              ? `<i class="fas fa-chevron-down det-hist-flecha" id="det-hist-flecha-${i}"></i>`
+              : ''}
+          </div>
+          <div class="det-hist-acc" id="det-hist-acc-${i}" hidden></div>
+        </div>`;
+      }).join('')
+    : `<div class="dev-acc-vacio">Este equipo no se ha prestado.</div>`;
+}
+
+/* Despliega el detalle de accesorios de un préstamo del historial. */
+function detToggleHist(i) {
+  const caja = document.getElementById(`det-hist-acc-${i}`);
+  const flecha = document.getElementById(`det-hist-flecha-${i}`);
+  const h = _detHistorial[i];
+  if (!caja || !h || !h.accesorios.length) return;
+
+  if (!caja.hidden) {
+    caja.hidden = true;
+    flecha?.classList.remove('abierta');
+    return;
+  }
+
+  caja.innerHTML = h.accesorios.map(a => {
+    // Tres situaciones distintas y cada una dice algo diferente: no confundir
+    // "no se lo llevó" con "no lo devolvió".
+    let icono, clase, texto;
+    if (!a.entregado) {
+      icono = 'fa-minus';  clase = 'no-salio';  texto = 'No se entregó';
+    } else if (a.devuelto) {
+      icono = 'fa-check';  clase = 'ok';        texto = 'Devuelto';
+    } else {
+      icono = 'fa-xmark';  clase = 'falta';     texto = 'No volvió';
+    }
+    return `
+      <div class="det-hist-acc-item ${clase}">
+        <i class="fas ${icono}"></i>
+        <span class="det-hist-acc-nombre">${_escHtml(a.nombre)}</span>
+        <span class="det-hist-acc-estado">${texto}</span>
+        ${a.observacion ? `<span class="det-hist-acc-obs">"${_escHtml(a.observacion)}"</span>` : ''}
+      </div>`;
+  }).join('');
+  caja.hidden = false;
+  flecha?.classList.add('abierta');
+}
+
+/* ── Catálogo: agregar y quitar ── */
+async function detAgregarAccesorio() {
+  const inp = document.getElementById('det-acc-nuevo');
+  const nombre = inp?.value.trim();
+  if (!nombre) { showNotif('Falta el nombre', 'Escribe el accesorio que quieres agregar', 'warning'); return; }
+
+  await _conSpinner('btnDetAgregarAcc', 'Agregando...', async () => {
+    const res = await apiFetch(API.equipoAccGuardar(_detEquipoId), 'POST', { nombre });
+    if (!res.ok) { showNotif('No se agregó', res.error || 'Error', 'warning'); return; }
+    inp.value = '';
+    showNotif('Accesorio agregado', `"${res.nombre}" quedó en el catálogo del equipo`, 'success');
+    abrirDetalleEquipo(_detEquipoId);
+  });
+}
+
+function detQuitarAccesorio(idAcc) {
+  // El nombre se busca en el catálogo cargado en vez de viajar dentro del
+  // atributo onclick: ahí iba con JSON.stringify, que genera comillas dobles
+  // y rompía el atributo (que también usa comillas dobles), así que el botón
+  // no hacía nada. Pasando solo el id no hay nada que escapar.
+  const acc = _detCatalogo.find(a => a.id === idAcc);
+  const nombre = acc ? acc.nombre : 'este accesorio';
+
+  // Mismo modal de confirmación que usa eliminarEquipoAdmin.
+  document.getElementById('confirmSub').textContent  = nombre;
+  document.getElementById('confirmBody').innerHTML   =
+    `Quitarás <strong>${_escHtml(nombre)}</strong> del catálogo de este equipo.<br>` +
+    `Dejará de pedirse en el préstamo en curso y en los nuevos.<br>` +
+    `<span style="color:var(--text-light)">Los préstamos ya devueltos lo siguen mostrando: eso es historial.</span>`;
+  document.getElementById('btnConfirmDel').onclick = async () => {
+    const res = await apiFetch(API.equipoAccEliminar(_detEquipoId, idAcc), 'POST', {});
+    if (!res.ok) { showNotif('Error', res.error || 'No se pudo quitar', 'warning'); return; }
+    closeModal('modalConfirm');
+    showNotif('Accesorio quitado',
+      res.quitado_de_prestamo
+        ? `"${res.nombre}" se quitó del catálogo y del préstamo en curso`
+        : `"${res.nombre}" ya no aparecerá en los préstamos`,
+      'success');
+    abrirDetalleEquipo(_detEquipoId);
+  };
+  document.getElementById('modalConfirm').classList.add('active');
+}
+
+/* ── Préstamo abierto: corregir lo entregado ── */
+function detAgregarSuelto() {
+  const inp = document.getElementById('det-suelto-nuevo');
+  const nombre = inp?.value.trim();
+  if (!nombre) return;
+  // Se agrega solo en pantalla; se persiste al guardar, junto con el resto.
+  _detAccPrestamo = _detAccPrestamo.concat([{
+    id: null, id_accesorio: -(_detAccPrestamo.length + 1),   // clave temporal solo para el DOM
+    nombre, entregado: true, devuelto: false, observacion: '', _nuevo: true,
+  }]);
+  inp.value = '';
+  _pintarChecklistAcc('det-prestamo-accesorios', _detAccPrestamo, 'entregado');
+}
+
+async function detGuardarEntrega() {
+  const accesorios = _detAccPrestamo
+    .filter(a => !a._nuevo)
+    .map(a => ({
+      id: a.id, id_accesorio: a.id_accesorio,
+      entregado: !!document.getElementById(`det-acc-${_accKey(a)}`)?.checked,
+    }));
+  const nuevos = _detAccPrestamo
+    .filter(a => a._nuevo && document.getElementById(`det-acc-${_accKey(a)}`)?.checked)
+    .map(a => a.nombre);
+
+  await _conSpinner('btnDetGuardarEntrega', 'Guardando...', async () => {
+    const res = await apiFetch(API.prestamoAccGuardar(_detEquipoId), 'POST', { accesorios, nuevos });
+    if (!res.ok) { showNotif('Error', res.error || 'No se pudo guardar', 'warning'); return; }
+    showNotif('Entrega actualizada', 'Quedó registrado qué se llevó la persona', 'success');
+    abrirDetalleEquipo(_detEquipoId);
+  });
 }

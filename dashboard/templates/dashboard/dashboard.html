@@ -566,34 +566,28 @@
   </div>
 </div>
 
-<!-- ══════════ NOVEDADES — DETALLE ══════════ -->
+<!-- ══════════ NOVEDADES — DETALLE (vista tipo acta) ══════════
+     Se ve como un formato oficial y se descarga en PDF con las evidencias
+     como anexos (api_novedades_pdf). Mismo esquema que la Vista de Checklist:
+     el documento se arma en pantalla y el PDF lo genera el servidor. -->
 <div class="modal-overlay" id="modalDetalleNovedad">
-  <div class="modal-form">
-    <div class="modal-form-header">
-      <div class="modal-form-icon"><i class="fas fa-bullhorn"></i></div>
-      <div>
-        <div class="modal-form-title">Detalle de Novedad</div>
-        <div class="modal-form-sub" id="nov-det-sub">—</div>
-      </div>
-      <button class="modal-close-btn" onclick="closeModal('modalDetalleNovedad')"><i class="fas fa-times"></i></button>
-    </div>
-    <div class="modal-form-body">
-      <div id="nov-det-campos" style="margin-bottom:0;"></div>
-      <div class="chk-seccion" id="nov-det-adjuntos-seccion" style="margin-top:18px;margin-bottom:0;display:none;">
-        <div class="chk-seccion-title">
-          <span><i class="fas fa-paperclip"></i> Adjuntos</span>
-          <button type="button" id="nov-det-adjuntos-descargar-todos" class="btn-export" style="display:none;padding:5px 12px;font-size:12px;" onclick="_novDescargarTodosAdjuntos()">
-            <i class="fas fa-download"></i> Descargar todos
-          </button>
-        </div>
-        <div class="chk-resp-body">
-          <div id="nov-det-adjuntos" class="nov-adjuntos-grid"></div>
-        </div>
+  <div class="chk-preview-box nov-acta-box">
+    <div class="chk-preview-header">
+      <span class="nov-acta-header-tit"><i class="fas fa-file-shield"></i> <span id="nov-det-titulo">Registro de novedad</span></span>
+      <div class="chk-preview-header-actions">
+        <button type="button" id="btnNovDescargarTodos" class="nov-acta-zip" style="display:none"
+                onclick="_novDescargarTodosAdjuntos()" title="Descargar todos los adjuntos en un .zip">
+          <i class="fas fa-file-zipper"></i> Adjuntos
+        </button>
+        <button type="button" id="btnNovPdf" class="chk-preview-pdf-btn" onclick="descargarNovedadPdf()" title="Descargar PDF">
+          <i class="fas fa-file-pdf"></i> <span class="nov-acta-btn-txt">Descargar PDF</span>
+        </button>
+        <button type="button" class="chk-preview-close-btn" onclick="closeModal('modalDetalleNovedad')">
+          <i class="fas fa-times"></i>
+        </button>
       </div>
     </div>
-    <div class="modal-form-footer">
-      <button class="btn-cancel" onclick="closeModal('modalDetalleNovedad')"><i class="fas fa-arrow-left"></i> Cerrar</button>
-    </div>
+    <div id="novActaBody" class="chk-preview-body nov-acta-body"></div>
   </div>
 </div>
 
@@ -1641,7 +1635,7 @@
             <thead><tr>
               <th>Equipo</th>
               <th>Descripción</th>
-              <th>Responsable</th>
+              <th>Prestado a</th>
               <th>Estado</th>
               <th>Acciones</th>
             </tr></thead>
@@ -1653,7 +1647,172 @@
       </section>
 
       <!-- MODAL: crear/editar equipo -->
-      <div class="modal-overlay" id="modalEquipo">
+      <!-- ══════════ DETALLE DE EQUIPO ══════════
+     Catálogo de accesorios del equipo, qué salió en el préstamo abierto y
+     el historial. Es donde TIC corrige lo que de verdad entregó: el portal
+     copia el catálogo por defecto, pero ahí nadie de TIC está presente. -->
+<div class="modal-overlay" id="modalDetalleEquipo">
+  <div class="modal-form" style="width:660px;max-width:95vw">
+    <div class="modal-form-header">
+      <div class="modal-form-icon" style="background:linear-gradient(135deg,#1B4698 0%,#375EAB 100%)">
+        <i class="fas fa-boxes-packing"></i>
+      </div>
+      <div>
+        <div class="modal-form-title" id="det-eq-nombre">Detalle del equipo</div>
+        <div class="modal-form-sub" id="det-eq-desc">—</div>
+      </div>
+      <button class="modal-close-btn" onclick="closeModal('modalDetalleEquipo')">
+        <i class="fas fa-times"></i>
+      </button>
+    </div>
+
+    <div class="modal-form-body">
+
+      <!-- Catálogo -->
+      <div class="det-bloque">
+        <div class="det-bloque-titulo">
+          <i class="fas fa-screwdriver-wrench"></i> Accesorios del equipo
+          <span class="det-bloque-nota">Lo que normalmente va con él</span>
+        </div>
+        <div id="det-catalogo" class="det-catalogo"></div>
+        <div class="det-agregar">
+          <input class="form-input" id="det-acc-nuevo" type="text" maxlength="150"
+                 placeholder="Ej: Cable HDMI, control remoto, estuche..."
+                 onkeydown="if(event.key==='Enter'){event.preventDefault();detAgregarAccesorio();}">
+          <button class="btn-save" id="btnDetAgregarAcc" onclick="detAgregarAccesorio()">
+            <i class="fas fa-plus"></i> Agregar
+          </button>
+        </div>
+      </div>
+
+      <!-- Préstamo abierto -->
+      <div class="det-bloque" id="det-prestamo-wrap" style="display:none">
+        <div class="det-bloque-titulo">
+          <i class="fas fa-hand-holding-hand"></i> Préstamo actual
+        </div>
+        <div class="det-prestamo-info" id="det-prestamo-info"></div>
+
+        <div class="det-bloque-titulo" style="margin-top:14px">
+          <i class="fas fa-check-double"></i> ¿Qué se llevó?
+          <span class="det-bloque-nota">Desmarca lo que no entregaste</span>
+        </div>
+        <div id="det-prestamo-accesorios" class="dev-accesorios"></div>
+
+        <div class="det-agregar" style="margin-top:10px">
+          <input class="form-input" id="det-suelto-nuevo" type="text" maxlength="150"
+                 placeholder="Algo que no está en el catálogo..."
+                 onkeydown="if(event.key==='Enter'){event.preventDefault();detAgregarSuelto();}">
+          <button class="btn-cancel" onclick="detAgregarSuelto()">
+            <i class="fas fa-plus"></i> Añadir
+          </button>
+        </div>
+
+        <button class="btn-save" id="btnDetGuardarEntrega" style="margin-top:12px;width:100%"
+                onclick="detGuardarEntrega()">
+          <i class="fas fa-save"></i> Guardar lo entregado
+        </button>
+      </div>
+
+      <!-- Historial -->
+      <div class="det-bloque">
+        <div class="det-bloque-titulo">
+          <i class="fas fa-clock-rotate-left"></i> Últimos préstamos
+        </div>
+        <div id="det-historial" class="det-historial"></div>
+      </div>
+
+    </div>
+
+    <div class="modal-form-footer">
+      <button class="btn-cancel" onclick="closeModal('modalDetalleEquipo')">
+        <i class="fas fa-times"></i> Cerrar
+      </button>
+    </div>
+  </div>
+</div>
+
+<!-- ══════════ DEVOLUCIÓN DE EQUIPO ══════════
+     La devolución solo se registra aquí, no en el portal: la hace quien
+     recibe el equipo físicamente en TIC. Antes la hacía el propio
+     solicitante desde su escritorio y el equipo quedaba libre sin que
+     nadie comprobara que de verdad hubiera vuelto. -->
+<div class="modal-overlay" id="modalDevolucionEquipo">
+  <div class="modal-form" style="width:540px;max-width:95vw">
+    <div class="modal-form-header">
+      <div class="modal-form-icon" style="background:linear-gradient(135deg,#16a34a 0%,#22c55e 100%)">
+        <i class="fas fa-rotate-left"></i>
+      </div>
+      <div>
+        <div class="modal-form-title">Registrar devolución</div>
+        <div class="modal-form-sub" id="dev-equipo-nombre">—</div>
+      </div>
+      <button class="modal-close-btn" onclick="closeModal('modalDevolucionEquipo')">
+        <i class="fas fa-times"></i>
+      </button>
+    </div>
+
+    <div class="modal-form-body">
+      <div class="dev-aviso">
+        <i class="fas fa-triangle-exclamation"></i>
+        <span>Confirma que tienes el equipo <strong>físicamente</strong> antes de registrar la devolución.</span>
+      </div>
+
+      <div class="dev-ficha">
+        <div class="dev-ficha-item">
+          <span class="dev-ficha-label">Lo tiene</span>
+          <span class="dev-ficha-valor" id="dev-solicitante">—</span>
+        </div>
+        <div class="dev-ficha-item">
+          <span class="dev-ficha-label">Documento</span>
+          <span class="dev-ficha-valor" id="dev-cedula">—</span>
+        </div>
+        <div class="dev-ficha-item">
+          <span class="dev-ficha-label">Área</span>
+          <span class="dev-ficha-valor" id="dev-area">—</span>
+        </div>
+        <div class="dev-ficha-item">
+          <span class="dev-ficha-label">Prestado desde</span>
+          <span class="dev-ficha-valor" id="dev-fecha">—</span>
+        </div>
+        <div class="dev-ficha-item">
+          <span class="dev-ficha-label">Devolución estimada</span>
+          <span class="dev-ficha-valor" id="dev-fecha-estimada">—</span>
+        </div>
+      </div>
+
+      <div class="dev-obs-previa" id="dev-obs-previa" style="display:none"></div>
+
+      <!-- Checklist: la MISMA lista que salió con el equipo. La diferencia
+           entre lo entregado y lo devuelto es el faltante — por eso las dos
+           cosas se marcan por separado y no se deducen una de la otra. -->
+      <div id="dev-accesorios-wrap" style="display:none;margin-top:16px">
+        <div class="hreq-seccion-label">
+          <i class="fas fa-list-check"></i> ¿Qué devolvió?
+        </div>
+        <div id="dev-accesorios" class="dev-accesorios"></div>
+      </div>
+
+      <div class="form-group" style="margin-top:14px">
+        <label class="form-label">Observaciones de la devolución</label>
+        <textarea class="form-input" id="dev-observaciones" rows="3"
+                  placeholder="Estado en que se recibió, faltantes, daños..."
+                  style="resize:vertical"></textarea>
+        <span class="form-hint">Se guarda junto al préstamo, sin borrar lo que escribió el solicitante.</span>
+      </div>
+    </div>
+
+    <div class="modal-form-footer">
+      <button class="btn-cancel" onclick="closeModal('modalDevolucionEquipo')">
+        <i class="fas fa-times"></i> Cancelar
+      </button>
+      <button class="btn-save" id="btnConfirmarDevolucion" onclick="confirmarDevolucionEquipo()">
+        <i class="fas fa-check"></i> Registrar devolución
+      </button>
+    </div>
+  </div>
+</div>
+
+<div class="modal-overlay" id="modalEquipo">
         <div class="modal-form">
           <div class="modal-form-header">
             <div class="modal-form-icon"><i class="fas fa-laptop"></i></div>
@@ -1675,13 +1834,6 @@
                 <input type="text" class="form-input" id="eq-descripcion" placeholder="Ej: Serial ABC123">
               </div>
 
-              <div class="form-group" style="position:relative;">
-                <label class="form-label">Responsable</label>
-                <input type="text" class="form-input" id="eq-responsable-search" placeholder="Buscar responsable..." autocomplete="off"
-                  oninput="eqFiltrarResponsable()" onfocus="eqAbrirResponsableDropdown()" onblur="setTimeout(()=>eqCerrarResponsableDropdown(),200)">
-                <input type="hidden" id="eq-responsable">
-                <div id="eq-responsable-dropdown" class="usr-dropdown" style="display:none;"></div>
-              </div>
 
 
               <div class="form-group">
@@ -2123,54 +2275,12 @@
     </div>
     <div class="modal-form-body">
 
-      <div class="form-section">
-        <div class="hreq-detalle-grid" style="padding-top:0;margin-top:0;border-top:none">
-          <div class="hreq-detalle-item"><span class="hreq-detalle-label">Documento</span><span id="sol-f-documento">—</span></div>
-          <div class="hreq-detalle-item"><span class="hreq-detalle-label">Nombre Completo</span><span id="sol-f-nombre">—</span></div>
-          <div class="hreq-detalle-item"><span class="hreq-detalle-label">Cargo</span><span id="sol-f-cargo">—</span></div>
-          <div class="hreq-detalle-item"><span class="hreq-detalle-label">Centro de Operación</span><span id="sol-f-co">—</span></div>
-          <div class="hreq-detalle-item"><span class="hreq-detalle-label">Correo Electrónico</span><span id="sol-f-correo">—</span></div>
-        </div>
-      </div>
-
-      <div class="form-section">
-        <div class="hreq-detalle-grid" style="padding-top:0;margin-top:0;border-top:none">
-          <div class="hreq-detalle-item"><span class="hreq-detalle-label">Fecha registro</span><span id="sol-f-fecha-registro">—</span></div>
-          <div class="hreq-detalle-item"><span class="hreq-detalle-label">Fecha vencimiento</span><span id="sol-f-fecha-venc">—</span></div>
-          <div class="hreq-detalle-item"><span class="hreq-detalle-label">Tipo de requerimiento</span><span id="sol-f-tipo">—</span></div>
-          <div class="hreq-detalle-item"><span class="hreq-detalle-label">Categoría</span><span id="sol-f-categoria">—</span></div>
-          <div class="hreq-detalle-item"><span class="hreq-detalle-label">SubCategoría</span><span id="sol-f-subcategoria">—</span></div>
-          <div class="hreq-detalle-item"><span class="hreq-detalle-label">Prioridad</span><span id="sol-f-prioridad" class="hreq-det-badge">—</span></div>
-          <div class="hreq-detalle-item"><span class="hreq-detalle-label">Clasificación</span><span id="sol-f-clasificacion" class="hreq-sin-info">Sin información</span></div>
-          <div class="hreq-detalle-item"><span class="hreq-detalle-label">Estado</span><span id="sol-f-estado" class="hreq-det-badge">—</span></div>
-        </div>
-      </div>
-
-      <div class="form-section">
-        <div class="form-row cols2">
-          <div class="form-group">
-            <label class="form-label">Nombre Archivo Acciones</label>
-            <input class="form-input" id="sol-f-archivo" type="file">
-            <span id="sol-f-archivo-actual" style="font-size:12px;color:var(--text-light)"></span>
-          </div>
-          <div class="form-group">
-            <label class="form-label">Costo</label>
-            <input class="form-input" id="sol-f-costo" type="number" min="0" step="0.01" placeholder="0.00">
-          </div>
-        </div>
-
-        <div class="form-row cols2">
-          <div class="form-group">
-            <label class="form-label">Descripción</label>
-            <textarea class="form-input" id="sol-f-descripcion" rows="4" readonly
-                      style="resize:vertical;background:rgba(27,70,152,0.04);cursor:not-allowed"></textarea>
-          </div>
-          <div class="form-group">
-            <label class="form-label">Plan a Accionar</label>
-            <textarea class="form-input" id="sol-f-plan" rows="4"
-                      placeholder="Plan de acción aplicado..."
-                      style="resize:vertical"></textarea>
-          </div>
+      <!-- Lo que el técnico DEBE llenar va primero. Antes el modal abría con
+           13 datos de consulta y los campos editables quedaban sepultados
+           abajo, obligando a bajar para trabajar. -->
+      <div class="sol-bloque">
+        <div class="sol-bloque-titulo">
+          <i class="fas fa-clipboard-check"></i> Cierre del requerimiento
         </div>
 
         <div class="form-group">
@@ -2178,6 +2288,82 @@
           <textarea class="form-input" id="sol-f-solucion" rows="4"
                     placeholder="Describe la solución aplicada al requerimiento..."
                     style="resize:vertical"></textarea>
+        </div>
+
+        <div class="form-row cols2">
+          <div class="form-group">
+            <label class="form-label">Plan aplicado</label>
+            <textarea class="form-input" id="sol-f-plan" rows="3"
+                      placeholder="Plan de acción aplicado..."
+                      style="resize:vertical"></textarea>
+          </div>
+          <div class="form-group">
+            <label class="form-label">Costo</label>
+            <div class="sol-costo-wrap">
+              <span class="sol-costo-signo">$</span>
+              <input class="form-input" id="sol-f-costo" type="number" min="0"
+                     step="0.01" placeholder="0.00">
+            </div>
+            <span class="form-hint">Déjalo vacío si no tuvo costo.</span>
+          </div>
+        </div>
+
+        <div class="form-group">
+          <label class="form-label">Evidencias de la solución</label>
+          <label class="sol-drop" for="sol-f-archivo">
+            <i class="fas fa-cloud-arrow-up"></i>
+            <span>Haz clic para agregar archivos</span>
+            <small>Cualquier tipo, máximo 5 MB cada uno</small>
+          </label>
+          <input type="file" id="sol-f-archivo" multiple hidden
+                 onchange="solAgregarArchivos(this)">
+          <div id="sol-archivos-lista" class="sol-archivos-lista"></div>
+          <div id="sol-archivos-previos" class="sol-archivos-previos"></div>
+          <span class="form-hint">
+            <i class="fas fa-envelope"></i>
+            Estos archivos se le envían al solicitante en el correo de solución.
+          </span>
+        </div>
+      </div>
+
+      <!-- Datos de consulta: plegados, porque se miran de vez en cuando y no
+           deben competir con los campos que sí hay que llenar. -->
+      <button type="button" class="sol-toggle" id="solToggleDatos"
+              onclick="solToggleDatos()">
+        <i class="fas fa-circle-info" id="solToggleIcono"></i>
+        <span id="solToggleTexto">Ver datos del requerimiento</span>
+      </button>
+
+      <div id="solDatos" hidden>
+        <div class="form-section">
+          <div class="hreq-detalle-grid" style="padding-top:0;margin-top:0;border-top:none">
+            <div class="hreq-detalle-item"><span class="hreq-detalle-label">Documento</span><span id="sol-f-documento">—</span></div>
+            <div class="hreq-detalle-item"><span class="hreq-detalle-label">Nombre Completo</span><span id="sol-f-nombre">—</span></div>
+            <div class="hreq-detalle-item"><span class="hreq-detalle-label">Cargo</span><span id="sol-f-cargo">—</span></div>
+            <div class="hreq-detalle-item"><span class="hreq-detalle-label">Centro de Operación</span><span id="sol-f-co">—</span></div>
+            <div class="hreq-detalle-item"><span class="hreq-detalle-label">Correo Electrónico</span><span id="sol-f-correo">—</span></div>
+          </div>
+        </div>
+
+        <div class="form-section">
+          <div class="hreq-detalle-grid" style="padding-top:0;margin-top:0;border-top:none">
+            <div class="hreq-detalle-item"><span class="hreq-detalle-label">Fecha registro</span><span id="sol-f-fecha-registro">—</span></div>
+            <div class="hreq-detalle-item"><span class="hreq-detalle-label">Fecha vencimiento</span><span id="sol-f-fecha-venc">—</span></div>
+            <div class="hreq-detalle-item"><span class="hreq-detalle-label">Tipo de requerimiento</span><span id="sol-f-tipo">—</span></div>
+            <div class="hreq-detalle-item"><span class="hreq-detalle-label">Categoría</span><span id="sol-f-categoria">—</span></div>
+            <div class="hreq-detalle-item"><span class="hreq-detalle-label">SubCategoría</span><span id="sol-f-subcategoria">—</span></div>
+            <div class="hreq-detalle-item"><span class="hreq-detalle-label">Prioridad</span><span id="sol-f-prioridad" class="hreq-det-badge">—</span></div>
+            <div class="hreq-detalle-item"><span class="hreq-detalle-label">Clasificación</span><span id="sol-f-clasificacion" class="hreq-sin-info">Sin información</span></div>
+            <div class="hreq-detalle-item"><span class="hreq-detalle-label">Estado</span><span id="sol-f-estado" class="hreq-det-badge">—</span></div>
+          </div>
+        </div>
+
+        <div class="form-section">
+          <div class="form-group">
+            <label class="form-label">Descripción del solicitante</label>
+            <textarea class="form-input" id="sol-f-descripcion" rows="4" readonly
+                      style="resize:vertical;background:rgba(27,70,152,0.04);cursor:not-allowed"></textarea>
+          </div>
         </div>
       </div>
 
@@ -2311,9 +2497,17 @@
       <p class="screen-desc">Consulta el registro completo de todos los requerimientos gestionados</p>
     </div>
     <div class="screen-actions">
-      <button class="btn-export" onclick="exportarHistorialReq()">
-        <i class="fas fa-download"></i> Descargar
-      </button>
+      <!-- Mismo menu desplegable que Inventario e Historial de Equipo. -->
+      <div class="export-dropdown" style="position:relative;display:inline-block;">
+        <button class="btn-export" onclick="toggleExportMenu('hreq-export-menu')">
+          <i class="fas fa-download"></i> Descargar
+          <i class="fas fa-chevron-down" style="font-size:10px;margin-left:4px;"></i>
+        </button>
+        <div id="hreq-export-menu" style="display:none;position:absolute;top:100%;right:0;z-index:999;background:var(--card);border:1px solid var(--border);border-radius:var(--radius-md);box-shadow:0 4px 12px rgba(0,0,0,.1);min-width:150px;margin-top:4px;">
+          <button onclick="exportarHistorialReq('xlsx')" style="display:flex;align-items:center;gap:8px;width:100%;padding:9px 14px;background:none;border:none;cursor:pointer;font-size:13px;color:var(--text);"><i class="fas fa-file-excel" style="color:#16a34a;width:16px;"></i> Excel (.xlsx)</button>
+          <button onclick="exportarHistorialReq('pdf')" style="display:flex;align-items:center;gap:8px;width:100%;padding:9px 14px;background:none;border:none;cursor:pointer;font-size:13px;color:var(--text);border-top:1px solid var(--border);"><i class="fas fa-file-pdf" style="color:#dc2626;width:16px;"></i> PDF</button>
+        </div>
+      </div>
     </div>
   </div>
 
@@ -2327,6 +2521,14 @@
       <option value="50">50</option>
     </select>
     <span style="font-size:13px;color:var(--text-secondary)">registros por página</span>
+
+    <!-- Las opciones las llena renderHReq() con los estados que DE VERDAD hay
+         en los datos, no con una lista escrita a mano que se desincroniza. -->
+    <span style="font-size:13px;color:var(--text-secondary);margin-left:16px">Estado</span>
+    <select class="colab-pag-select" id="hreq-estado-filtro" onchange="hreqLoadPage(1)">
+      <option value="">Todos</option>
+    </select>
+
     <div style="flex:1"></div>
     <span style="font-size:13px;color:var(--text-secondary);margin-right:8px">Buscar</span>
     <input type="text" class="colab-search-input" id="hreq-search"
@@ -2368,70 +2570,6 @@
   </th>
   -->
 
-    <!-- Fila expandible de detalle -->
-    <div id="hreq-detalle-wrap" style="display:none;border-top:2px solid var(--border);padding:20px 24px;background:rgba(27,70,152,0.02)">
-
-      <!-- Línea de tiempo del requerimiento -->
-      <div class="acta-hist-title"><i class="fas fa-route" style="color:var(--primary)"></i> Línea de tiempo del requerimiento</div>
-      <div class="hreq-timeline" id="hreq-timeline">
-        <div class="hreq-tl-step" id="hreq-tl-recibido" data-step="recibido">
-          <div class="hreq-tl-dot"><i class="fas fa-inbox"></i></div>
-          <span class="hreq-tl-label">Recibido</span>
-          <span class="hreq-tl-date" id="hreq-tl-date-recibido">—</span>
-        </div>
-        <div class="hreq-tl-line" id="hreq-tl-line-1"></div>
-        <div class="hreq-tl-step" id="hreq-tl-asignado" data-step="asignado">
-          <div class="hreq-tl-dot"><i class="fas fa-user-check"></i></div>
-          <span class="hreq-tl-label">Asignado</span>
-          <span class="hreq-tl-date" id="hreq-tl-date-asignado">Sin información</span>
-        </div>
-        <div class="hreq-tl-line" id="hreq-tl-line-2"></div>
-        <div class="hreq-tl-step" id="hreq-tl-plan" data-step="plan">
-          <div class="hreq-tl-dot"><i class="fas fa-clipboard-list"></i></div>
-          <span class="hreq-tl-label">Plan de acción</span>
-          <span class="hreq-tl-date" id="hreq-tl-date-plan">Sin información</span>
-        </div>
-        <div class="hreq-tl-line" id="hreq-tl-line-3"></div>
-        <div class="hreq-tl-step" id="hreq-tl-solucionado" data-step="solucionado">
-          <div class="hreq-tl-dot"><i class="fas fa-check"></i></div>
-          <span class="hreq-tl-label">Solucionado</span>
-          <span class="hreq-tl-date" id="hreq-tl-date-solucionado">Sin información</span>
-        </div>
-        <div class="hreq-tl-line" id="hreq-tl-line-4"></div>
-        <div class="hreq-tl-step" id="hreq-tl-cerrado" data-step="cerrado">
-          <div class="hreq-tl-dot"><i class="fas fa-flag-checkered"></i></div>
-          <span class="hreq-tl-label">Cerrado</span>
-          <span class="hreq-tl-date" id="hreq-tl-date-cerrado">Pendiente</span>
-        </div>
-      </div>
-
-      <div class="hreq-detalle-grid">
-        <div class="hreq-detalle-item">
-          <span class="hreq-detalle-label">FECHA SOLUCIONADO</span>
-          <span id="hreq-det-fecha-sol" class="hreq-det-badge">Sin información</span>
-        </div>
-        <div class="hreq-detalle-item">
-          <span class="hreq-detalle-label">SOLUCIÓN</span>
-          <span id="hreq-det-solucion" class="hreq-det-badge">Sin información</span>
-        </div>
-        <div class="hreq-detalle-item">
-          <span class="hreq-detalle-label">ESTADO</span>
-          <span id="hreq-det-estado">—</span>
-        </div>
-        <div class="hreq-detalle-item">
-          <span class="hreq-detalle-label">ACCIONES</span>
-          <div style="display:flex;gap:8px;flex-wrap:wrap">
-            <button class="hreq-btn-accion primary" onclick="hreqEvaluacion()">
-              <i class="fas fa-star"></i> Evaluación
-            </button>
-            <button class="hreq-btn-accion secondary" onclick="hreqDetalles()">
-              <i class="fas fa-info-circle"></i> Detalles
-            </button>
-          </div>
-        </div>
-      </div>
-    </div>
-
     <div class="pagination-wrap">
       <div class="pag-info">
         Mostrando <span id="hreq-pag-from">—</span>–<span id="hreq-pag-to">—</span>
@@ -2443,6 +2581,81 @@
 
   
 </section>
+
+
+<!-- ══════════════════════════════════════════════════════
+     HISTORIAL DE REQUERIMIENTOS — Modal de línea de tiempo
+
+     Es la MISMA línea de tiempo que ve el solicitante en el
+     portal (trip-modal de requerimientos.html). Si se cambia
+     una hay que cambiar la otra: son la misma vista desde dos
+     lados. Se abre al hacer clic en la fila o en el ojito.
+══════════════════════════════════════════════════════ -->
+<div class="trip-modal-overlay hidden" id="hreqTripOverlay">
+  <div class="trip-modal-box">
+    <button class="trip-modal-close" id="hreqTripClose" title="Cerrar" aria-label="Cerrar">
+      <i class="fas fa-times"></i>
+    </button>
+
+    <div class="trip-modal-header">
+      <div class="trip-head-icono"><i class="fas fa-route"></i></div>
+      <div class="trip-head-texto">
+        <span class="trip-head-codigo" id="hreqTripCodigo"></span>
+        <span class="trip-head-sub">Seguimiento del requerimiento</span>
+      </div>
+      <span id="hreqTripEstado"></span>
+    </div>
+
+    <!-- VISTA 1: descripcion + linea de tiempo -->
+    <div id="hreqTripVista1">
+    <div class="trip-summary-card">
+      <div class="trip-summary-icon"><i class="fas fa-file-lines"></i></div>
+      <div class="trip-summary-body">
+        <div class="trip-summary-label">Descripción del requerimiento</div>
+        <p class="trip-modal-desc" id="hreqTripDesc"></p>
+      </div>
+    </div>
+
+    <div class="trip-track" id="hreqTripTrack">
+      <div class="trip-line-bg"></div>
+      <div class="trip-line-fill" id="hreqTripLineFill"></div>
+      <div class="trip-steps" id="hreqTripSteps"></div>
+    </div>
+
+    <div class="trip-step-detail" id="hreqTripStepDetail">
+      <div class="trip-step-detail-clip">
+        <div class="trip-step-detail-inner">
+          <div class="trip-step-detail-icon" id="hreqTripStepIcon"><i class="fas fa-circle-info"></i></div>
+          <div class="trip-step-detail-body">
+            <div class="trip-step-detail-title" id="hreqTripStepTitle"></div>
+            <div class="trip-step-detail-text" id="hreqTripStepText"></div>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    </div><!-- /hreqTripVista1 -->
+
+    <!-- VISTA 2: ficha completa, evaluacion y adjunto -->
+    <div class="hreq-vermas-panel" id="hreqTripMas" hidden>
+      <!-- Estos tres los llena hreqAbrirTimeline() -->
+      <div class="hreq-ficha" id="hreqTripFicha"></div>
+      <!-- El adjunto va ANTES de la evaluacion: pertenece al requerimiento,
+           mientras que la evaluacion es el cierre y por eso queda de ultima. -->
+      <div id="hreqTripAdjunto"></div>
+      <div id="hreqTripEval"></div>
+    </div>
+
+    <!-- El boton NO despliega: CAMBIA de vista. La linea de tiempo y la ficha
+         de 13 campos nunca se ven al mismo tiempo, para que ninguna de las dos
+         quede sepultada debajo de la otra. Va al final porque es el pie del
+         modal: arriba interrumpia entre el titulo y el contenido. -->
+    <button type="button" class="hreq-vermas-btn" id="hreqTripVerMas">
+      <i class="fas fa-list-ul" id="hreqTripVerMasIcono"></i>
+      <span id="hreqTripVerMasTexto">Ver información completa</span>
+    </button>
+  </div>
+</div>
 
 <!-- ══════════════════════════════════════════════════════
      INDICADORES — Panel de requerimientos

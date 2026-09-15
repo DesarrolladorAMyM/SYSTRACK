@@ -4,7 +4,10 @@ from django.http import JsonResponse
 from django.views.decorators.http import require_GET, require_POST
 from django.utils import timezone
 from django.views.decorators.csrf import csrf_exempt
-from .models import Equipo, EstadoGeneral, Usuario, HistorialPrestamo
+from .models import (
+    Equipo, EstadoGeneral, Usuario, HistorialPrestamo,
+    AccesorioEquipo, PrestamoAccesorio,
+)
 
 DB = 'requerimientos'
 
@@ -112,7 +115,7 @@ def api_equipos_prestar(request):
     usuario = Usuario.objects.using(DB).filter(Cedula=cedula).first()
     id_responsable = usuario.IdUsuario if usuario else None
 
-    HistorialPrestamo.objects.using(DB).create(
+    prestamo = HistorialPrestamo.objects.using(DB).create(
         IdEquipo=equipo,
         Cedula=cedula,
         NombreSolicitante=nombre,
@@ -120,6 +123,22 @@ def api_equipos_prestar(request):
         FechaEstimadaDevolucion=fecha_est,
         Observaciones=observ,
     )
+
+    # Se copia el catalogo de accesorios del equipo como "entregado". Es un
+    # VALOR POR DEFECTO, no una verificacion: aqui nadie de TIC esta presente,
+    # asi que lo que se registra es lo que normalmente va con el equipo. TIC
+    # lo corrige desde "Ver detalles" si algo no salio.
+    #
+    # Se copia el NOMBRE ademas del id: si manana se quita el accesorio del
+    # catalogo, este prestamo sigue diciendo que se llevo un cable HDMI.
+    for acc in AccesorioEquipo.objects.using(DB).filter(IdEquipo=equipo.IdEquipo, Activo=True):
+        PrestamoAccesorio.objects.using(DB).create(
+            IdPrestamo=prestamo.IdPrestamo,
+            IdAccesorio=acc.IdAccesorio,
+            NombreAccesorio=acc.Nombre,
+            Entregado=True,
+            Devuelto=False,
+        )
 
     equipo.IdResponsable = id_responsable
     equipo.IdEstado = ESTADO_NO_DISPONIBLE
@@ -130,55 +149,25 @@ def api_equipos_prestar(request):
 @csrf_exempt
 @require_POST
 def api_equipos_devolver(request):
+    """CERRADO: la devolucion ya no se hace desde el portal.
+
+    Antes el propio solicitante pulsaba "Devolver" y el sistema liberaba el
+    equipo al instante. El problema es que eso solo registra una intencion:
+    nadie verificaba que el equipo de verdad hubiera vuelto a TIC, asi que se
+    podia marcar como devuelto desde el escritorio y quedarse con el, y el
+    equipo aparecia libre para que otra persona lo pidiera.
+
+    Ahora la registra TIC al recibir el equipo fisicamente
+    (dashboard -> api_equipo_admin_devolver).
+
+    La ruta se conserva a proposito y responde 403 con una explicacion: si
+    alguien tiene el portal abierto de antes y pulsa el boton viejo, debe
+    entender que pasa en vez de ver un error 404 sin sentido. Tampoco basta
+    con esconder el boton — sin este candado el endpoint seguiria abierto a
+    cualquiera que conociera una cedula y un id de equipo.
     """
-    Registra la devolución del equipo: cierra el préstamo activo en
-    mv_HistorialPrestamos (le pone FechaDevolucionReal) y pasa el equipo
-    de vuelta a 'Disponible' (IdEstado=3).
-
-    Requiere 'cedula' en el body y valida que sea justo quien tiene el
-    préstamo activo — antes cualquier usuario logueado podía devolver
-    equipos de otras personas con solo saber el id_equipo, sin ninguna
-    validación de quién lo estaba pidiendo.
-    """
-    try:
-        body = json.loads(request.body)
-    except (json.JSONDecodeError, TypeError):
-        return JsonResponse({'ok': False, 'error': 'Datos inválidos.'}, status=400)
-
-    id_equipo = body.get('id_equipo')
-    cedula    = (body.get('cedula') or '').strip()
-    if not id_equipo:
-        return JsonResponse({'ok': False, 'error': 'Falta el equipo.'}, status=400)
-    if not cedula:
-        return JsonResponse({'ok': False, 'error': 'Cédula requerida.'}, status=400)
-
-    equipo = Equipo.objects.using(DB).filter(IdEquipo=id_equipo).first()
-    if not equipo:
-        return JsonResponse({'ok': False, 'error': 'El equipo no existe.'}, status=404)
-
-    prestamo = (
-        HistorialPrestamo.objects.using(DB)
-        .filter(IdEquipo=equipo, FechaDevolucionReal__isnull=True)
-        .order_by('-FechaPrestamo')
-        .first()
-    )
-    if not prestamo:
-        return JsonResponse({'ok': False, 'error': 'Este equipo no tiene un préstamo activo.'}, status=400)
-    # Comparación explícita como texto: es la MISMA regla con la que
-    # api_equipos_lista decide mostrar el botón "Devolver". Hoy las dos
-    # partes ya son str, pero dejarlo explícito evita que vuelva el bug de
-    # tipos que tenía es_mio si algún día cambia el tipo de la columna.
-    if str(prestamo.Cedula or '').strip() != cedula:
-        return JsonResponse({
-            'ok': False,
-            'error': 'Este equipo está prestado a otra persona — solo quien lo tiene puede registrar la devolución.'
-        }, status=403)
-
-    prestamo.FechaDevolucionReal = timezone.now()
-    prestamo.save(using=DB)
-
-    equipo.IdResponsable = None
-    equipo.IdEstado = ESTADO_DISPONIBLE
-    equipo.save(using=DB)
-
-    return JsonResponse({'ok': True})
+    return JsonResponse({
+        'ok': False,
+        'error': 'La devolucion se registra en TIC al entregar el equipo. '
+                 'Acercate con el equipo y alli la registran en el sistema.',
+    }, status=403)

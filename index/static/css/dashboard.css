@@ -626,7 +626,6 @@
     .nov-adjunto-nombre{font-size:11px;color:var(--text-light);max-width:96px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;text-align:center;}
     .nov-adjunto-quitar{position:absolute;top:-6px;right:-6px;width:20px;height:20px;border-radius:50%;background:#dc2626;color:#fff;border:2px solid #fff;font-size:10px;display:flex;align-items:center;justify-content:center;cursor:pointer;padding:0;}
     .nov-adjunto-descargar{position:absolute;bottom:-6px;right:-6px;width:22px;height:22px;border-radius:50%;background:var(--primary);color:#fff;border:2px solid #fff;font-size:10px;display:flex;align-items:center;justify-content:center;text-decoration:none;}
-    #nov-det-adjuntos-seccion .chk-seccion-title{display:flex;align-items:center;justify-content:space-between;gap:10px;}
     .chk-preview-box{background:#fff;border-radius:12px;width:100%;max-width:900px;height:88vh;display:flex;flex-direction:column;overflow:hidden;box-shadow:0 25px 60px rgba(0,0,0,.35);}
     .chk-preview-header{display:flex;align-items:center;justify-content:space-between;padding:16px 22px;background:#1e3a5f;color:#fff;font-weight:600;font-size:15px;flex-shrink:0;}
     .chk-preview-header i{margin-right:8px;}
@@ -807,6 +806,9 @@ a.nav-btn.active {
 .req-estado-resuelto   { background:#d1fae5; color:#065f46; border:1px solid #6ee7b7; }
 .req-estado-cerrado    { background:#f3f4f6; color:#6b7280; border:1px solid #d1d5db; }
 .req-estado-calificado { background:#e0f2fe; color:#0369a1; border:1px solid #7dd3fc; }
+/* Estados 8 (Rechazado) y 9 (Requiere correccion): antes no tenian estilo
+   propio y caian en el amarillo de "pendiente", que no comunica un rechazo. */
+.req-estado-rechazado  { background:#fee2e2; color:#991b1b; border:1px solid #fecaca; }
 
 .req-estado-badge {
   display: inline-flex;
@@ -1285,3 +1287,678 @@ a.nav-btn.active {
 }
 .foto-visor-eliminar:hover{background:#dc2626;border-color:#dc2626;color:#fff;}
 
+/* ══════════════════════════════════════════════════════════════════
+   LINEA DE TIEMPO DEL HISTORIAL DE REQUERIMIENTOS
+   Portado tal cual desde requerimientos.css (modal de seguimiento del
+   portal) para que el dashboard muestre EXACTAMENTE la misma linea de
+   tiempo que ve el solicitante. Si se cambia una, hay que cambiar la
+   otra: son la misma vista desde dos lados.
+   El dashboard no tenia ninguna clase .trip-*, asi que no pisa nada.
+   ══════════════════════════════════════════════════════════════════ */
+/* ===== MODAL FLOTANTE DE SEGUIMIENTO ===== */
+.trip-modal-overlay{
+  position:fixed;top:0;left:0;width:100%;height:100%;
+  background:rgba(19,47,107,0.6);backdrop-filter:blur(4px);
+  /* z-index 9998 y no el 1000 del portal: en el dashboard los modales viven
+     en 9998 y hay elementos en 9999 (.usr-dropdown), asi que con 1000 esta
+     linea de tiempo se abriria POR DETRAS. Arriba quedan solo la confirmacion
+     de borrado (10000) y las notificaciones (10001), que es lo correcto. */
+  display:flex;align-items:center;justify-content:center;z-index:9998;padding:20px;
+}
+.trip-modal-overlay.hidden{display:none;}
+.trip-modal-box{
+  background:linear-gradient(180deg,#ffffff 0%,#fbfcff 100%);
+  border-radius:24px;padding:0;max-width:540px;width:100%;
+  max-height:88vh;overflow-y:auto;
+  box-shadow:0 30px 70px rgba(19,47,107,0.35),0 0 0 1px rgba(27,70,152,0.06);
+  position:relative;display:flex;flex-direction:column;
+  animation:trip-modal-pop .45s cubic-bezier(.2,.9,.25,1.2);
+}
+.trip-modal-box > *:last-child{margin-bottom:26px;}
+@keyframes trip-modal-pop{
+  0%{opacity:0;transform:scale(.88) translateY(18px);}
+  100%{opacity:1;transform:scale(1) translateY(0);}
+}
+/* Encabezado del modal de linea de tiempo: franja propia con icono, codigo y
+   estado. Antes era solo el codigo suelto y el badge, y se leia como texto
+   perdido arriba en vez de como el titulo del modal. */
+.trip-modal-header{
+  display:flex;align-items:center;gap:13px;
+  padding:20px 54px 20px 30px;
+  background:linear-gradient(135deg,rgba(27,70,152,0.07) 0%,rgba(27,70,152,0.02) 100%);
+  border-bottom:1.5px solid var(--border);
+  border-radius:24px 24px 0 0;
+}
+.trip-head-icono{
+  width:42px;height:42px;border-radius:12px;flex-shrink:0;
+  display:flex;align-items:center;justify-content:center;
+  background:linear-gradient(135deg,var(--primary) 0%,var(--primary-light) 100%);
+  color:white;font-size:17px;box-shadow:0 4px 12px rgba(27,70,152,0.28);
+}
+.trip-head-texto{display:flex;flex-direction:column;gap:2px;min-width:0;flex:1;}
+.trip-head-codigo{
+  font-family:'Courier New',monospace;font-size:17px;font-weight:800;
+  letter-spacing:.5px;color:var(--primary);line-height:1.1;
+}
+.trip-head-sub{font-size:11.5px;color:var(--text-secondary);font-weight:500;}
+/* En pantallas angostas el badge de estado se va debajo del codigo en vez de
+   apretar el titulo. */
+@media(max-width:520px){
+  .trip-modal-header{flex-wrap:wrap;}
+  .trip-head-texto{flex:1 1 100%;}
+}
+
+.trip-summary-card{
+  display:flex;align-items:flex-start;gap:12px;
+  margin:16px 30px 0;padding:16px 18px;
+  background:linear-gradient(135deg,rgba(27,70,152,0.05) 0%,rgba(27,70,152,0.015) 100%);
+  border:1.5px solid var(--border);border-radius:var(--radius-lg);
+}
+.trip-summary-icon{
+  width:34px;height:34px;border-radius:10px;flex-shrink:0;
+  background:rgba(27,70,152,0.10);color:var(--primary);
+  display:flex;align-items:center;justify-content:center;font-size:14px;
+}
+.trip-summary-body{min-width:0;}
+.trip-summary-label{
+  font-size:10.5px;font-weight:700;letter-spacing:.6px;color:var(--text-light);
+  text-transform:uppercase;margin-bottom:3px;
+}
+.trip-modal-desc{
+  font-size:14px;color:var(--text-primary);line-height:1.55;font-weight:500;
+}
+
+.trip-track{position:relative;padding:36px 30px 6px;}
+.trip-line-bg{
+  position:absolute;top:58px;left:30px;right:30px;height:4px;
+  background:var(--border);border-radius:4px;z-index:1;
+}
+.trip-line-fill{
+  position:absolute;top:58px;left:30px;height:4px;
+  background:linear-gradient(90deg,var(--primary) 0%,var(--primary-light) 100%);
+  border-radius:4px;width:0%;transition:width 1.1s cubic-bezier(.4,0,.2,1);z-index:1;
+  box-shadow:0 0 8px rgba(27,70,152,0.35);
+}
+.trip-steps{display:flex;justify-content:space-between;position:relative;z-index:2;}
+.trip-step{
+  display:flex;flex-direction:column;align-items:center;gap:9px;flex:1;min-width:0;
+  opacity:0;transform:translateY(10px) scale(.85);
+  transition:opacity .4s ease,transform .4s cubic-bezier(.34,1.56,.64,1);
+  cursor:pointer;background:none;border:none;font-family:'DM Sans',sans-serif;
+}
+.trip-step.show{opacity:1;transform:translateY(0) scale(1);}
+.trip-step-icon{
+  width:54px;height:54px;border-radius:50%;background:white;border:3px solid var(--border);
+  display:flex;align-items:center;justify-content:center;font-size:19px;color:var(--text-light);
+  transition:all .4s cubic-bezier(.4,0,.2,1);position:relative;z-index:3;
+  box-shadow:0 2px 6px rgba(27,70,152,0.08);
+}
+.trip-step:hover .trip-step-icon{transform:scale(1.08);}
+.trip-step.selected .trip-step-icon{box-shadow:0 0 0 4px rgba(27,70,152,0.18);}
+.trip-step.done .trip-step-icon{
+  border-color:var(--primary);color:var(--primary);
+  background:#eaf0fb;
+}
+.trip-step.done .trip-step-icon::after{
+  content:'\f00c';font-family:'Font Awesome 6 Free';font-weight:900;font-size:9px;
+  position:absolute;bottom:-2px;right:-2px;width:18px;height:18px;border-radius:50%;
+  background:var(--success);color:white;border:2px solid white;
+  display:flex;align-items:center;justify-content:center;z-index:4;
+}
+.trip-step.done .trip-step-icon i{animation:trip-check-pop .4s cubic-bezier(.34,1.56,.64,1);}
+@keyframes trip-check-pop{0%{transform:scale(0);}70%{transform:scale(1.3);}100%{transform:scale(1);}}
+.trip-step.current .trip-step-icon{
+  border-color:var(--primary);color:white;background:linear-gradient(135deg,var(--primary) 0%,var(--primary-light) 100%);
+  box-shadow:0 0 0 6px rgba(27,70,152,0.16),0 4px 12px rgba(27,70,152,0.30);animation:trip-pulse 1.5s infinite;
+}
+@keyframes trip-pulse{
+  0%{box-shadow:0 0 0 0 rgba(27,70,152,0.35);}
+  70%{box-shadow:0 0 0 12px rgba(27,70,152,0);}
+  100%{box-shadow:0 0 0 0 rgba(27,70,152,0);}
+}
+.trip-step-label{font-size:12px;font-weight:700;color:var(--text-secondary);text-align:center;}
+.trip-step.done .trip-step-label,.trip-step.current .trip-step-label{color:var(--primary);}
+.trip-step-time{font-size:10.5px;color:var(--text-light);text-align:center;}
+
+/* ===== DETALLE DEL PASO (altura por CSS grid: se ajusta al contenido real, sin recortes) ===== */
+/* DESPUÉS */
+.trip-step-detail{
+  opacity:0;
+  border-radius:var(--radius-lg);
+  transition:opacity .25s ease,
+             margin .38s cubic-bezier(.4,0,.2,1);
+  margin:0 30px;
+}
+.trip-step-detail.show{
+  opacity:1;
+  margin:14px 30px 0;
+}
+.trip-step-detail-clip{
+  overflow:hidden;
+  height:0;
+  background:white;
+  border:1.5px solid var(--border);
+  border-left:4px solid var(--primary);
+  border-radius:var(--radius-lg);
+  transition:height .38s cubic-bezier(.4,0,.2,1),
+             box-shadow .3s ease;
+}
+.trip-step-detail.show .trip-step-detail-clip{
+  box-shadow:var(--shadow-sm);
+}
+.trip-step-detail > .trip-step-detail-clip > .trip-step-detail-inner{
+  display:flex;align-items:flex-start;gap:14px;
+  padding:16px 18px;
+  transition:opacity .16s ease;
+}
+.trip-step-detail-inner.fading{
+  opacity:0;
+}
+.trip-step-detail-icon{
+  width:36px;height:36px;border-radius:50%;
+  background:linear-gradient(135deg,var(--primary) 0%,var(--primary-light) 100%);
+  color:white;
+  display:flex;align-items:center;justify-content:center;font-size:14px;flex-shrink:0;
+  box-shadow:0 4px 10px rgba(27,70,152,0.30);
+}
+.trip-step-detail-title{font-size:14px;font-weight:700;color:var(--text-primary);margin-bottom:4px;}
+.trip-step-detail-text{font-size:13px;color:var(--text-secondary);line-height:1.55;white-space:pre-line;}
+
+/* Ficha de datos del requerimiento dentro del modal */
+.hreq-ficha{
+  display:grid;grid-template-columns:repeat(auto-fit,minmax(180px,1fr));
+  gap:10px;margin:4px 30px 0;
+}
+.hreq-ficha-item{
+  background:#f8fafc;border:1px solid var(--border);border-radius:10px;padding:9px 12px;min-width:0;
+}
+.hreq-ficha-label{
+  font-size:10.5px;font-weight:700;letter-spacing:.4px;text-transform:uppercase;
+  color:var(--text-secondary);margin-bottom:3px;
+}
+.hreq-ficha-valor{font-size:13px;color:var(--text-primary);word-break:break-word;}
+.hreq-ficha-valor.vacio{color:var(--text-light);}
+
+/* Bloque de evaluacion */
+.hreq-eval{margin:16px 30px 0;}
+
+/* Nota: estrellas grandes, que es lo primero que se busca al abrir. */
+.hreq-eval-nota{
+  display:flex;align-items:center;gap:12px;flex-wrap:wrap;
+  padding:13px 16px;border-radius:var(--radius-lg);
+  background:#fffdf5;border:1.5px solid #fde68a;
+}
+.hreq-eval-stars{display:flex;gap:4px;font-size:21px;color:#e5e7eb;}
+.hreq-eval-stars i.on{color:var(--warning);}
+.hreq-eval-num{
+  font-size:13px;font-weight:700;color:#92400e;
+  background:#fef3c7;border-radius:20px;padding:3px 11px;
+}
+
+/* Comentario: bloque aparte debajo de la nota, con la comilla como marca de
+   cita. Se separa a proposito de las estrellas — es texto de una persona y
+   merece leerse como tal, no apretado al lado del numero. */
+.hreq-eval-coment{
+  display:flex;gap:11px;margin-top:8px;padding:13px 16px;
+  background:#f8fafc;border:1px solid var(--border);border-radius:var(--radius-lg);
+  border-left:3px solid var(--warning);
+}
+.hreq-eval-coment i{color:#d1d5db;font-size:14px;flex-shrink:0;margin-top:2px;}
+.hreq-eval-coment p{
+  margin:0;font-size:13.5px;color:var(--text-primary);line-height:1.6;
+  white-space:pre-line;min-width:0;
+}
+.hreq-eval-sin-coment{
+  margin-top:7px;font-size:12px;color:var(--text-light);padding-left:2px;
+}
+
+/* Cuando no hay nota */
+.hreq-eval-vacio{
+  display:flex;align-items:flex-start;gap:11px;padding:13px 16px;
+  background:#f8fafc;border:1px solid var(--border);border-radius:var(--radius-lg);
+}
+.hreq-eval-vacio > i{color:var(--text-light);font-size:15px;margin-top:1px;flex-shrink:0;}
+.hreq-eval-vacio-titulo{font-size:13px;font-weight:700;color:var(--text-primary);}
+.hreq-eval-vacio-texto{font-size:12.5px;color:var(--text-secondary);margin-top:2px;}
+
+/* Titulo de seccion dentro del modal (mismo tono que las etiquetas de la
+   ficha, para que se lea como parte del mismo bloque de informacion). */
+.hreq-seccion-label{
+  display:flex;align-items:center;gap:7px;
+  font-size:10.5px;font-weight:700;letter-spacing:.4px;text-transform:uppercase;
+  color:var(--text-secondary);margin-bottom:7px;
+}
+
+/* Adjunto dentro del modal */
+.hreq-adjunto{margin:16px 30px 0;}
+.hreq-adjunto-link{
+  display:flex;align-items:center;gap:10px;padding:11px 14px;
+  background:#eff4ff;border:1.5px solid #c7d7f5;border-radius:10px;
+  font-size:13px;font-weight:600;color:var(--primary);text-decoration:none;
+  transition:all .18s;
+}
+.hreq-adjunto-link:hover{background:#dfe9fc;border-color:#a9c4f0;}
+.hreq-adjunto-link i{font-size:15px;flex-shrink:0;}
+/* El nombre del archivo puede ser larguisimo (ej. "ACTA DE ENTREGA DE
+   REGISTRO DE NOVEDADES.docx"); se corta con puntos suspensivos en vez de
+   desbordar el modal. El title del enlace muestra el nombre completo. */
+.hreq-adjunto-nombre{
+  overflow:hidden;text-overflow:ellipsis;white-space:nowrap;min-width:0;
+}
+.hreq-adjunto-vacio{
+  padding:11px 14px;background:#f8fafc;border:1px solid var(--border);
+  border-radius:10px;font-size:13px;color:var(--text-light);
+}
+
+/* El modal necesita respirar abajo */
+.trip-modal-box > .hreq-adjunto:last-child,
+.trip-modal-box > .hreq-eval:last-child{margin-bottom:26px;}
+
+@media(max-width:640px){
+  .trip-step-label{font-size:10px;}
+  .trip-step-icon{width:40px;height:40px;font-size:15px;}
+  .trip-line-bg{top:58px;left:20px;right:20px;height:4px;}
+  .trip-line-fill{top:58px;left:20px;height:4px;}
+  .trip-step-time{display:none;}
+  .trip-modal-box{padding:0;}
+  .trip-modal-header,.trip-modal-desc,.trip-track{padding-left:20px;padding-right:20px;}
+  .trip-step-detail{margin-left:20px;margin-right:20px;}
+  .trip-modal-header{flex-direction:column;align-items:flex-start;gap:8px;}
+  .hreq-ficha,.hreq-eval,.hreq-adjunto{margin-left:20px;margin-right:20px;}
+}
+
+/* Boton de cerrar del modal de linea de tiempo (el portal usa .id-modal-close,
+   que el dashboard no tiene). */
+.trip-modal-close{
+  position:absolute;top:18px;right:18px;width:32px;height:32px;border-radius:50%;
+  background:rgba(27,70,152,0.06);border:none;color:var(--text-secondary);font-size:14px;
+  display:flex;align-items:center;justify-content:center;cursor:pointer;transition:all .2s;z-index:3;
+}
+.trip-modal-close:hover{background:rgba(27,70,152,0.12);color:var(--primary);}
+
+/* ── "Ver informacion completa" del modal de linea de tiempo ──
+   El modal abre mostrando solo descripcion y linea de tiempo; la ficha de
+   datos, la evaluacion y el adjunto quedan detras de este boton. */
+.hreq-vermas-btn{
+  display:flex;align-items:center;justify-content:center;gap:9px;
+  margin:20px 30px 26px;padding:12px 18px;
+  background:white;border:1.5px solid var(--border);border-radius:var(--radius-lg);
+  font-size:13px;font-weight:700;font-family:'DM Sans',sans-serif;
+  color:var(--primary);cursor:pointer;transition:all .2s;
+}
+.hreq-vermas-btn:hover{background:#f4f7fd;border-color:#c7d7f5;}
+.hreq-vermas-btn i{font-size:12px;}
+/* Cuando esta viendo la ficha, el boton es "volver": se marca para que se lea
+   como el camino de regreso y no como otro boton mas. */
+.hreq-vermas-btn.abierto{background:#f4f7fd;border-color:#c7d7f5;}
+/* Las dos vistas entran con la misma animacion, asi el cambio se siente como
+   pasar de pagina y no como un salto. */
+.hreq-vermas-panel,#hreqTripVista1{animation:hreq-vermas-in .28s ease;}
+@keyframes hreq-vermas-in{
+  from{opacity:0;transform:translateY(-6px);}
+  to{opacity:1;transform:translateY(0);}
+}
+@media(max-width:640px){
+  .hreq-vermas-btn{margin-left:20px;margin-right:20px;}
+}
+
+/* ══════════════════════════════════════════════════════════════════
+   MODAL DE SOLUCION DE REQUERIMIENTO
+   Lo que el tecnico debe llenar va arriba y destacado; los 13 datos de
+   consulta quedan plegados detras de un boton. Antes el modal abria con
+   los datos y los campos editables quedaban sepultados al fondo.
+   ══════════════════════════════════════════════════════════════════ */
+.sol-bloque{
+  background:#f8fafc;border:1.5px solid var(--border);border-radius:var(--radius-lg);
+  padding:18px 20px;margin-bottom:16px;
+}
+.sol-bloque-titulo{
+  display:flex;align-items:center;gap:8px;
+  font-size:12px;font-weight:800;letter-spacing:.5px;text-transform:uppercase;
+  color:var(--primary);margin-bottom:14px;
+}
+.form-hint{
+  display:inline-flex;align-items:center;gap:6px;
+  font-size:11.5px;color:var(--text-light);margin-top:5px;
+}
+
+/* Costo con el signo de peso dentro del campo */
+.sol-costo-wrap{position:relative;display:flex;align-items:center;}
+.sol-costo-wrap .sol-costo-signo{
+  position:absolute;left:13px;font-size:14px;font-weight:700;
+  color:var(--text-secondary);pointer-events:none;
+}
+.sol-costo-wrap input{padding-left:28px;width:100%;}
+
+/* Zona para soltar archivos */
+.sol-drop{
+  display:flex;flex-direction:column;align-items:center;justify-content:center;gap:3px;
+  padding:18px;border:2px dashed #c7d7f5;border-radius:var(--radius-md);
+  background:#eff4ff;cursor:pointer;transition:all .2s;text-align:center;
+}
+.sol-drop:hover{background:#e3ecfb;border-color:#a9c4f0;}
+.sol-drop i{font-size:20px;color:var(--primary);margin-bottom:3px;}
+.sol-drop span{font-size:13px;font-weight:600;color:var(--primary);}
+.sol-drop small{font-size:11px;color:var(--text-light);}
+
+/* Lista de archivos elegidos */
+.sol-archivos-lista{display:flex;flex-direction:column;gap:6px;margin-top:9px;}
+.sol-archivos-vacio{font-size:12px;color:var(--text-light);padding:2px;}
+.sol-archivo-chip{
+  display:flex;align-items:center;gap:9px;padding:8px 11px;
+  background:white;border:1.5px solid var(--border);border-radius:9px;font-size:12.5px;
+}
+.sol-archivo-chip > i{color:var(--primary);flex-shrink:0;}
+/* El nombre puede ser larguisimo: se corta en vez de desbordar el modal. */
+.sol-archivo-nombre{
+  flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;
+  color:var(--text-primary);font-weight:600;
+}
+.sol-archivo-peso{color:var(--text-light);font-size:11px;flex-shrink:0;}
+.sol-archivo-quitar{
+  background:none;border:none;cursor:pointer;color:var(--text-light);
+  padding:3px 5px;border-radius:5px;transition:.15s;flex-shrink:0;
+}
+.sol-archivo-quitar:hover{background:#fee2e2;color:#dc2626;}
+
+/* Evidencias ya guardadas de una solucion anterior */
+.sol-archivos-previos{margin-top:9px;}
+.sol-archivo-previo{
+  display:flex;align-items:center;gap:8px;padding:8px 11px;margin-bottom:5px;
+  background:#eff4ff;border:1.5px solid #c7d7f5;border-radius:9px;
+  font-size:12.5px;font-weight:600;color:var(--primary);text-decoration:none;
+}
+.sol-archivo-previo:hover{background:#dfe9fc;}
+
+/* Boton que pliega los datos de consulta */
+.sol-toggle{
+  display:flex;align-items:center;justify-content:center;gap:8px;width:100%;
+  padding:10px 16px;background:white;border:1.5px solid var(--border);
+  border-radius:var(--radius-md);font-size:12.5px;font-weight:700;
+  font-family:'DM Sans',sans-serif;color:var(--primary);cursor:pointer;transition:all .2s;
+}
+.sol-toggle:hover{background:#f4f7fd;border-color:#c7d7f5;}
+.sol-toggle.abierto{background:#f4f7fd;border-color:#c7d7f5;}
+
+/* ── Devolucion de equipos (Prestamo de Equipos) ── */
+.eq-prestado{display:flex;flex-direction:column;gap:1px;min-width:0;}
+.eq-prestado-nombre{font-size:13px;font-weight:600;color:var(--text-primary);}
+.eq-prestado-fecha{font-size:11px;color:var(--text-light);}
+
+.dev-aviso{
+  display:flex;align-items:flex-start;gap:10px;padding:12px 14px;margin-bottom:16px;
+  background:#fffbeb;border:1.5px solid #fde68a;border-radius:var(--radius-md);
+  font-size:13px;color:#92400e;line-height:1.5;
+}
+.dev-aviso i{font-size:15px;flex-shrink:0;margin-top:1px;}
+
+.dev-ficha{
+  display:grid;grid-template-columns:repeat(auto-fit,minmax(160px,1fr));gap:9px;
+}
+.dev-ficha-item{
+  background:#f8fafc;border:1px solid var(--border);border-radius:10px;padding:9px 12px;min-width:0;
+}
+.dev-ficha-label{
+  display:block;font-size:10.5px;font-weight:700;letter-spacing:.4px;
+  text-transform:uppercase;color:var(--text-secondary);margin-bottom:3px;
+}
+.dev-ficha-valor{font-size:13px;color:var(--text-primary);word-break:break-word;}
+
+.dev-obs-previa{
+  margin-top:12px;padding:11px 14px;background:#f8fafc;border:1px solid var(--border);
+  border-left:3px solid var(--primary);border-radius:var(--radius-md);
+  font-size:13px;color:var(--text-secondary);line-height:1.55;white-space:pre-line;
+}
+/* Prestamo abierto sobre un equipo que figura DISPONIBLE: no se ofrece
+   devolucion, pero se marca para que la anomalia no pase desapercibida. */
+.eq-inconsistente{
+  display:inline-flex;align-items:center;gap:5px;margin-top:3px;
+  font-size:10.5px;font-weight:700;color:#92400e;
+  background:#fef3c7;border:1px solid #fde68a;border-radius:20px;padding:2px 8px;
+  cursor:help;
+}
+
+/* ══════════════════════════════════════════════════════════════════
+   ACCESORIOS DE EQUIPOS — catalogo, checklist y detalle
+   ══════════════════════════════════════════════════════════════════ */
+.det-bloque{
+  background:#f8fafc;border:1.5px solid var(--border);border-radius:var(--radius-lg);
+  padding:16px 18px;margin-bottom:14px;
+}
+.det-bloque-titulo{
+  display:flex;align-items:center;gap:8px;flex-wrap:wrap;
+  font-size:12px;font-weight:800;letter-spacing:.4px;text-transform:uppercase;
+  color:var(--primary);margin-bottom:11px;
+}
+.det-bloque-nota{
+  font-size:10.5px;font-weight:600;letter-spacing:0;text-transform:none;
+  color:var(--text-light);
+}
+
+/* Catalogo: fichas con boton de quitar */
+.det-catalogo{display:flex;flex-wrap:wrap;gap:7px;}
+.det-acc-chip{
+  display:inline-flex;align-items:center;gap:7px;padding:6px 8px 6px 11px;
+  background:white;border:1.5px solid var(--border);border-radius:20px;font-size:12.5px;
+  color:var(--text-primary);font-weight:600;
+}
+.det-acc-chip > i{color:var(--primary);font-size:11px;}
+.det-acc-chip button{
+  background:none;border:none;cursor:pointer;color:var(--text-light);
+  padding:2px 4px;border-radius:50%;transition:.15s;font-size:11px;
+}
+.det-acc-chip button:hover{background:#fee2e2;color:#dc2626;}
+
+.det-agregar{display:flex;gap:8px;margin-top:11px;}
+.det-agregar .form-input{flex:1;min-width:0;}
+
+.det-prestamo-info{
+  padding:11px 14px;background:white;border:1px solid var(--border);
+  border-radius:10px;font-size:13px;line-height:1.6;
+}
+
+/* Checklist de accesorios (entrega y devolucion) */
+.dev-accesorios{display:flex;flex-direction:column;gap:6px;}
+.dev-acc-item{
+  display:flex;align-items:center;gap:9px;padding:9px 12px;
+  background:white;border:1.5px solid var(--border);border-radius:10px;
+  font-size:13px;cursor:pointer;transition:.15s;
+}
+.dev-acc-item:hover{border-color:#c7d7f5;}
+.dev-acc-item input[type=checkbox]{
+  width:16px;height:16px;accent-color:var(--primary);cursor:pointer;flex-shrink:0;
+}
+.dev-acc-nombre{font-weight:600;color:var(--text-primary);}
+.dev-acc-suelto{
+  font-size:10px;font-weight:700;text-transform:uppercase;letter-spacing:.3px;
+  background:#ede9fe;color:#6d28d9;border-radius:20px;padding:2px 7px;
+}
+/* La observacion solo se muestra cuando algo NO volvio. */
+.dev-acc-obs{
+  flex:1;min-width:0;margin-left:auto;padding:5px 9px;font-size:12px;
+  border:1.5px solid #fde68a;background:#fffbeb;border-radius:7px;
+  font-family:'DM Sans',sans-serif;color:var(--text-primary);
+}
+.dev-acc-vacio{font-size:12.5px;color:var(--text-light);padding:8px 2px;}
+
+/* Historial compacto dentro del detalle */
+.det-historial{display:flex;flex-direction:column;gap:7px;}
+.det-hist-item{
+  padding:9px 12px;background:white;border:1px solid var(--border);border-radius:10px;
+}
+.det-hist-top{display:flex;justify-content:space-between;gap:10px;flex-wrap:wrap;}
+.det-hist-nombre{font-size:13px;font-weight:600;color:var(--text-primary);}
+.det-hist-fecha{font-size:11.5px;color:var(--text-light);}
+.det-hist-sub{font-size:12px;color:var(--text-secondary);margin-top:3px;}
+.det-hist-falta{
+  display:inline-block;margin-left:7px;font-size:11px;font-weight:700;
+  background:#fee2e2;color:#991b1b;border-radius:20px;padding:1px 8px;
+}
+
+/* Historial expandible: que accesorios salieron y cuales volvieron en CADA
+   prestamo. El mismo equipo sale distinto cada vez, asi que el detalle va por
+   prestamo y no por equipo. */
+.det-hist-cab{display:flex;align-items:center;gap:10px;cursor:pointer;}
+.det-hist-flecha{
+  color:var(--text-light);font-size:11px;transition:transform .25s;flex-shrink:0;
+}
+.det-hist-flecha.abierta{transform:rotate(180deg);}
+.det-hist-acc{
+  margin-top:9px;padding-top:9px;border-top:1px dashed var(--border);
+  display:flex;flex-direction:column;gap:5px;
+}
+/* OJO: 'display:flex' le gana al [hidden] del navegador (que solo aplica
+   display:none desde la hoja de estilos por defecto). Sin esta regla el
+   bloque se abria pero no se podia cerrar. */
+.det-hist-acc[hidden]{display:none;}
+.det-hist-acc-item{
+  display:flex;align-items:center;gap:8px;font-size:12.5px;flex-wrap:wrap;
+}
+.det-hist-acc-item > i{width:14px;text-align:center;flex-shrink:0;font-size:11px;}
+.det-hist-acc-item.ok > i{color:#16a34a;}
+.det-hist-acc-item.falta > i{color:#dc2626;}
+.det-hist-acc-item.no-salio > i{color:var(--text-light);}
+.det-hist-acc-nombre{font-weight:600;color:var(--text-primary);}
+.det-hist-acc-item.no-salio .det-hist-acc-nombre{color:var(--text-light);}
+.det-hist-acc-estado{
+  font-size:10.5px;font-weight:700;text-transform:uppercase;letter-spacing:.3px;
+  border-radius:20px;padding:1px 8px;
+}
+.det-hist-acc-item.ok .det-hist-acc-estado{background:#dcfce7;color:#15803d;}
+.det-hist-acc-item.falta .det-hist-acc-estado{background:#fee2e2;color:#991b1b;}
+.det-hist-acc-item.no-salio .det-hist-acc-estado{background:#f1f5f9;color:#64748b;}
+.det-hist-acc-obs{font-size:12px;color:var(--text-secondary);font-style:italic;}
+
+/* ══════════════════════════════════════════════════════════════════
+   NOVEDADES — vista tipo acta del detalle
+   Hoja de documento sobre fondo gris azulado, toda en el azul de SYSTRAKER
+   (#1B4698), igual que el PDF. La barra superior del modal no cambia.
+   ══════════════════════════════════════════════════════════════════ */
+/* min-width:0 porque la caja es un elemento flex del overlay: con el
+   min-width:auto por defecto no puede encogerse por debajo del ancho de su
+   contenido, y el titulo (nowrap) la empujaba fuera de la pantalla en movil. */
+.nov-acta-box{max-width:900px;min-width:0;}
+.nov-acta-box .chk-preview-header{min-width:0;gap:10px;}
+.nov-acta-box .chk-preview-pdf-btn{white-space:nowrap;}
+.nov-acta-header-tit{min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;}
+.nov-acta-box .chk-preview-header-actions i{margin-right:0;}
+.nov-acta-box .chk-preview-pdf-btn{gap:7px;}
+.nov-acta-zip{
+  background:rgba(255,255,255,.14);border:1px solid rgba(255,255,255,.28);color:#fff;
+  border-radius:6px;padding:7px 12px;font-size:12.5px;font-weight:600;font-family:'DM Sans',sans-serif;
+  cursor:pointer;display:inline-flex;align-items:center;gap:6px;transition:background .15s;
+}
+.nov-acta-zip:hover{background:rgba(255,255,255,.26);}
+
+.nov-acta-body{background:linear-gradient(180deg,#e6ecf5 0%,#f3f6fb 100%);padding:28px 22px;}
+.nov-acta-body .empty-state{color:var(--text-secondary);}
+
+.nov-acta-hoja{
+  background:#fff;max-width:780px;margin:0 auto;border-radius:6px;overflow:hidden;
+  box-shadow:0 1px 2px rgba(15,23,42,.06),0 14px 36px rgba(27,70,152,.18);
+  animation:nov-acta-in .35s ease;
+}
+@keyframes nov-acta-in{from{opacity:0;transform:translateY(10px);}to{opacity:1;transform:none;}}
+
+.nov-acta-cab{
+  display:flex;justify-content:space-between;align-items:stretch;gap:18px;
+  background:#1B4698;color:#fff;padding:22px 26px;
+}
+.nov-acta-cab-izq{display:flex;gap:15px;align-items:center;min-width:0;}
+.nov-acta-sello{
+  width:48px;height:48px;border-radius:12px;flex-shrink:0;
+  background:rgba(255,255,255,.14);border:1px solid rgba(255,255,255,.28);
+  display:flex;align-items:center;justify-content:center;font-size:20px;
+}
+.nov-acta-eyebrow{font-size:10.5px;letter-spacing:1.2px;text-transform:uppercase;opacity:.75;font-weight:600;}
+.nov-acta-titulo{
+  font-size:20px;font-weight:800;letter-spacing:.3px;text-transform:uppercase;
+  line-height:1.2;margin:4px 0 3px;word-break:break-word;
+}
+.nov-acta-area{font-size:11.5px;opacity:.8;}
+.nov-acta-cab-der{
+  display:flex;flex-direction:column;justify-content:center;gap:5px;
+  padding-left:20px;border-left:1px solid rgba(255,255,255,.22);min-width:160px;flex-shrink:0;
+}
+.nov-acta-cab-der div{display:flex;justify-content:space-between;gap:14px;font-size:11.5px;}
+.nov-acta-cab-der span{opacity:.72;}
+.nov-acta-cab-der strong{font-family:'DM Mono','Courier New',monospace;font-weight:500;letter-spacing:.3px;}
+
+.nov-acta-contenido{padding:24px 26px 6px;}
+.nov-acta-seccion{margin-bottom:18px;border:1px solid #d6e0ee;border-radius:7px;overflow:hidden;}
+.nov-acta-seccion-tit{
+  display:flex;align-items:center;gap:10px;background:#1B4698;color:#fff;
+  padding:10px 14px;font-size:12px;font-weight:700;letter-spacing:.6px;text-transform:uppercase;
+}
+.nov-acta-seccion-tit > span{
+  width:21px;height:21px;border-radius:50%;background:rgba(255,255,255,.18);border:1px solid rgba(255,255,255,.4);
+  display:inline-flex;align-items:center;justify-content:center;font-size:11px;flex-shrink:0;
+}
+.nov-acta-seccion-tit em{
+  margin-left:auto;font-style:normal;background:rgba(255,255,255,.16);
+  border-radius:20px;padding:1px 10px;font-size:11px;letter-spacing:0;
+}
+
+.nov-acta-tabla{width:100%;border-collapse:collapse;}
+.nov-acta-tabla th{
+  width:34%;text-align:left;vertical-align:top;background:#eaf0f8;color:#1B4698;
+  font-size:12.5px;font-weight:700;padding:11px 14px;border-top:1px solid #d6e0ee;
+}
+.nov-acta-tabla td{
+  font-size:13px;color:var(--text-primary);padding:11px 14px;border-top:1px solid #d6e0ee;
+  word-break:break-word;line-height:1.55;
+}
+.nov-acta-tabla tr:first-child th,.nov-acta-tabla tr:first-child td{border-top:none;}
+.nov-acta-tabla strong{font-family:'DM Mono','Courier New',monospace;color:#1B4698;}
+.nov-acta-vacio{color:var(--text-light);font-style:italic;}
+.nov-acta-vacio-bloque{padding:16px;font-size:12.5px;color:var(--text-light);text-align:center;}
+.nov-acta-texto{padding:12px 14px;font-size:13px;line-height:1.6;color:var(--text-primary);}
+
+.nov-acta-galeria{display:grid;grid-template-columns:repeat(auto-fill,minmax(160px,1fr));gap:12px;padding:14px;}
+.nov-acta-foto{
+  border:1px solid #d6e0ee;border-radius:9px;overflow:hidden;background:#f8fafc;
+  display:flex;flex-direction:column;transition:transform .18s,box-shadow .18s;
+}
+.nov-acta-foto:hover{transform:translateY(-2px);box-shadow:0 10px 22px rgba(27,70,152,.18);}
+.nov-acta-foto > a{display:block;}
+.nov-acta-foto img{width:100%;height:124px;object-fit:cover;display:block;background:#e5eaf2;}
+.nov-acta-foto-pie{display:flex;align-items:center;gap:6px;padding:7px 9px;font-size:11.5px;color:var(--text-secondary);}
+.nov-acta-foto-pie b{background:#1B4698;color:#fff;border-radius:4px;padding:1px 6px;font-size:10px;flex-shrink:0;}
+.nov-acta-foto-pie span{flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;}
+.nov-acta-foto-bajar{
+  flex-shrink:0;width:24px;height:24px;border-radius:50%;background:#1B4698;color:#fff;
+  display:inline-flex;align-items:center;justify-content:center;font-size:10.5px;text-decoration:none;
+}
+.nov-acta-foto-bajar:hover{background:#153a7d;}
+
+.nov-acta-archivos{display:flex;flex-direction:column;gap:7px;padding:14px;}
+.nov-acta-galeria + .nov-acta-archivos{padding-top:0;}
+.nov-acta-archivo{
+  display:flex;align-items:center;gap:10px;padding:10px 12px;border:1px solid #d6e0ee;border-radius:9px;
+  text-decoration:none;color:var(--text-primary);font-size:12.5px;transition:background .15s;
+}
+.nov-acta-archivo:hover{background:#f4f7fd;}
+.nov-acta-archivo > i:first-child{font-size:18px;flex-shrink:0;}
+.nov-acta-archivo span{flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;font-weight:600;}
+.nov-acta-archivo small{color:var(--text-light);flex-shrink:0;font-size:11px;}
+.nov-acta-archivo .nov-acta-archivo-bajar{color:var(--text-light);font-size:12px;flex-shrink:0;}
+
+.nov-acta-pie{
+  display:flex;align-items:flex-start;gap:8px;margin:2px 26px 22px;padding-top:12px;
+  border-top:1px dashed #d6e0ee;font-size:11.5px;color:var(--text-light);line-height:1.5;
+}
+.nov-acta-pie i{margin-top:2px;color:#1B4698;}
+
+@media(max-width:640px){
+  .nov-acta-body{padding:14px 10px;}
+  .nov-acta-cab{flex-direction:column;padding:18px;}
+  .nov-acta-cab-der{border-left:none;padding-left:0;border-top:1px solid rgba(255,255,255,.22);padding-top:10px;min-width:0;}
+  .nov-acta-contenido{padding:16px 14px 4px;}
+  .nov-acta-tabla th{width:42%;}
+  .nov-acta-pie{margin:2px 14px 16px;}
+  .nov-acta-zip{display:none !important;}
+  .nov-acta-box .chk-preview-header{padding:12px 14px;font-size:14px;}
+  .nov-acta-btn-txt{display:none;}
+  .nov-acta-box .chk-preview-pdf-btn{padding:8px 11px;}
+  .nov-acta-archivo small{display:none;}
+}

@@ -2395,6 +2395,298 @@ def api_novedades_adjuntos_zip(request, pk):
     return resp
 
 
+# ─────────────────────────────────────────────────────────────────────
+#  NOVEDADES — PDF tipo acta, con las evidencias como anexos
+#  Solo lectura: arma un documento a partir del registro ya guardado.
+#  No toca el registro de novedades ni su logica.
+# ─────────────────────────────────────────────────────────────────────
+
+# Imagenes que se incrustan como anexo. SVG queda fuera a proposito: PIL no lo
+# abre. DEBE coincidir con NOV_ANEXO_EXT_IMAGEN en dashboard.js, porque la
+# vista en pantalla y el PDF numeran los anexos con la misma regla.
+NOVEDAD_PDF_EXT_IMAGEN = ('.jpg', '.jpeg', '.png', '.gif', '.webp', '.bmp')
+
+_NOVEDAD_PDF_CSS = """
+  @page {
+    size: a4 portrait;
+    margin: 12mm 12mm 17mm 12mm;
+    @frame pie {
+      -pdf-frame-content: pie_contenido;
+      left: 34pt; width: 527pt; top: 810pt; height: 20pt;
+    }
+  }
+  body { font-family: Helvetica, Arial, sans-serif; font-size: 9.5pt; color: #1f2937; }
+  table { border-collapse: collapse; width: 100%; }
+  td, th { font-size: 9.5pt; }
+"""
+
+
+def _novedad_imagen_data_uri(ruta, max_lado=1400):
+    """Imagen adjunta lista para incrustar en el PDF, o None si no se puede.
+
+    Se reescala y se pasa a JPEG: una foto de celular a tamano original infla
+    el PDF sin ganar nada impreso. PIL ademas normaliza formatos que xhtml2pdf
+    no lee bien (webp, bmp, png con transparencia) y respeta la rotacion que
+    guarda la camara. Devuelve (data_uri, ancho, alto).
+    """
+    from PIL import Image, ImageOps
+    try:
+        with Image.open(ruta) as original:
+            img = ImageOps.exif_transpose(original)
+            if img.mode != 'RGB':
+                rgba = img.convert('RGBA')
+                fondo = Image.new('RGB', rgba.size, (255, 255, 255))
+                fondo.paste(rgba, mask=rgba.split()[-1])
+                img = fondo
+            img.thumbnail((max_lado, max_lado))
+            buf = BytesIO()
+            img.save(buf, format='JPEG', quality=82, optimize=True)
+            return ('data:image/jpeg;base64,' + base64.b64encode(buf.getvalue()).decode(),
+                    img.width, img.height)
+    except Exception:
+        return None
+
+
+def _novedad_adjuntos_para_pdf(novedad):
+    """Clasifica los adjuntos y prepara lo que se va a incluir en el PDF.
+
+    Orden: imagenes, luego PDF, luego el resto. Asi quedan fisicamente en el
+    documento (las imagenes son paginas del HTML y los PDF se pegan al final)
+    y los numeros de anexo corren en ese mismo orden. La vista en pantalla
+    (_construirVistaNovedadHTML) numera con la misma regla.
+
+    Un anexo que falla (archivo borrado, imagen corrupta, PDF protegido) NO
+    rompe el documento: conserva su numero y la tabla dice que paso con el.
+    """
+    from pypdf import PdfReader
+    carpeta = os.path.join(settings.MEDIA_ROOT, NOVEDAD_ADJUNTO_CARPETA)
+    orden = {'imagen': 0, 'pdf': 1, 'otro': 2}
+
+    items = []
+    for a in novedad.adjuntos.all():
+        ext = os.path.splitext(a.g243_nombre)[1].lower()
+        clase = 'imagen' if ext in NOVEDAD_PDF_EXT_IMAGEN else ('pdf' if ext == '.pdf' else 'otro')
+        items.append({
+            'id': a.g243_id, 'nombre': a.g243_nombre, 'clase': clase,
+            'ruta': os.path.join(carpeta, f'{a.g243_id}_{a.g243_nombre}'),
+            'anexo': None, 'incluido': False, 'estado': '',
+        })
+    items.sort(key=lambda x: (orden[x['clase']], x['id']))
+
+    numero = 0
+    for it in items:
+        if it['clase'] == 'otro':
+            it['estado'] = 'No incluible en PDF · descárguelo en SYSTRAKER'
+            continue
+        numero += 1
+        it['anexo'] = numero
+        if not os.path.exists(it['ruta']):
+            it['estado'] = 'Archivo no encontrado en el servidor'
+            continue
+        if it['clase'] == 'imagen':
+            img = _novedad_imagen_data_uri(it['ruta'])
+            if img:
+                it['data_uri'], it['ancho'], it['alto'] = img
+                it['incluido'] = True
+                it['estado'] = 'Incluida como anexo'
+            else:
+                it['estado'] = 'No se pudo leer la imagen'
+        else:
+            try:
+                lector = PdfReader(it['ruta'])
+                if lector.is_encrypted and not lector.decrypt(''):
+                    raise ValueError('PDF protegido')
+                it['paginas'] = len(lector.pages)
+                it['lector'] = lector
+                it['incluido'] = True
+                it['estado'] = f"Agregado al final ({it['paginas']} pág.)"
+            except Exception:
+                it['estado'] = 'No incluido: PDF dañado o protegido'
+    return items
+
+
+def _construir_html_novedad(n, adjuntos, logo_b64):
+    """HTML del formato de registro de novedad para xhtml2pdf.
+
+    Tablas simples sin colspan: xhtml2pdf calcula mal los anchos cuando una
+    tabla mezcla filas con colspan y filas normales (ver el comentario de
+    _construir_html_checklist).
+    """
+    from django.utils.html import escape
+
+    def texto(valor):
+        valor = (valor or '').strip()
+        if not valor:
+            return '<span style="color:#9ca3af">Sin información</span>'
+        return escape(valor).replace('\n', '<br/>')
+
+    codigo   = f'NOV-{n.g241_id:04d}'
+    tipo     = n.g241_tipo_desc or (n.g241_tipo.g239_nombre if n.g241_tipo else 'Novedad')
+    local    = timezone.localtime(n.g241_fecha, COLOMBIA_TZ) if n.g241_fecha else None
+    fecha    = local.strftime('%d/%m/%Y') if local else '—'
+    hora     = local.strftime('%H:%M') if local else '—'
+    generado = timezone.localtime(timezone.now(), COLOMBIA_TZ).strftime('%d/%m/%Y %H:%M')
+
+    # Padding corto a proposito: xhtml2pdf suma su propio espacio interno a la
+    # celda, y con 5pt las filas salian el doble de altas que en un formato
+    # impreso normal.
+    LBL = ('width:150pt;background:#eaf0f8;color:#1B4698;font-weight:bold;'
+           'padding:3pt 7pt 1pt 7pt;border:0.6pt solid #c9d6e8;vertical-align:top')
+    VAL = 'padding:3pt 7pt 1pt 7pt;border:0.6pt solid #c9d6e8;vertical-align:top'
+
+    def fila(etiqueta, valor_html):
+        return f'<tr><td style="{LBL}">{escape(etiqueta)}</td><td style="{VAL}">{valor_html}</td></tr>'
+
+    secciones = []
+
+    def seccion(titulo, cuerpo):
+        num = len(secciones) + 1
+        secciones.append(
+            '<div style="background:#1B4698;color:#ffffff;padding:5pt 8pt;font-weight:bold;'
+            f'font-size:9.5pt;margin-top:11pt">{num}. {escape(titulo.upper())}</div>{cuerpo}')
+
+    seccion('Datos generales del registro', '<table>' + ''.join([
+        fila('Número de registro', f'<b>{codigo}</b>'),
+        fila('Tipo de novedad', escape(tipo)),
+        fila('Fecha del registro', fecha),
+        fila('Hora del registro', hora),
+        fila('Registrado por', escape(n.g241_responsable or '—')),
+    ]) + '</table>')
+
+    respuestas = list(n.respuestas.all().order_by('g242_id'))
+    if respuestas:
+        cuerpo = '<table>' + ''.join(
+            fila(r.g242_campo_desc or '—', texto(r.g242_observacion)) for r in respuestas) + '</table>'
+    else:
+        cuerpo = ('<div style="padding:8pt;border:0.6pt solid #c9d6e8;color:#9ca3af;text-align:center">'
+                  'Este registro no tiene campos diligenciados.</div>')
+    seccion('Detalle de la novedad', cuerpo)
+
+    if (n.g241_observaciones or '').strip():
+        seccion('Observaciones generales',
+                f'<div style="{VAL};line-height:1.5">{texto(n.g241_observaciones)}</div>')
+
+    if adjuntos:
+        TH = ('background:#eaf0f8;color:#1B4698;font-weight:bold;padding:3pt 6pt 1pt 6pt;'
+              'border:0.6pt solid #c9d6e8;text-align:left')
+        TD = 'padding:3pt 6pt 1pt 6pt;border:0.6pt solid #c9d6e8;vertical-align:top'
+        tipos = {'imagen': 'Imagen', 'pdf': 'PDF', 'otro': 'Documento'}
+        filas = ''
+        for idx, a in enumerate(adjuntos, 1):
+            marca = f"<b>Anexo {a['anexo']}</b> · " if a['anexo'] else ''
+            filas += (f'<tr><td style="{TD};width:22pt;text-align:center">{idx}</td>'
+                      f'<td style="{TD}">{escape(a["nombre"])}</td>'
+                      f'<td style="{TD};width:62pt">{tipos[a["clase"]]}</td>'
+                      f'<td style="{TD};width:203pt">{marca}{escape(a["estado"])}</td></tr>')
+        cuerpo = (f'<table><tr><th style="{TH};width:22pt;text-align:center">#</th>'
+                  f'<th style="{TH}">Archivo</th><th style="{TH};width:62pt">Tipo</th>'
+                  f'<th style="{TH};width:203pt">En este documento</th></tr>{filas}</table>')
+    else:
+        cuerpo = ('<div style="padding:8pt;border:0.6pt solid #c9d6e8;color:#9ca3af;text-align:center">'
+                  'Este registro no tiene evidencias adjuntas.</div>')
+    seccion(f'Evidencias adjuntas ({len(adjuntos)})', cuerpo)
+
+    logo = (f'<img src="{logo_b64}" style="max-height:46px;max-width:86px"/>' if logo_b64
+            else '<b style="color:#1B4698;font-size:13pt">AM&amp;M</b>')
+
+    cabecera = (
+        '<table style="border:0.8pt solid #1B4698"><tr>'
+        f'<td style="width:88pt;background:#ffffff;padding:6pt;text-align:center;vertical-align:middle">{logo}</td>'
+        # Una sola linea de flujo con <br/> y no tres <div>: con divs, xhtml2pdf
+        # repartia el texto a lo alto de la celda y quedaban huecos enormes.
+        '<td style="background:#1B4698;color:#ffffff;padding:8pt 12pt;vertical-align:middle">'
+        '<span style="font-size:7.5pt;color:#c9d8f2">FORMATO DE REGISTRO DE NOVEDADES E INCIDENCIAS</span><br/>'
+        f'<span style="font-size:15pt;font-weight:bold;color:#ffffff">{escape(tipo.upper())}</span><br/>'
+        '<span style="font-size:8pt;color:#dbe4f0">Tecnología de la Información y la Comunicación</span>'
+        '</td>'
+        '<td style="width:118pt;background:#1B4698;color:#e3ebf8;padding:9pt 10pt;vertical-align:middle;border-left:0.8pt solid #4a72bd;'
+        'font-size:8.5pt;line-height:1.7">'
+        f'Registro: <b style="color:#ffffff">{codigo}</b><br/>'
+        f'Fecha: <b style="color:#ffffff">{fecha}</b><br/>'
+        f'Hora: <b style="color:#ffffff">{hora}</b>'
+        '</td></tr></table>')
+
+    cierre = ('<div style="margin-top:14pt;padding-top:6pt;border-top:0.6pt dashed #c9d6e8;'
+              'font-size:8pt;color:#6b7280">'
+              f'Documento generado por SYSTRAKER a partir del registro {codigo}. Las evidencias en imagen '
+              'se incluyen como anexos y los PDF adjuntos se agregan al final del documento.</div>')
+
+    paginas_anexo = ''
+    for a in adjuntos:
+        if a['clase'] != 'imagen' or not a['incluido']:
+            continue
+        escala = min(500.0 / a['ancho'], 610.0 / a['alto'], 1.0)
+        ancho, alto = int(a['ancho'] * escala), int(a['alto'] * escala)
+        paginas_anexo += (
+            '<pdf:nextpage />'
+            '<div style="background:#1B4698;color:#ffffff;padding:6pt 10pt;font-weight:bold;font-size:10pt">'
+            f'ANEXO {a["anexo"]} · {escape(a["nombre"])}</div>'
+            f'<div style="font-size:8pt;color:#6b7280;margin:3pt 0 12pt 0">Evidencia adjunta al registro '
+            f'{codigo} · {escape(tipo)}</div>'
+            f'<div style="text-align:center"><img src="{a["data_uri"]}" width="{ancho}" height="{alto}"/></div>')
+
+    pie = (f'<div id="pie_contenido" style="font-size:7.5pt;color:#6b7280">'
+           f'<table><tr><td style="text-align:left">{codigo} · {escape(tipo)} · Generado el {generado}</td>'
+           '<td style="text-align:right;width:70pt">Página <pdf:pagenumber /></td></tr></table></div>')
+
+    return ('<!DOCTYPE html><html><head><meta charset="utf-8"/><style>' + _NOVEDAD_PDF_CSS
+            + '</style></head><body>' + pie + cabecera + ''.join(secciones) + cierre
+            + paginas_anexo + '</body></html>')
+
+
+@login_required(login_url='login')
+@require_http_methods(['GET'])
+def api_novedades_pdf(request, pk):
+    """PDF tipo acta de una novedad, con las evidencias como anexos.
+
+    Solo lectura. Las imagenes van incrustadas como paginas de anexo y los PDF
+    adjuntos se pegan al final con pypdf. Word, Excel y demas no se pueden
+    meter en un PDF sin convertirlos, asi que se listan con su estado y se
+    descargan desde el sistema (o en el .zip de adjuntos).
+    """
+    n = get_object_or_404(NovedadGeneral.objects.select_related('g241_tipo'), pk=pk)
+    adjuntos = _novedad_adjuntos_para_pdf(n)
+
+    logo_b64  = ''
+    logo_path = os.path.join(settings.BASE_DIR, 'index', 'static', 'img', 'imagen.png')
+    if os.path.exists(logo_path):
+        with open(logo_path, 'rb') as f:
+            logo_b64 = 'data:image/png;base64,' + base64.b64encode(f.read()).decode()
+
+    buffer = BytesIO()
+    resultado = pisa.CreatePDF(_construir_html_novedad(n, adjuntos, logo_b64), dest=buffer)
+    if resultado.err:
+        return _json_err('No se pudo generar el PDF de la novedad.', 500)
+    pdf_bytes = buffer.getvalue()
+
+    pdfs = [a for a in adjuntos if a['clase'] == 'pdf' and a['incluido']]
+    if pdfs:
+        from pypdf import PdfWriter
+        writer = PdfWriter()
+        writer.append(BytesIO(pdf_bytes))
+        for a in pdfs:
+            try:
+                writer.append(a['lector'])
+            except Exception:
+                # Ya se valido al clasificar; si aun asi falla al pegarlo se
+                # omite, para no perder el documento completo por un anexo.
+                pass
+        salida = BytesIO()
+        writer.write(salida)
+        pdf_bytes = salida.getvalue()
+
+    import unicodedata
+    tipo = n.g241_tipo_desc or (n.g241_tipo.g239_nombre if n.g241_tipo else 'Novedad')
+    tipo_archivo = unicodedata.normalize('NFKD', tipo).encode('ascii', 'ignore').decode()
+    tipo_archivo = re.sub(r'[^A-Za-z0-9]+', '_', tipo_archivo).strip('_')[:40] or 'Novedad'
+    nombre = f'Novedad_NOV-{n.g241_id:04d}_{tipo_archivo}.pdf'
+
+    disposicion = 'inline' if request.GET.get('inline') else 'attachment'
+    resp = HttpResponse(pdf_bytes, content_type='application/pdf')
+    resp['Content-Disposition'] = f'{disposicion}; filename="{nombre}"'
+    return resp
+
+
 # COLABORADORES
 
 @login_required(login_url='login')
@@ -4345,6 +4637,9 @@ def api_mis_req_tic(request):
             'url':    f'{settings.MEDIA_URL}requerimientos_adjuntos/{nombre_disco}',
         }
 
+    # Evidencias que subio el tecnico al solucionar (tabla aparte).
+    ADJ_SOLUCION = _adjuntos_solucion_map(codigos_pagina)
+
     data = []
     for r in qs:
         adjunto = ADJUNTOS.get(r.Codigo)
@@ -4368,6 +4663,7 @@ def api_mis_req_tic(request):
             'subcategoria':       SUBCATEGORIAS.get(r.IdSubCategoria, '—'),
             'clasificacion':      CLASIFICAC.get(r.Clasificacion, 'Sin información'),
             'costo':              str(r.Costo) if r.Costo else '',
+            'adjuntos_solucion':  ADJ_SOLUCION.get(r.Codigo, []),
             'estado':             ESTADOS.get(r.IdEstado, '—'),
             'estado_id':          r.IdEstado or 0,
             'prioridad':          PRIORIDADES.get(r.IdPrioridad, '—'),
@@ -4604,6 +4900,9 @@ def api_todos_req_tic(request):
             'url':    f'{settings.MEDIA_URL}requerimientos_adjuntos/{nombre_disco}',
         }
 
+    # Evidencias que subio el tecnico al solucionar (tabla aparte).
+    ADJ_SOLUCION = _adjuntos_solucion_map(codigos_pagina)
+
     data = []
     for r in qs:
         adjunto = ADJUNTOS.get(r.Codigo)
@@ -4631,12 +4930,84 @@ def api_todos_req_tic(request):
             'subcategoria_id':    r.IdSubCategoria,
             'plan_accion':        r.PlanAccion or '',
             'costo':              str(r.Costo) if r.Costo else '',
-            'archivo_acciones':   '',
+            'adjuntos_solucion':  ADJ_SOLUCION.get(r.Codigo, []),
             'tiene_adjunto':      bool(adjunto),
             'nombre_adjunto':     adjunto['nombre'] if adjunto else '',
             'url_adjunto':        adjunto['url'] if adjunto else '',
         })
     return _json_ok({'requerimientos': data, 'total': len(data)})
+
+
+SOLUCION_CARPETA   = 'soluciones_adjuntos'
+SOLUCION_MAX_BYTES = 5 * 1024 * 1024
+
+
+def _adjuntos_solucion_map(codigos):
+    """{CodReq: [ {nombre, url}, ... ]} para los requerimientos dados.
+
+    A diferencia de los adjuntos del solicitante (donde el dict se sobrescribe
+    y solo queda el ultimo), aqui se devuelven TODOS: el tecnico puede subir
+    varias evidencias de una misma solucion y perder alguna seria perder la
+    prueba de lo que se hizo.
+    """
+    from requerimientos.models import AdjuntoSolucion
+    mapa = {}
+    if not codigos:
+        return mapa
+    for a in (AdjuntoSolucion.objects.using('requerimientos')
+              .filter(CodReq__in=codigos).order_by('IdAdjunto')):
+        mapa.setdefault(a.CodReq, []).append({
+            'nombre': a.NombreArchivo,
+            'url': f'{settings.MEDIA_URL}{SOLUCION_CARPETA}/{a.IdAdjunto}_{a.NombreArchivo}',
+        })
+    return mapa
+
+
+@login_required(login_url='login')
+@require_http_methods(['POST'])
+def api_adjuntar_solucion(request, req_id):
+    """Sube UN archivo de evidencia de la solucion y lo asocia al requerimiento.
+
+    Va en una llamada aparte de api_req_tic_accion porque esa recibe JSON puro
+    y no puede llevar binarios — mismo esquema de dos pasos que ya usa el
+    portal al crear un requerimiento (ver api_adjuntar_archivo).
+    """
+    from requerimientos.models import AdjuntoSolucion
+
+    if not usuario_tiene_pantalla(request.user, 'mis-requerimientos'):
+        return _json_err('No tienes permiso para esta sección.', 403)
+    if usuario_es_solo_lectura(request.user, 'mis-requerimientos'):
+        return _json_err('Tu acceso a esta sección es de solo lectura.', 403)
+
+    try:
+        r = Requerimiento.objects.using('requerimientos').get(Codigo=req_id)
+    except Requerimiento.DoesNotExist:
+        return _json_err('Requerimiento no encontrado', 404)
+
+    archivo = request.FILES.get('archivo')
+    if not archivo:
+        return _json_err('No se recibió ningún archivo.')
+    if archivo.size > SOLUCION_MAX_BYTES:
+        return _json_err(
+            f'El archivo supera el máximo permitido de {SOLUCION_MAX_BYTES // (1024*1024)} MB.'
+        )
+
+    adj = AdjuntoSolucion.objects.using('requerimientos').create(
+        CodReq=r.Codigo, NombreArchivo=archivo.name, FechaSubida=timezone.now(),
+    )
+
+    carpeta = os.path.join(settings.MEDIA_ROOT, SOLUCION_CARPETA)
+    os.makedirs(carpeta, exist_ok=True)
+    nombre_disco = f'{adj.IdAdjunto}_{archivo.name}'
+    with open(os.path.join(carpeta, nombre_disco), 'wb+') as destino:
+        for chunk in archivo.chunks():
+            destino.write(chunk)
+
+    return _json_ok({
+        'id':     adj.IdAdjunto,
+        'nombre': adj.NombreArchivo,
+        'url':    f'{settings.MEDIA_URL}{SOLUCION_CARPETA}/{nombre_disco}',
+    })
 
 
 @login_required(login_url='login')
@@ -5016,11 +5387,20 @@ def api_colaboradores_ti(request):
 
 
 def _fmt_fecha_hora(valor):
-    """Formatea date/datetime a 'DD/MM/YYYY' y hora 'HH:MM AM/PM' por separado."""
+    """Formatea date/datetime a 'DD/MM/YYYY' y hora 'HH:MM AM/PM' por separado.
+
+    Los datetime se pasan a hora de Colombia: el servidor guarda en UTC
+    (TIME_ZONE='UTC'), asi que sin convertir se mostraban 5 horas adelantadas
+    — a las 11:15 a.m. la pantalla decia 4:15 p.m.
+
+    Los date se dejan como estan: no tienen hora que convertir, y aplicarles
+    una zona horaria solo podria correrlos un dia sin motivo.
+    """
     if not valor:
         return {'fecha': '', 'hora': ''}
     if hasattr(valor, 'hour'):  # es datetime, no solo date
-        return {'fecha': valor.strftime('%d/%m/%Y'), 'hora': valor.strftime('%I:%M %p')}
+        local = timezone.localtime(valor, COLOMBIA_TZ) if timezone.is_aware(valor) else valor
+        return {'fecha': local.strftime('%d/%m/%Y'), 'hora': local.strftime('%I:%M %p')}
     return {'fecha': valor.strftime('%d/%m/%Y'), 'hora': ''}
 
 
@@ -5031,20 +5411,76 @@ def api_historial_req_tic(request):
     Todos los requerimientos, sin importar el estado (incluye Cerrado
     y Calificado), para la pantalla de Historial de Requerimientos.
     """
-    from requerimientos.models import Clasificacion as ClasificacionReq
+    from requerimientos.models import (
+        Clasificacion as ClasificacionReq, EstadoRequerimiento,
+        Cargo as CargoReq, TipoRequerimiento, ImagenAdjunta, EvaluacionReq,
+        CentroOperacion as CentroOperacionReq,
+    )
+    from requerimientos.views import (
+        _normaliza, CATEGORIA_SOPORTE_EXTERNO, SUBCATEGORIAS_REQUIEREN_APROBACION,
+    )
 
-    ESTADOS = {1: 'PENDIENTE', 2: 'ASIGNADO', 3: 'EN PROCESO', 4: 'CERRADO', 5: 'ELIMINADO', 6: 'CALIFICADO'}
-    PRIORIDADES = {1: 'ALTA', 2: 'MEDIA', 3: 'BAJA'}
-    CLASIFICAC  = {c.IdClasificacion: c.Clasificacion for c in ClasificacionReq.objects.using('requerimientos').all()}
+    # Los estados salen de mm_EstadoRequerimiento, no de un diccionario escrito
+    # a mano: la tabla ya tiene los 9 con su descripción, así que un estado nuevo
+    # aparece solo. Antes el diccionario llegaba hasta el 6 y los estados 7, 8
+    # y 9 se mostraban en pantalla como el número pelado (ej. "7").
+    ESTADOS = {
+        e.IdEstado: (e.Descripcion or '').strip()
+        for e in EstadoRequerimiento.objects.using('requerimientos').all()
+    }
+    PRIORIDADES   = {p.IdPrioridad: p.Descripcion for p in Prioridad.objects.using('requerimientos').all()}
+    CATEGORIAS    = {c.IdCategoria: c.Descripcion for c in Categoria.objects.using('requerimientos').all()}
+    SUBCATEGORIAS = {s.IdSubCategoria: s.Descripcion for s in SubCategoria.objects.using('requerimientos').all()}
+    TIPOS         = {t.IdTipoReque: t.Descripcion for t in TipoRequerimiento.objects.using('requerimientos').all()}
+    CARGOS        = {c.IdCargo: c.Descripcion for c in CargoReq.objects.using('requerimientos').all()}
+    CLASIFICAC    = {c.IdClasificacion: c.Clasificacion for c in ClasificacionReq.objects.using('requerimientos').all()}
+    # CO guarda el código corto (ej. "AM1"), se resuelve al nombre completo.
+    CENTROS       = {c.IdCo: c.Descripcion for c in CentroOperacionReq.objects.using('requerimientos').all()}
 
-    qs = (Requerimiento.objects
-          .using('requerimientos')
-          .exclude(IdEstado=5)   # oculta solo los eliminados
-          .order_by('-Fecha'))
+    # list() a propósito: abajo se recorre dos veces (una para juntar los códigos
+    # y otra para armar la respuesta) y un queryset consultaría la BD dos veces.
+    qs = list(Requerimiento.objects
+              .using('requerimientos')
+              .exclude(IdEstado=5)   # oculta solo los eliminados
+              .order_by('-Fecha'))
+    codigos = [r.Codigo for r in qs]
+
+    # Adjuntos: mismo criterio que api_mis_req_tic — el dict se sobrescribe
+    # dentro del bucle, así que queda el más reciente de cada requerimiento.
+    ADJUNTOS = {}
+    for img in (ImagenAdjunta.objects.using('requerimientos')
+                .filter(CodReq__in=codigos).order_by('IdImagen')):
+        ADJUNTOS[img.CodReq] = {
+            'nombre': img.NombreImagen,
+            'url':    f'{settings.MEDIA_URL}requerimientos_adjuntos/{img.IdImagen}_{img.NombreImagen}',
+        }
+
+    EVALUACIONES = {
+        e.IdReq: e
+        for e in EvaluacionReq.objects.using('requerimientos').filter(IdReq__in=codigos)
+    }
 
     data = []
     for r in qs:
-        estado_id = r.IdEstado or 0
+        estado_id    = r.IdEstado or 0
+        adjunto      = ADJUNTOS.get(r.Codigo)
+        evaluacion   = EVALUACIONES.get(r.Codigo)
+        categoria    = CATEGORIAS.get(r.IdCategoria, '')
+        subcategoria = SUBCATEGORIAS.get(r.IdSubCategoria, '')
+        # 50 evaluaciones historicas tienen guardado el TEXTO "None" en el
+        # comentario (no el vacio). Se trata como vacio para no mostrarle esa
+        # palabra al usuario; la BD no se toca.
+        comentario_eval = (evaluacion.Comentario or '').strip() if evaluacion else ''
+        if comentario_eval.lower() == 'none':
+            comentario_eval = ''
+        # Mismo criterio que el portal: se recalcula por categoría + subcategoría
+        # y NO por IdJefeArea, que queda poblado en todos los del área y no
+        # significa que el requerimiento haya pasado por aprobación.
+        requiere_aprobacion = (
+            _normaliza(categoria) == CATEGORIA_SOPORTE_EXTERNO
+            and any(_normaliza(subcategoria).startswith(x)
+                    for x in SUBCATEGORIAS_REQUIEREN_APROBACION)
+        )
         data.append({
             'id':                  r.Codigo,
             'consecutivo':         r.codigo(),
@@ -5059,11 +5495,126 @@ def api_historial_req_tic(request):
             'fecha_solucion':      _fmt_fecha_hora(r.FechaRealSoluci)['fecha'],
             'hora_solucion':       _fmt_fecha_hora(r.FechaRealSoluci)['hora'],
             'solucion':            r.Solucion or '',
-            'estado':              ESTADOS.get(estado_id, str(estado_id)),
+            'estado':              ESTADOS.get(estado_id) or f'Estado {estado_id}',
+
+            # ── Datos para la línea de tiempo y el detalle completo ──
+            'documento':           r.CedulaUsuario or '',
+            'correo':              r.Email or '',
+            'cargo':               CARGOS.get(r.Cargo, ''),
+            'co':                  CENTROS.get(r.CO, r.CO or ''),
+            'tipo_requerimiento':  TIPOS.get(r.IdTipoReq, ''),
+            'categoria':           categoria,
+            'subcategoria':        subcategoria,
+            'costo':               float(r.Costo) if r.Costo is not None else None,
+            'fecha_vencimiento':   _fmt_fecha_hora(r.FechaEstiSoluci)['fecha'],
+            'fecha_aprobacion':    _fmt_fecha_hora(r.FechaAprobacion)['fecha'],
+            'motivo_rechazo':      r.MotivoRechazo or '',
+            'requiere_aprobacion': requiere_aprobacion,
+            'calificacion':        evaluacion.Evaluacion if evaluacion else None,
+            'comentario_evaluacion': comentario_eval,
+            'tiene_adjunto':       bool(adjunto),
+            'nombre_adjunto':      adjunto['nombre'] if adjunto else '',
+            'url_adjunto':         adjunto['url']    if adjunto else '',
         })
 
     return _json_ok({'requerimientos': data, 'total': len(data)})
 
+
+
+@login_required(login_url='login')
+@require_http_methods(['GET'])
+def api_exportar_historial_req(request):
+    """Historial de Requerimientos en .xlsx, generado en el servidor.
+
+    Se hace aquí y no con SheetJS en el navegador por la misma razón que
+    api_exportar_inventario: la librería del navegador depende de un CDN de
+    881 KB que puede no cargar (red corporativa, extensiones), y cuando no
+    carga el botón simplemente no hace nada. El servidor ya tiene openpyxl y
+    no depende de nada externo.
+
+    Acepta los mismos filtros de la pantalla (?estado= y ?q=) para que lo que
+    se descarga sea lo que el usuario está viendo.
+    """
+    import openpyxl
+    from openpyxl.styles import Font, PatternFill, Alignment
+
+    estado_f = (request.GET.get('estado') or '').strip()
+    q        = (request.GET.get('q') or '').strip().lower()
+
+    # Se reutiliza la misma vista que alimenta la pantalla: si mañana cambia
+    # una columna o un cálculo, cambia en los dos lados a la vez.
+    import json as _json
+    datos = _json.loads(api_historial_req_tic(request).content.decode('utf-8'))
+    filas = datos['data']['requerimientos']
+
+    if estado_f:
+        filas = [f for f in filas if f['estado'] == estado_f]
+    if q:
+        filas = [f for f in filas if any(
+            q in str(f.get(c) or '').lower()
+            for c in ('consecutivo', 'remitente', 'descripcion', 'asignado', 'clasificacion')
+        )]
+
+    HEADERS = [
+        ('Consecutivo', 14), ('Fecha requerimiento', 18), ('Hora', 10),
+        ('Solicitante', 28), ('Documento', 14), ('Correo', 32), ('Cargo', 24),
+        ('Centro de operación', 26), ('Descripción', 55), ('Prioridad', 11),
+        ('Clasificación', 18), ('Tipo', 24), ('Categoría', 26), ('Subcategoría', 36),
+        ('Responsable', 28), ('Fecha estimada', 15), ('Plan de acción', 40),
+        ('Fecha solución', 15), ('Solución', 55), ('Costo', 13), ('Estado', 16),
+        ('Calificación', 12), ('Comentario evaluación', 40),
+    ]
+    CAMPOS = [
+        'consecutivo', 'fecha_requerimiento', 'hora_requerimiento', 'remitente',
+        'documento', 'correo', 'cargo', 'co', 'descripcion', 'prioridad',
+        'clasificacion', 'tipo_requerimiento', 'categoria', 'subcategoria',
+        'asignado', 'fecha_vencimiento', 'plan_accion', 'fecha_solucion',
+        'solucion', 'costo', 'estado', 'calificacion', 'comentario_evaluacion',
+    ]
+
+    wb = openpyxl.Workbook()
+    ws = wb.active
+    ws.title = 'Historial'
+
+    header_fill = PatternFill('solid', fgColor='1B4698')
+    header_font = Font(color='FFFFFF', bold=True)
+    center      = Alignment(horizontal='center', vertical='center')
+
+    for col, (titulo, ancho) in enumerate(HEADERS, 1):
+        celda           = ws.cell(row=1, column=col, value=titulo)
+        celda.fill      = header_fill
+        celda.font      = header_font
+        celda.alignment = center
+        ws.column_dimensions[openpyxl.utils.get_column_letter(col)].width = ancho
+
+    for i, f in enumerate(filas, 2):
+        for col, campo in enumerate(CAMPOS, 1):
+            valor = f.get(campo)
+            # Costo y calificación van como número para que Excel pueda sumar
+            # y promediar sin que el usuario tenga que convertirlos a mano.
+            if campo in ('costo', 'calificacion') and valor not in (None, ''):
+                try:
+                    valor = float(valor)
+                except (TypeError, ValueError):
+                    valor = str(valor)
+            ws.cell(row=i, column=col, value=valor if valor is not None else '')
+
+    # Congela la fila de encabezados y deja los filtros de Excel puestos.
+    ws.freeze_panes = 'A2'
+    if filas:
+        ws.auto_filter.ref = f'A1:{openpyxl.utils.get_column_letter(len(HEADERS))}{len(filas) + 1}'
+
+    sufijo = ''
+    if estado_f:
+        sufijo = '_' + re.sub(r'[^a-z0-9]+', '_', estado_f.lower())
+    nombre = f'historial_requerimientos{sufijo}_{timezone.now():%Y-%m-%d}.xlsx'
+
+    response = HttpResponse(
+        content_type='application/vnd.openxmlformats-officedocument.spreadsheetml.sheet'
+    )
+    response['Content-Disposition'] = f'attachment; filename="{nombre}"'
+    wb.save(response)
+    return response
 
 
 @login_required(login_url='login')

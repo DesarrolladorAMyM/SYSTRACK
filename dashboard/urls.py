@@ -65,6 +65,7 @@ urlpatterns = [
     path('api/novedades/<int:pk>/adjuntar/',         views.api_novedades_adjuntar_archivo, name='api_novedades_adjuntar_archivo'),
     path('api/novedades/adjuntos/<int:pk>/eliminar/', views.api_novedades_adjunto_eliminar, name='api_novedades_adjunto_eliminar'),
     path('api/novedades/<int:pk>/adjuntos/zip/',     views.api_novedades_adjuntos_zip,  name='api_novedades_adjuntos_zip'),
+    path('api/novedades/<int:pk>/pdf/',              views.api_novedades_pdf,           name='api_novedades_pdf'),
 
     #  Colaboradores
     path('api/colaboradores/',                views.api_colaboradores,           name='api_colaboradores'),
@@ -99,9 +100,14 @@ urlpatterns = [
     
      path('api/mis-req-tic/',           views.api_mis_req_tic,      name='api_mis_req_tic'),
      path('api/req-tic/<int:req_id>/accion/', views.api_req_tic_accion, name='api_req_tic_accion'),
+     # Los adjuntos de la solucion van aparte: la accion recibe JSON y no puede llevar binarios.
+     path('api/req-tic/<int:req_id>/adjuntar-solucion/', views.api_adjuntar_solucion, name='api_adjuntar_solucion'),
      
      path('api/todos-req-tic/',      views.api_todos_req_tic,      name='api_todos_req_tic'),
      path('api/historial-req-tic/',  views.api_historial_req_tic,  name='api_historial_req_tic'),
+     # El Excel se genera en el servidor (openpyxl), no en el navegador: ver
+     # el comentario en api_exportar_historial_req.
+     path('api/historial-req-tic/exportar/', views.api_exportar_historial_req, name='api_exportar_historial_req'),
      path('api/colaboradores-ti/',   views.api_colaboradores_ti,   name='api_colaboradores_ti'),
      
      path('api/categorias-req/',     views.api_categorias_req,     name='api_categorias_req'),
@@ -121,5 +127,12 @@ urlpatterns = [
      path('api/prestamo-equipos/guardar/',         views_prestamo_equipos.api_equipo_admin_guardar,    name='api_equipo_admin_guardar'),
      path('api/prestamo-equipos/<int:pk>/eliminar/', views_prestamo_equipos.api_equipo_admin_eliminar, name='api_equipo_admin_eliminar'),
      path('api/prestamo-equipos/<int:pk>/historial/', views_prestamo_equipos.api_equipo_admin_historial, name='api_equipo_admin_historial'),
+     # La devolucion se registra aqui, no en el portal: la hace quien recibe
+     # el equipo en TIC (ver el docstring de api_equipo_admin_devolver).
+     path('api/prestamo-equipos/<int:pk>/devolver/', views_prestamo_equipos.api_equipo_admin_devolver, name='api_equipo_admin_devolver'),
+     path('api/prestamo-equipos/<int:pk>/detalle/', views_prestamo_equipos.api_equipo_detalle, name='api_equipo_detalle'),
+     path('api/prestamo-equipos/<int:pk>/accesorios/guardar/', views_prestamo_equipos.api_equipo_accesorio_guardar, name='api_equipo_accesorio_guardar'),
+     path('api/prestamo-equipos/<int:pk>/accesorios/<int:acc_id>/eliminar/', views_prestamo_equipos.api_equipo_accesorio_eliminar, name='api_equipo_accesorio_eliminar'),
+     path('api/prestamo-equipos/<int:pk>/prestamo-accesorios/', views_prestamo_equipos.api_prestamo_accesorios_guardar, name='api_prestamo_accesorios_guardar'),
 
 ]

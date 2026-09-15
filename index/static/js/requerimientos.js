@@ -2159,8 +2159,8 @@ function showNotif(title, msg, type = 'success', duration = 3500) {
         ${eq.disponible
           ? `<button class="req-action-btn btn-prestar-equipo" data-id="${eq.id_equipo}" data-nombre="${eq.nombre}" title="Prestar equipo"><i class="fa-solid fa-right-left"></i></button>`
           : eq.es_mio
-            ? `<button class="req-action-btn btn-devolver-equipo" data-id="${eq.id_equipo}" data-nombre="${eq.nombre}" title="Registrar devolución"><i class="fa-solid fa-rotate-left"></i></button>`
-            : `<span class="equipo-badge prestado-otro" title="Solo quien lo pidió puede devolverlo"><i class="fa-solid fa-lock"></i> Prestado</span>`
+            ? `<span class="equipo-badge es-mio" title="Para devolverlo, entrégalo en TIC"><i class="fa-solid fa-hand-holding-hand"></i> Lo tienes tú</span>`
+            : `<span class="equipo-badge prestado-otro"><i class="fa-solid fa-lock"></i> Prestado</span>`
         }
       </td>
     </tr>
@@ -2186,15 +2186,6 @@ function showNotif(title, msg, type = 'success', duration = 3500) {
     const nombreInp = document.getElementById('pe_nombre');
     const areaInp   = document.getElementById('pe_area');
 
-    // ── Modal de devolución ──
-    const cdOverlay  = document.getElementById('confirmarDevolucionOverlay');
-    const cdClose    = document.getElementById('confirmarDevolucionClose');
-    const cdCancelar = document.getElementById('confirmarDevolucionCancelar');
-    const cdSubmit   = document.getElementById('confirmarDevolucionSubmit');
-    const cdNombre   = document.getElementById('cdEquipoNombre');
-    const cdError    = document.getElementById('confirmarDevolucionError');
-    let idEquipoADevolver = null;
-
     function abrirModalPrestar(idEquipo, nombreEquipo){
       form.reset();
       errorBox.style.display = 'none';
@@ -2211,35 +2202,9 @@ function showNotif(title, msg, type = 'success', duration = 3500) {
     }
     function cerrarModalPrestar(){ overlay.classList.add('hidden'); }
 
-    function abrirModalDevolucion(idEquipo, nombreEquipo){
-      idEquipoADevolver = idEquipo;
-      cdNombre.textContent = nombreEquipo || 'este equipo';
-      cdError.style.display = 'none';
-      cdError.textContent = '';
-      cdSubmit.disabled = false;
-      cdSubmit.textContent = 'CONFIRMAR';
-      cdOverlay.classList.remove('hidden');
-    }
-    function cerrarModalDevolucion(){
-      cdOverlay.classList.add('hidden');
-      idEquipoADevolver = null;
-    }
-    cdClose.addEventListener('click', cerrarModalDevolucion);
-    cdCancelar.addEventListener('click', cerrarModalDevolucion);
-    cdOverlay.addEventListener('click', function(e){ if(e.target === cdOverlay) cerrarModalDevolucion(); });
-    cdSubmit.addEventListener('click', function(){
-      if(!idEquipoADevolver) return;
-      cdSubmit.disabled = true;
-      cdSubmit.textContent = 'Procesando...';
-      devolverEquipo(idEquipoADevolver);
-    });
-
     document.addEventListener('click', function(e){
       const btn = e.target.closest('.btn-prestar-equipo');
       if (btn) abrirModalPrestar(btn.dataset.id, btn.dataset.nombre);
-
-      const btnDevolver = e.target.closest('.btn-devolver-equipo');
-      if (btnDevolver) abrirModalDevolucion(btnDevolver.dataset.id, btnDevolver.dataset.nombre);
     });
 
     closeBtn.addEventListener('click', cerrarModalPrestar);
@@ -2302,30 +2267,4 @@ function showNotif(title, msg, type = 'success', duration = 3500) {
       });
     });
 
-    function devolverEquipo(idEquipo){
-      fetch('/SYSTRACK/requerimiento/api/equipos/devolver/', {
-        method: 'POST',
-        headers: {'Content-Type': 'application/json'},
-        body: JSON.stringify({id_equipo: idEquipo, cedula: getDocumento()})
-      })
-      .then(r => r.json())
-      .then(data => {
-        cdSubmit.disabled = false;
-        cdSubmit.textContent = 'CONFIRMAR';
-        if (data.ok) {
-          cerrarModalDevolucion();
-          showNotif('Devolución registrada', 'El equipo vuelve a estar disponible.', 'success');
-          cargarEquipos();
-        } else {
-          cdError.textContent = data.error || 'No se pudo registrar la devolución.';
-          cdError.style.display = 'block';
-        }
-      })
-      .catch(() => {
-        cdSubmit.disabled = false;
-        cdSubmit.textContent = 'CONFIRMAR';
-        cdError.textContent = 'Error de conexión. Intenta de nuevo.';
-        cdError.style.display = 'block';
-      });
-    }
   })();

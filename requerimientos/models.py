@@ -210,6 +210,31 @@ class ImagenAdjunta(models.Model):
         db_table = 'mm_ImagenesAdjuntos'
 
 
+class AdjuntoSolucion(models.Model):
+    """Archivo que adjunta el TECNICO al solucionar un requerimiento.
+
+    Tabla aparte de mm_ImagenesAdjuntos a proposito: esa la escribe tambien el
+    sistema anterior y no tiene como distinguir quien subio el archivo, asi que
+    mezclarlos haria que el archivo del tecnico tapara el del solicitante en el
+    dashboard (que muestra el mas reciente). Ademas, tocarle la estructura a una
+    tabla que otro sistema sigue usando es un riesgo que no hace falta correr.
+
+    El archivo fisico va a MEDIA_ROOT/soluciones_adjuntos/'{IdAdjunto}_{nombre}'
+    — el IdAdjunto por delante evita choques entre archivos con el mismo nombre.
+    """
+    IdAdjunto     = models.AutoField(primary_key=True)
+    CodReq        = models.IntegerField()
+    NombreArchivo = models.CharField(max_length=255)
+    FechaSubida   = models.DateTimeField(null=True, blank=True)
+
+    class Meta:
+        managed  = False
+        db_table = 'mm_AdjuntosSolucion'
+
+    def __str__(self):
+        return f'{self.NombreArchivo} (REQ {self.CodReq})'
+
+
 class Notificacion(models.Model):
     """Notificaciones dentro del portal, en paralelo a los correos que ya
     se envían desde Signals.py y desde aprobar/rechazar. Una fila = un
@@ -273,6 +298,61 @@ class HistorialPrestamo(models.Model):
     class Meta:
         managed  = False
         db_table = 'mv_HistorialPrestamos'
+
+
+class AccesorioEquipo(models.Model):
+    """Catalogo de accesorios de un equipo prestable: lo que NORMALMENTE va
+    con el (el videobeam viene con control, cable HDMI y cable de poder).
+
+    Se configura una vez por equipo y sirve para premarcar la lista al
+    entregar, para que registrar la salida sea un clic y no un formulario.
+
+    OJO: la tabla NO distingue entre lo que se devuelve y lo que solo se
+    anota (una instalacion, por ejemplo, no vuelve). Todo lo que se registre
+    aqui aparecera en el checklist de devolucion pidiendo ser marcado. Si mas
+    adelante hace falta separarlos, habria que agregar una columna.
+    """
+    IdAccesorio = models.AutoField(primary_key=True)
+    IdEquipo    = models.IntegerField()
+    Nombre      = models.CharField(max_length=150)
+    Activo      = models.BooleanField(default=True)
+
+    class Meta:
+        managed  = False
+        db_table = 'mv_AccesoriosEquipo'
+        ordering = ['Nombre']
+
+    def __str__(self):
+        return self.Nombre
+
+
+class PrestamoAccesorio(models.Model):
+    """Que accesorios salieron REALMENTE en un prestamo y cuales volvieron.
+
+    Es la tabla que da valor al modulo: sin ella no se puede responder "le
+    falto devolver el cable HDMI", porque nunca quedaria registrado que se lo
+    llevo. Entregado y Devuelto son campos distintos a proposito — uno dice
+    que salio, el otro que volvio, y la diferencia es el faltante.
+
+    NombreAccesorio guarda una COPIA del nombre: si manana se borra el
+    accesorio del catalogo, los prestamos viejos siguen diciendo que se
+    presto un cable HDMI. Mismo criterio que g238_item_desc en el checklist
+    de dispositivos. Por eso IdAccesorio puede quedar en NULL.
+    """
+    IdPrestamoAccesorio = models.AutoField(primary_key=True)
+    IdPrestamo          = models.IntegerField()
+    IdAccesorio         = models.IntegerField(null=True, blank=True)
+    NombreAccesorio     = models.CharField(max_length=150)
+    Entregado           = models.BooleanField(default=True)
+    Devuelto            = models.BooleanField(default=False)
+    Observacion         = models.CharField(max_length=300, null=True, blank=True)
+
+    class Meta:
+        managed  = False
+        db_table = 'mv_PrestamoAccesorios'
+
+    def __str__(self):
+        return f'{self.NombreAccesorio} (prestamo {self.IdPrestamo})'
 
 
 class ChatMicrosoftToken(models.Model):

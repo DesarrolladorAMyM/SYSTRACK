@@ -7,12 +7,14 @@ from django.views.decorators.csrf import csrf_exempt
 from django.core.mail import send_mail
 from django.template.loader import render_to_string
 from django.conf import settings
+from django.core.mail import EmailMultiAlternatives
 from django.contrib.auth.decorators import login_required
 from django.contrib.auth.hashers import make_password
 from dashboard.permisos import requiere_pantalla
 from .models import (
     Usuario, Requerimiento, Categoria, SubCategoria, CentroOperacion,
     Cargo, TipoUsuario, Area, Prioridad, Clasificacion, EvaluacionReq, TipoRequerimiento,
+    AdjuntoSolucion,
     Notificacion, ImagenAdjunta,
 )
 
@@ -74,6 +76,9 @@ CATEGORIAS_TIC = [36, 37, 38]
 # Adjuntos de requerimientos (un solo archivo, cualquier tipo, máx 5 MB)
 ADJUNTO_CARPETA    = 'requerimientos_adjuntos'
 ADJUNTO_MAX_BYTES  = 5 * 1024 * 1024
+# Carpeta de las evidencias que sube el TECNICO al solucionar. Debe coincidir
+# con SOLUCION_CARPETA en dashboard/views.py, que es quien escribe los archivos.
+SOLUCION_CARPETA   = 'soluciones_adjuntos'
 
 
 def _token_seguimiento(req):
@@ -1091,20 +1096,49 @@ def _enviar_correo_solucion(req):
         'req': req, 'link_seguimiento': link_seguimiento, 'link_calificar': link_calificar,
     })
 
-    try:
-        enviados = send_mail(
-            subject=asunto,
-            message=(f"Tu requerimiento {req.codigo()} fue solucionado. "
-                      f"Solución: {req.Solucion or '(sin detalle)'}. "
-                      f"Califica la atención aquí: {link_calificar}"),
-            from_email=settings.DEFAULT_FROM_EMAIL,
-            recipient_list=[req.Email],
-            html_message=cuerpo_html,
-            fail_silently=False,
+    # Evidencias que adjunto el tecnico al solucionar. Se manda
+    # EmailMultiAlternatives en vez de send_mail porque send_mail no permite
+    # adjuntar archivos.
+    adjuntos = list(
+        AdjuntoSolucion.objects.using(DB).filter(CodReq=req.Codigo).order_by('IdAdjunto')
+    )
+
+    mensaje = EmailMultiAlternatives(
+        subject=asunto,
+        body=(f"Tu requerimiento {req.codigo()} fue solucionado. "
+              f"Solución: {req.Solucion or '(sin detalle)'}. "
+              f"Califica la atención aquí: {link_calificar}"),
+        from_email=settings.DEFAULT_FROM_EMAIL,
+        to=[req.Email],
+    )
+    mensaje.attach_alternative(cuerpo_html, 'text/html')
+
+    # Cada adjunto se agrega por separado y con su propio try: si un archivo
+    # se borro del disco o no se puede leer, el correo TIENE que salir igual.
+    # Avisar que el requerimiento fue solucionado es mas importante que la
+    # evidencia, y perder el correo por un archivo dejaria al solicitante sin
+    # enterarse de nada.
+    for a in adjuntos:
+        ruta = os.path.join(
+            settings.MEDIA_ROOT, SOLUCION_CARPETA, f'{a.IdAdjunto}_{a.NombreArchivo}'
         )
+        try:
+            # attach_file() usaria el nombre del disco, que lleva el IdAdjunto
+            # por delante ("12_acta.pdf"). Al solicitante hay que mandarle el
+            # nombre original, no el numero interno de la tabla.
+            with open(ruta, 'rb') as f:
+                mensaje.attach(a.NombreArchivo, f.read())
+        except Exception:
+            logger.exception(
+                "No se pudo adjuntar %s al correo de solución del requerimiento %s",
+                ruta, req.codigo()
+            )
+
+    try:
+        enviados = mensaje.send(fail_silently=False)
         logger.info(
-            "Correo de solución -> %s (Requerimiento %s): send_mail devolvió %s",
-            req.Email, req.codigo(), enviados
+            "Correo de solución -> %s (Requerimiento %s): send devolvió %s, %s adjunto(s)",
+            req.Email, req.codigo(), enviados, len(adjuntos)
         )
     except Exception:
         logger.exception(
