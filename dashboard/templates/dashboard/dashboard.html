@@ -2666,111 +2666,182 @@
       <h2 class="screen-title">Indicadores</h2>
       <p class="screen-sub">Panel de cumplimiento y tendencias de requerimientos TIC</p>
     </div>
+    <!-- Los filtros viven aquí, en el encabezado, porque aplican a TODA la
+         pantalla. Antes estaban dentro de la tarjeta del gráfico y parecían
+         suyos, aunque también mandaban sobre la calificación — y el resumen
+         ni siquiera los recibía. -->
+    <div class="ind-filtros" style="margin-left:auto">
+      <select id="ind-f-categoria" class="form-select form-select-sm" onchange="indOnCategoriaChange()">
+        <option value="">Todas las categorías</option>
+      </select>
+      <select id="ind-f-subcategoria" class="form-select form-select-sm" onchange="indAplicarFiltros()">
+        <option value="">Todas las subcategorías</option>
+      </select>
+      <select id="ind-f-dias" class="form-select form-select-sm" onchange="indAplicarFiltros()">
+        <option value="30">Últimos 30 días</option>
+        <option value="15">Últimos 15 días</option>
+        <option value="60">Últimos 60 días</option>
+        <option value="90">Últimos 90 días</option>
+      </select>
+    </div>
   </div>
 
-  <div style="display:grid;grid-template-columns:1fr 320px;gap:20px;align-items:start">
+  <!-- La pantalla va en 3 franjas apiladas. Antes era una rejilla de dos
+       columnas con el resumen y el gráfico a la izquierda y el medidor solo a
+       la derecha: el medidor terminaba mucho antes que la columna izquierda y
+       dejaba un hueco vacío de media pantalla, que era lo que estiraba todo
+       hacia abajo. -->
+  <div class="ind-layout">
 
-    <!-- ── Columna izquierda: Resumen + Tendencia ── -->
-    <div style="display:flex;flex-direction:column;gap:20px">
-
-      <!-- Resumen de requerimientos -->
-      <div class="ind-card">
-        <div class="ind-card-title">Resumen de Requerimientos</div>
+    <!-- ── Franja 1: Resumen ──
+         2 grupos que entre ambos cubren los 9 estados. Antes eran 4 tarjetas y
+         los estados 7, 8 y 9 no salían en ninguna, así que había requerimientos
+         vigentes invisibles. Ahora los dos grupos van lado a lado: en la
+         columna estrecha de antes, las 5 tarjetas de Pendientes se partían en
+         dos filas y "Requiere corrección" quedaba suelta debajo. -->
+    <div class="ind-card ind-resumen-split">
+      <div class="ind-grupo">
+        <div class="ind-grupo-head">
+          <span class="ind-grupo-tit">Pendientes</span>
+          <span class="ind-grupo-alc">al día de hoy</span>
+        </div>
         <div class="ind-resumen-row">
-          <div class="ind-resumen-item">
-            <div class="ind-resumen-val" id="ind-r-asignados">—</div>
-            <div class="ind-resumen-lbl">Asignados</div>
-          </div>
           <div class="ind-resumen-item">
             <div class="ind-resumen-val" id="ind-r-sinasignar">—</div>
             <div class="ind-resumen-lbl">Sin asignar</div>
+          </div>
+          <div class="ind-resumen-item">
+            <div class="ind-resumen-val" id="ind-r-asignados">—</div>
+            <div class="ind-resumen-lbl">Asignados</div>
           </div>
           <div class="ind-resumen-item">
             <div class="ind-resumen-val" id="ind-r-enproceso">—</div>
             <div class="ind-resumen-lbl">En proceso</div>
           </div>
           <div class="ind-resumen-item">
-            <div class="ind-resumen-val" id="ind-r-finalizados">—</div>
-            <div class="ind-resumen-lbl">Finalizados</div>
+            <div class="ind-resumen-val" id="ind-r-aprobacion">—</div>
+            <div class="ind-resumen-lbl">Pendiente aprobación</div>
+          </div>
+          <div class="ind-resumen-item">
+            <div class="ind-resumen-val" id="ind-r-correccion">—</div>
+            <div class="ind-resumen-lbl">Requiere corrección</div>
           </div>
         </div>
       </div>
 
-      <!-- Tendencia de cumplimiento -->
-      <div class="ind-card">
-        <div class="ind-tendencia-header">
-          <div class="ind-card-title" style="margin:0">Tendencia de cumplimiento</div>
-          <div class="ind-filtros">
-            <select id="ind-f-categoria" class="form-select form-select-sm" onchange="indOnCategoriaChange()">
-              <option value="">Todas las categorías</option>
-            </select>
-            <select id="ind-f-subcategoria" class="form-select form-select-sm" onchange="indCargarTendencia()">
-              <option value="">Todas las subcategorías</option>
-            </select>
-            <select id="ind-f-dias" class="form-select form-select-sm" onchange="indCargarTendencia()">
-              <option value="30">Últimos 30 días</option>
-              <option value="15">Últimos 15 días</option>
-              <option value="60">Últimos 60 días</option>
-              <option value="90">Últimos 90 días</option>
-            </select>
+      <div class="ind-grupo ind-grupo--cerrados">
+        <div class="ind-grupo-head">
+          <span class="ind-grupo-tit">Cerrados</span>
+          <span class="ind-grupo-alc" id="ind-r-alcance">en el período</span>
+        </div>
+        <div class="ind-resumen-row">
+          <div class="ind-resumen-item">
+            <div class="ind-resumen-val" id="ind-r-finalizados">—</div>
+            <div class="ind-resumen-lbl">Finalizados</div>
+          </div>
+          <div class="ind-resumen-item">
+            <div class="ind-resumen-val" id="ind-r-rechazados">—</div>
+            <div class="ind-resumen-lbl">Rechazados</div>
+          </div>
+          <div class="ind-resumen-item">
+            <div class="ind-resumen-val ind-resumen-val--soft" id="ind-r-historico">—</div>
+            <div class="ind-resumen-lbl">Finalizados histórico</div>
           </div>
         </div>
-        <div style="position:relative;height:280px;margin-top:14px">
+      </div>
+    </div>
+
+    <!-- ── Franja 2: Actividad diaria + Cumplimiento, en la misma fila ── -->
+    <div class="ind-fila2">
+
+      <!-- Actividad diaria. Antes se llamaba "Tendencia de cumplimiento" y
+           agrupaba por fecha de creación coloreando por estado actual: una
+           barra no decía qué pasó ese día. Ahora cruza entradas y cierres
+           reales de cada día. -->
+      <div class="ind-card">
+        <div class="ind-tendencia-header">
+          <div>
+            <div class="ind-card-title" style="margin:0">Actividad diaria</div>
+            <div class="ind-card-sub">Requerimientos que entraron y que se cerraron cada día</div>
+          </div>
+          <div class="ind-header-der">
+            <!-- _indRenderLegend() ya generaba estas pastillas, pero el
+                 contenedor no existía en el HTML y salía por el if(!box) sin
+                 pintar nada: el gráfico quedaba sin leyenda y sin poder
+                 apagar una serie. -->
+            <div class="ind-tendencia-legend" id="ind-tendencia-legend"></div>
+            <div class="ind-balance" id="ind-balance">—</div>
+          </div>
+        </div>
+        <div class="ind-chart-wrap ind-chart-wrap--alto">
           <canvas id="indTendenciaChart"></canvas>
         </div>
       </div>
 
-    </div>
-
-    <!-- ── Columna derecha: Cumplimiento (gauge) ── -->
-    <div class="ind-card" style="text-align:center">
-      <div class="ind-card-title">Cumplimiento de Solución</div>
-      <div style="position:relative;height:190px;margin:10px 0">
-        <canvas id="indGaugeChart"></canvas>
-        <div id="ind-gauge-value" style="position:absolute;inset:0;display:flex;align-items:center;justify-content:center;flex-direction:column">
-          <div style="font-size:26px;font-weight:800;color:var(--primary)" id="ind-gauge-pct">—</div>
-          <div style="font-size:11px;color:var(--text-light)">a tiempo</div>
+      <!-- Tres bloques sueltos a propósito: en columna estrecha se apilan y en
+           pantalla angosta, cuando el medidor pasa a ocupar todo el ancho, se
+           acuestan en fila. Apilado a lo ancho gastaría más alto del que
+           ahorra quitarlo de la columna. -->
+      <div class="ind-card ind-card--gauge">
+        <div class="ind-gauge-cab">
+          <div class="ind-card-title">Cumplimiento de Solución</div>
+          <div class="ind-card-sub">Sobre lo cerrado en el período</div>
+        </div>
+        <div class="ind-gauge-wrap">
+          <canvas id="indGaugeChart"></canvas>
+          <div id="ind-gauge-value" class="ind-gauge-centro">
+            <div class="ind-gauge-pct" id="ind-gauge-pct">—</div>
+            <div class="ind-gauge-pct-lbl">a tiempo</div>
+          </div>
+        </div>
+        <div class="ind-gauge-info">
+          <!-- La leyenda iba en dos renglones con un "Estado general:" encima;
+               en línea dice lo mismo y ahorra alto. -->
+          <div class="ind-gauge-leyenda">
+            <span><i class="ind-dot" style="background:#16a34a"></i>≥ 80% Excelente</span>
+            <span><i class="ind-dot" style="background:#dc2626"></i>&lt; 80% Necesita atención</span>
+          </div>
+          <div class="ind-gauge-pie">
+            <span id="ind-gauge-detalle">—</span>
+            <!-- Los cerrados sin fecha estimada no se pueden medir. Antes entraban
+                 al denominador y nunca al numerador, así que bajaban el porcentaje
+                 en silencio; ahora se sacan del cálculo y se avisan aquí. -->
+            <div id="ind-gauge-aviso" class="ind-aviso" hidden></div>
+          </div>
         </div>
       </div>
-      <div style="text-align:left;font-size:13px;margin-top:8px">
-        <div style="color:var(--text-light);margin-bottom:6px">Estado general:</div>
-        <div style="display:flex;align-items:center;gap:8px;margin-bottom:4px">
-          <span style="width:8px;height:8px;border-radius:50%;background:#16a34a;display:inline-block"></span>
-          <span>≥ 80% Excelente</span>
+
+    </div>
+
+    <!-- ── Franja 3: Calificación de Calidad (satisfacción del usuario) ── -->
+    <div class="ind-card">
+      <div class="ind-tendencia-header">
+        <div>
+          <div class="ind-card-title" style="margin:0">Calificación de Calidad</div>
+          <div class="ind-card-sub">Satisfacción reportada por el usuario al calificar la solución</div>
         </div>
-        <div style="display:flex;align-items:center;gap:8px">
-          <span style="width:8px;height:8px;border-radius:50%;background:#dc2626;display:inline-block"></span>
-          <span>&lt; 80% Necesita atención</span>
+        <div class="ind-calif-nota">
+          <div class="ind-calif-prom"><span id="ind-calif-promedio">—</span><span class="ind-calif-prom-den">/5</span></div>
+          <!-- Cobertura: un 4,8 salido de 5 respuestas sobre 200 cerrados no
+               vale lo mismo que uno salido de 180, y antes se veían igual. -->
+          <div class="ind-calif-cob" id="ind-calif-cobertura">—</div>
         </div>
       </div>
-      <div style="margin-top:14px;padding-top:14px;border-top:1px solid var(--border);text-align:left;font-size:12px;color:var(--text-light)">
-        <span id="ind-gauge-detalle">—</span>
+
+      <div id="ind-calif-aviso" class="ind-aviso" hidden style="margin-top:10px"></div>
+
+      <div class="ind-calif-charts">
+        <div>
+          <div class="ind-chart-tit">Promedio por semana de ingreso</div>
+          <div class="ind-chart-wrap"><canvas id="indCalifTendenciaChart"></canvas></div>
+        </div>
+        <div>
+          <div class="ind-chart-tit">Distribución de notas</div>
+          <div class="ind-chart-wrap"><canvas id="indCalifDistChart"></canvas></div>
+        </div>
       </div>
     </div>
 
-  </div>
-
-  <!-- ── Calificación de Calidad (satisfacción del usuario) ── -->
-  <div class="ind-card" style="margin-top:20px">
-    <div class="ind-tendencia-header">
-      <div>
-        <div class="ind-card-title" style="margin:0">Calificación de Calidad</div>
-        <div style="font-size:12px;color:var(--text-light)">Satisfacción reportada por el usuario al calificar la solución</div>
-      </div>
-      <div style="text-align:right">
-        <div style="font-size:26px;font-weight:800;color:var(--primary)"><span id="ind-calif-promedio">—</span><span style="font-size:14px;color:var(--text-light)">/5</span></div>
-        <div style="font-size:11px;color:var(--text-light)"><span id="ind-calif-total">0</span> evaluaciones en el rango</div>
-      </div>
-    </div>
-
-    <div style="display:grid;grid-template-columns:1.4fr 1fr;gap:20px;margin-top:16px">
-      <div style="position:relative;height:220px">
-        <canvas id="indCalifTendenciaChart"></canvas>
-      </div>
-      <div style="position:relative;height:220px">
-        <canvas id="indCalifDistChart"></canvas>
-      </div>
-    </div>
   </div>
 
 </section>

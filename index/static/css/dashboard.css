@@ -961,17 +961,24 @@ a.nav-btn.active {
   color:var(--text, #1f2937);
   margin-bottom:10px;
 }
+/* Rejilla en vez de flex: con flex las tarjetas tomaban el ancho de su texto,
+   así que "Pendiente aprobación" empujaba a "Requiere corrección" a una
+   segunda fila.
+   El número de columnas va fijo y NO con auto-fit: auto-fit las reparte según
+   el mínimo de minmax(), así que en una tarjeta de ~775 px sólo creaba 4
+   columnas para los 5 pendientes y 2 para los 3 cerrados — y el último de cada
+   grupo se volvía a caer al renglón siguiente. */
 .ind-resumen-row{
-  display:flex;
-  justify-content:space-between;
+  display:grid;
+  grid-template-columns:repeat(5, 1fr);
   text-align:center;
   padding-top:6px;
-  flex-wrap:wrap;
   gap:10px;
 }
-.ind-resumen-item{ flex:1; min-width:90px; }
+.ind-grupo--cerrados .ind-resumen-row{ grid-template-columns:repeat(3, 1fr); }
+.ind-resumen-item{ min-width:0; }
 .ind-resumen-val{
-  font-size:28px;
+  font-size:26px;
   font-weight:800;
   color:var(--primary, #1B4698);
   line-height:1.1;
@@ -988,18 +995,265 @@ a.nav-btn.active {
   flex-wrap:wrap;
   gap:10px;
 }
+/* Los tres selectores en columnas iguales. Antes cada uno se estiraba hasta el
+   ancho de su opción más larga (los nombres de categoría llegan a ser muy
+   largos) y el tercero se caía a un segundo renglón. */
 .ind-filtros{
-  display:flex;
+  display:grid;
+  grid-template-columns:repeat(3, 172px);
   gap:8px;
-  flex-wrap:wrap;
 }
 .ind-filtros select{
-  min-width:150px;
+  width:100%;
+  min-width:0;
   font-size:12.5px;
+  padding:8px 12px;
+  text-overflow:ellipsis;
 }
+/* Las 3 franjas de la pantalla */
+.ind-layout{
+  display:flex;
+  flex-direction:column;
+  gap:16px;
+}
+/* Actividad diaria ocupa lo que sobre; el medidor va fijo a la derecha.
+   Con stretch las dos tarjetas terminan a la misma altura. */
+.ind-fila2{
+  display:grid;
+  grid-template-columns:1fr 320px;
+  gap:16px;
+  align-items:stretch;
+}
+
+/* Resumen en 2 grupos: lo pendiente es la foto de hoy y lo cerrado depende del
+   rango elegido. Sin esta separación visual los dos alcances se leían como si
+   fueran el mismo y los números no cuadraban entre sí. */
+.ind-grupo{ padding-top:4px; }
+.ind-grupo + .ind-grupo{
+  margin-top:16px;
+  padding-top:16px;
+  border-top:1px solid var(--border);
+}
+/* Los dos grupos, uno al lado del otro: 5 tarjetas a la izquierda y 3 a la
+   derecha. La raya que los separa pasa de horizontal a vertical. */
+.ind-resumen-split{
+  display:grid;
+  grid-template-columns:5fr 3fr;
+  gap:26px;
+}
+.ind-resumen-split > .ind-grupo + .ind-grupo{
+  margin-top:0;
+  padding-top:4px;
+  padding-left:26px;
+  border-top:none;
+  border-left:1px solid var(--border);
+}
+.ind-grupo-head{
+  display:flex;
+  align-items:baseline;
+  gap:10px;
+  flex-wrap:wrap;
+  margin-bottom:6px;
+}
+.ind-grupo-tit{
+  font-size:12px;
+  font-weight:700;
+  letter-spacing:.06em;
+  text-transform:uppercase;
+  color:var(--primary);
+}
+.ind-grupo--cerrados .ind-grupo-tit{ color:#15803d; }
+.ind-grupo-alc{
+  font-size:11.5px;
+  color:var(--text-light, #6b7280);
+  background:rgba(27,70,152,0.06);
+  padding:2px 9px;
+  border-radius:999px;
+}
+.ind-grupo--cerrados .ind-grupo-alc{ background:rgba(22,163,74,0.08); }
+/* El histórico acompaña como referencia, no compite con las cifras del rango */
+.ind-resumen-val--soft{ color:var(--text-light, #9ca3af) !important; font-size:22px !important; }
+
+.ind-card-sub{
+  font-size:12px;
+  color:var(--text-light, #6b7280);
+  margin-top:2px;
+}
+.ind-chart-tit{
+  font-size:11.5px;
+  font-weight:600;
+  letter-spacing:.04em;
+  text-transform:uppercase;
+  color:var(--text-light, #6b7280);
+  margin-bottom:8px;
+}
+/* Balance entradas/cierres del período, al lado del título del gráfico */
+.ind-balance{
+  font-size:12.5px;
+  font-weight:600;
+  color:var(--text-secondary, #64748b);
+  white-space:nowrap;
+}
+.ind-balance b{ font-weight:800; }
+.ind-balance .pos{ color:#15803d; }
+.ind-balance .neg{ color:#b91c1c; }
+
+/* Leyenda y balance comparten el lado derecho del encabezado del gráfico */
+.ind-header-der{
+  display:flex;
+  align-items:center;
+  gap:14px;
+  flex-wrap:wrap;
+}
+.ind-tendencia-legend{ display:flex; gap:8px; flex-wrap:wrap; }
+.ind-legend-pill{
+  display:inline-flex;
+  align-items:center;
+  gap:6px;
+  font-size:11.5px;
+  font-weight:600;
+  color:var(--text-secondary, #64748b);
+  background:var(--bg-soft, #f8fafc);
+  border:1px solid var(--border);
+  border-radius:999px;
+  padding:3px 10px;
+  cursor:pointer;
+  user-select:none;
+  transition:opacity .2s;
+}
+.ind-legend-pill:hover{ border-color:var(--primary); }
+.ind-legend-pill.off{ opacity:.4; text-decoration:line-through; }
+.ind-legend-dot{ width:8px; height:8px; border-radius:50%; display:inline-block; }
+
+/* Alto de los lienzos. Chart.js necesita un contenedor con alto propio. */
+.ind-chart-wrap{ position:relative; height:200px; }
+.ind-chart-wrap--alto{ height:250px; margin-top:12px; }
+
+/* ── Medidor de cumplimiento ── */
+.ind-card--gauge{
+  text-align:center;
+  display:flex;
+  flex-direction:column;
+}
+.ind-gauge-wrap{ position:relative; height:168px; margin:8px 0 2px; }
+.ind-gauge-centro{
+  position:absolute;
+  inset:0;
+  display:flex;
+  align-items:center;
+  justify-content:center;
+  flex-direction:column;
+}
+.ind-gauge-pct{ font-size:26px; font-weight:800; color:var(--primary); line-height:1.1; }
+.ind-gauge-pct-lbl{ font-size:11px; color:var(--text-light); }
+/* En línea, sin el rótulo "Estado general:" encima: dice lo mismo en un tercio
+   del alto que ocupaban los dos renglones de antes. */
+.ind-gauge-leyenda{
+  display:flex;
+  justify-content:center;
+  flex-wrap:wrap;
+  gap:6px 16px;
+  font-size:11.5px;
+  color:var(--text-secondary, #64748b);
+  margin-top:6px;
+}
+.ind-gauge-leyenda span{ display:inline-flex; align-items:center; gap:6px; }
+.ind-dot{ width:8px; height:8px; border-radius:50%; display:inline-block; }
+.ind-gauge-info{ margin-top:auto; }
+.ind-gauge-pie{
+  padding-top:12px;
+  border-top:1px solid var(--border);
+  text-align:left;
+  font-size:12px;
+  color:var(--text-light);
+}
+
+/* ── Calificación ── */
+.ind-calif-nota{ text-align:right; }
+.ind-calif-prom{ font-size:26px; font-weight:800; color:var(--primary); line-height:1.1; }
+.ind-calif-prom-den{ font-size:14px; color:var(--text-light); font-weight:600; }
+.ind-calif-cob{ font-size:11px; color:var(--text-light); margin-top:2px; }
+.ind-calif-charts{
+  display:grid;
+  grid-template-columns:1.4fr 1fr;
+  gap:20px;
+  margin-top:14px;
+}
+/* Sin esto las columnas no pueden encogerse por debajo del ancho que Chart.js
+   le deja al lienzo (min-width:auto), y el gráfico de la derecha se desborda
+   fuera de la tarjeta en pantallas medianas. */
+.ind-calif-charts > *,
+.ind-fila2 > *{ min-width:0; }
+
+/* Aviso discreto para lo que el indicador no puede medir */
+.ind-aviso{
+  font-size:11.5px;
+  line-height:1.5;
+  color:#92400e;
+  background:#fef3c7;
+  border:1px solid #fde68a;
+  border-radius:var(--radius-sm, 8px);
+  padding:7px 10px;
+  margin-top:8px;
+}
+
+/* Portátil: el medidor NO se baja a una fila propia. Bajarlo siempre suma
+   alto en vez de quitarlo, porque deja de compartir fila con el gráfico.
+   Lo que se hace es adelgazar su columna a medida que falta ancho. */
+@media (max-width: 1450px){
+  .ind-fila2{ grid-template-columns:1fr 285px; }
+  .ind-gauge-wrap{ height:155px; }
+}
+@media (max-width: 1150px){
+  .ind-fila2{ grid-template-columns:1fr 250px; gap:14px; }
+  .ind-gauge-wrap{ height:140px; }
+  .ind-gauge-leyenda{ flex-direction:column; align-items:center; gap:4px; }
+}
+/* Tableta: aquí sí desaparece el ancho para dos columnas. El medidor pasa a
+   ocupar la fila completa, pero acostado — encabezado, rosco y textos en
+   línea — para que cueste lo menos posible. */
 @media (max-width: 900px){
-  #screen-indicadores > div{ grid-template-columns:1fr !important; }
-  .ind-card > div[style*="1.4fr"]{ grid-template-columns:1fr !important; }
+  .ind-fila2{ grid-template-columns:1fr; }
+  .ind-card--gauge{
+    display:grid;
+    grid-template-columns:minmax(140px, 1fr) 150px minmax(190px, 1.3fr);
+    align-items:center;
+    gap:20px;
+    text-align:left;
+  }
+  .ind-card--gauge .ind-gauge-wrap{ height:140px; margin:0; }
+  .ind-card--gauge .ind-gauge-info{ margin-top:0; }
+  .ind-card--gauge .ind-gauge-leyenda{
+    flex-direction:column; align-items:flex-start; justify-content:flex-start; margin:0 0 8px;
+  }
+  .ind-card--gauge .ind-gauge-pie{ padding-top:0; border-top:none; }
+  .ind-calif-charts{ grid-template-columns:1fr; }
+  .ind-resumen-split{ grid-template-columns:1fr; gap:0; }
+  .ind-resumen-split > .ind-grupo + .ind-grupo{
+    margin-top:16px;
+    padding-top:16px;
+    padding-left:0;
+    border-left:none;
+    border-top:1px solid var(--border);
+  }
+  /* Los filtros se pasan debajo del título en vez de apretarlo */
+  #screen-indicadores .screen-header{ flex-wrap:wrap; }
+  #screen-indicadores .ind-filtros{
+    margin-left:0 !important;
+    width:100%;
+    grid-template-columns:repeat(auto-fit, minmax(140px, 1fr));
+  }
+}
+/* Móvil: ya no hay ancho para acostar el medidor, vuelve a columna.
+   Va de último: al ser max-width, el orden de ancho decreciente es el que
+   hace que la regla más estrecha sea la que mande. */
+@media (max-width: 700px){
+  .ind-card--gauge{ grid-template-columns:1fr; gap:10px; text-align:center; }
+  .ind-card--gauge .ind-gauge-leyenda{ justify-content:center; }
+  .ind-card--gauge .ind-gauge-pie{ text-align:center; }
+  /* Aquí sí conviene partir: cinco columnas en un móvil dejan las etiquetas
+     en 50 px y no se leen. Se parten a propósito, en 3 + 2. */
+  .ind-resumen-row{ grid-template-columns:repeat(3, 1fr); row-gap:14px; }
 }
 
 .ind-chart-vacio{

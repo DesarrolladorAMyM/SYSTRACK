@@ -339,11 +339,29 @@ def api_dispositivos(request):
 
     q = request.GET.get('q', '').strip()
     if q:
+        # Además de serial/propietario/marca, la búsqueda entra al campo
+        # identificador propio de cada tipo: nombre de equipo y correo Office
+        # (PORTATIL/TORRE), número de línea, IMEI y Gmail (CELULAR, TABLET,
+        # MODEM WIFI, SIMCARD, TELEFONO FIJO) y software/correo (LICENCIA
+        # OFFICE). Las claves de activación (Key Office, Key/Licencia) quedan
+        # FUERA a propósito: son credenciales, igual criterio que la
+        # contraseña de Gmail, que tampoco se expone en el detalle.
+        # El .distinct() es necesario porque al buscar contra las tablas de
+        # características Django agrega JOINs y una misma fila podría venir
+        # repetida.
         qs = qs.filter(
             Q(g212_serial__icontains=q) |
             Q(g212_propietario__g203_propietario__icontains=q) |
-            Q(g212_marca__g202_marca__icontains=q)
-        )
+            Q(g212_marca__g202_marca__icontains=q) |
+            Q(g212_nombre_equipo__icontains=q) |
+            Q(caract_pc__g222_correo_office__icontains=q) |
+            Q(caract_movil__g223_numero_linea__icontains=q) |
+            Q(caract_movil__g223_imei1__icontains=q) |
+            Q(caract_movil__g223_imei2__icontains=q) |
+            Q(caract_movil__g223_cuenta_gmail__icontains=q) |
+            Q(caract_licencia__g227_software__icontains=q) |
+            Q(caract_licencia__g227_correo__icontains=q)
+        ).distinct()
 
     tipo_id = request.GET.get('tipo')
     if tipo_id:
@@ -3690,11 +3708,23 @@ def api_exportar_inventario(request):
     estado  = request.GET.get('estado', '').strip()
 
     if q:
+        # Mismos campos que el buscador de la pantalla de Inventario
+        # (api_dispositivos), para que lo exportado coincida exactamente con lo
+        # que el usuario está viendo. Si se agrega un campo allá, agregarlo
+        # aquí también.
         qs = qs.filter(
             Q(g212_serial__icontains=q) |
             Q(g212_propietario__g203_propietario__icontains=q) |
-            Q(g212_marca__g202_marca__icontains=q)
-        )
+            Q(g212_marca__g202_marca__icontains=q) |
+            Q(g212_nombre_equipo__icontains=q) |
+            Q(caract_pc__g222_correo_office__icontains=q) |
+            Q(caract_movil__g223_numero_linea__icontains=q) |
+            Q(caract_movil__g223_imei1__icontains=q) |
+            Q(caract_movil__g223_imei2__icontains=q) |
+            Q(caract_movil__g223_cuenta_gmail__icontains=q) |
+            Q(caract_licencia__g227_software__icontains=q) |
+            Q(caract_licencia__g227_correo__icontains=q)
+        ).distinct()
     if tipo_id:
         qs = qs.filter(g212_tipo_id=tipo_id)
     if estado:
@@ -5437,12 +5467,16 @@ def api_historial_req_tic(request):
     # CO guarda el código corto (ej. "AM1"), se resuelve al nombre completo.
     CENTROS       = {c.IdCo: c.Descripcion for c in CentroOperacionReq.objects.using('requerimientos').all()}
 
+    # Solo requerimientos de TIC — ver _requerimientos_tic(), más abajo en este
+    # mismo archivo. Antes la consulta solo excluía los eliminados, así que la
+    # pantalla listaba 2 662 registros: los 2 388 de TIC más 274 de SST y
+    # Jurídica, que comparten mv_Requerimientos y no le corresponden a esta
+    # pantalla. La exportación a .xlsx reutiliza esta misma vista, así que
+    # queda acotada con el mismo criterio.
+    #
     # list() a propósito: abajo se recorre dos veces (una para juntar los códigos
     # y otra para armar la respuesta) y un queryset consultaría la BD dos veces.
-    qs = list(Requerimiento.objects
-              .using('requerimientos')
-              .exclude(IdEstado=5)   # oculta solo los eliminados
-              .order_by('-Fecha'))
+    qs = list(_requerimientos_tic().order_by('-Fecha'))
     codigos = [r.Codigo for r in qs]
 
     # Adjuntos: mismo criterio que api_mis_req_tic — el dict se sobrescribe
@@ -5676,37 +5710,94 @@ def api_subcategorias_req(request):
 
 # INDICADORES — Panel de requerimientos
 
+def _solo_fecha(valor):
+    """
+    Devuelve la parte de fecha de un valor que puede venir como date o como
+    datetime.
+
+    Hace falta porque Fecha y FechaRealSolucion están declaradas en el modelo
+    como DateField, pero en SQL Server las columnas son 'datetime': al leerlas
+    con values()/values_list() (sin construir la instancia del modelo) llegan
+    como datetime, y muchas traen hora distinta de medianoche. Sin normalizar,
+    dos registros del mismo día se agrupan por separado y ninguno coincide con
+    una clave de tipo date.
+    """
+    return valor.date() if hasattr(valor, 'date') else valor
+
+
+def _fin_exclusivo(fecha_fin):
+    """
+    Límite superior para comparar contra una columna 'datetime' usando el día
+    siguiente, en vez de '<= fecha_fin'.
+
+    Con '<=' el corte queda en la medianoche de fecha_fin, así que todo lo
+    registrado hoy después de las 00:00 se quedaba fuera del rango.
+    """
+    from datetime import timedelta
+    return fecha_fin + timedelta(days=1)
+
+
+# Área de TIC en mm_TipoRequerimiento. La tabla tiene cuatro:
+#   1 Jurídico · 2 Mantenimiento · 3 SST · 4 Sistemas
+TIPO_REQ_SISTEMAS = 4
+
+
+def _requerimientos_tic():
+    """
+    Universo compartido de las pantallas de TIC: los requerimientos vigentes
+    del área de Sistemas. Lo usan api_historial_req_tic y las tres funciones
+    de indicadores, para que todas partan del mismo conjunto y no se puedan
+    desincronizar.
+
+    mv_Requerimientos la comparten cuatro áreas (ver TIPO_REQ_SISTEMAS), así
+    que sin acotar se cuela el trabajo de Jurídica y SST: 274 requerimientos,
+    entre ellos 16 que figuraban como "sin asignar" de TIC —el más viejo de
+    hace más de dos años— cuando TIC no tenía ninguno.
+
+    Se filtra por IdTipoReq y NO por CATEGORIAS_TIC, aunque esa constante ya
+    existe: ahí solo están las tres categorías ACTIVAS (36, 37, 38), que es lo
+    correcto para no dejar reclasificar un requerimiento nuevo a un área
+    ajena, pero deja fuera 1 068 requerimientos históricos de TIC registrados
+    bajo las categorías anteriores (Soporte técnico, Soporte VPN, SIESA…)
+    antes de que se reorganizara el catálogo. Por área no se pierde ninguno.
+    """
+    return (Requerimiento.objects
+            .using('requerimientos')
+            .exclude(IdEstado=5)
+            .filter(IdTipoReq=TIPO_REQ_SISTEMAS))
+
+
 @login_required(login_url='login')
 @require_http_methods(['GET'])
 def api_indicadores_resumen(request):
     """
-    Tarjetas de resumen: asignados / sin asignar / en proceso / finalizados.
-    Cuenta sobre TODOS los requerimientos vigentes (excluye eliminados).
-    """
-    qs = Requerimiento.objects.using('requerimientos').exclude(IdEstado=5)
+    Tarjetas de resumen del panel de Indicadores.
 
-    data = {
-        'asignados':   qs.filter(IdEstado=2).count(),
-        'sin_asignar': qs.filter(IdEstado=1).count(),
-        'en_proceso':  qs.filter(IdEstado=3).count(),
-        'finalizados': qs.filter(IdEstado__in=[4, 6]).count(),
-    }
-    return _json_ok(data)
-
-
-@login_required(login_url='login')
-@require_http_methods(['GET'])
-def api_indicadores_tendencia(request):
-    """
-    Serie diaria de requerimientos por estado (Abiertos / Asignado / En Proceso / Cerrados)
-    dentro de un rango de días, con filtro opcional de categoría y subcategoría.
-    También calcula el % de cumplimiento (solucionados a tiempo) del rango.
+    Solo cuenta requerimientos de TIC — ver _requerimientos_tic().
 
       ?dias=            30 | 15 | 60 | 90   (default 30)
       ?categoria_id=    id de mm_Categoria (opcional)
       ?subcategoria_id= id de mm_SubCategoria (opcional)
+
+    Devuelve DOS grupos, y entre los dos cubren los 9 estados posibles. Antes
+    solo se contaban 4 estados (1, 2, 3 y 4+6), así que los requerimientos en
+    Pendiente Aprobación (7), Rechazado (8) y Requiere corrección (9) no
+    aparecían en ninguna tarjeta: existían, estaban vigentes y no se veían.
+
+    Los dos grupos NO se filtran igual, a propósito:
+
+      pendientes — foto de HOY, sin filtro de fecha. Son estados en los que el
+                   requerimiento sigue esperando algo. Si se filtraran por
+                   fecha, un requerimiento sin asignar de hace seis meses
+                   desaparecería del panel justo cuando más hay que mirarlo.
+
+      cerrados   — sí respetan el rango, porque ahí la pregunta es de flujo:
+                   cuántos se cerraron en el período.
+
+    Categoría y subcategoría filtran AMBOS grupos: son un recorte del universo,
+    no una ventana de tiempo.
     """
-    from datetime import date, timedelta
+    from datetime import timedelta
 
     try:
         dias = int(request.GET.get('dias', 30))
@@ -5717,64 +5808,194 @@ def api_indicadores_tendencia(request):
     categoria_id    = request.GET.get('categoria_id') or None
     subcategoria_id = request.GET.get('subcategoria_id') or None
 
-    fecha_fin   = date.today()
-    fecha_inicio = fecha_fin - timedelta(days=dias)
+    # dias - 1 porque los dos extremos van incluidos: con 30 días, de hoy-29 a
+    # hoy son 30 días reales. Antes se restaban 30 y se incluían ambos
+    # extremos, así que "últimos 30 días" traía 31.
+    fecha_fin    = date.today()
+    fecha_inicio = fecha_fin - timedelta(days=dias - 1)
 
-    qs = (Requerimiento.objects
-          .using('requerimientos')
-          .exclude(IdEstado=5)
-          .filter(Fecha__gte=fecha_inicio, Fecha__lte=fecha_fin))
-
+    qs = _requerimientos_tic()
     if categoria_id:
         qs = qs.filter(IdCategoria=categoria_id)
     if subcategoria_id:
         qs = qs.filter(IdSubCategoria=subcategoria_id)
 
-    # Construir un diccionario fecha -> conteos por estado
+    pendientes = {
+        'sin_asignar': qs.filter(IdEstado=1).count(),
+        'asignados':   qs.filter(IdEstado=2).count(),
+        'en_proceso':  qs.filter(IdEstado=3).count(),
+        'aprobacion':  qs.filter(IdEstado=7).count(),
+        'correccion':  qs.filter(IdEstado=9).count(),
+    }
+    pendientes['total'] = sum(pendientes.values())
+
+    # Cerrados = por la fecha en que SE CERRARON (FechaRealSolucion), no por la
+    # de creación. Es la diferencia entre "cuántos cerramos este mes" y
+    # "cuántos de los que entraron este mes ya están cerrados".
+    fin_excl = _fin_exclusivo(fecha_fin)
+
+    finalizados = qs.filter(
+        IdEstado__in=[4, 6],
+        FechaRealSoluci__gte=fecha_inicio,
+        FechaRealSoluci__lt=fin_excl,
+    ).count()
+
+    # Rechazado por el jefe de área es un final sin solución, así que no lleva
+    # FechaRealSolucion. Se ubica por la fecha en que el jefe decidió y, si esa
+    # no quedó registrada, por la de creación.
+    # FechaAprobacion sí es DateTimeField de verdad, así que se compara con el
+    # lookup __date: pasarle una fecha suelta compara contra un datetime naive
+    # y Django advierte por la zona horaria.
+    rechazados = qs.filter(IdEstado=8).filter(
+        Q(FechaAprobacion__date__gte=fecha_inicio, FechaAprobacion__date__lte=fecha_fin) |
+        Q(FechaAprobacion__isnull=True, Fecha__gte=fecha_inicio, Fecha__lt=fin_excl)
+    ).count()
+
+    return _json_ok({
+        'pendientes': pendientes,
+        'cerrados': {
+            'finalizados': finalizados,
+            'rechazados':  rechazados,
+            'total':       finalizados + rechazados,
+        },
+        'rango': {
+            'dias':  dias,
+            'desde': fecha_inicio.strftime('%d/%m/%Y'),
+            'hasta': fecha_fin.strftime('%d/%m/%Y'),
+        },
+        # Histórico completo de finalizados, sin recortar por fecha: es el
+        # número que el panel mostraba antes y sirve de referencia.
+        'finalizados_historico': qs.filter(IdEstado__in=[4, 6]).count(),
+    })
+
+
+@login_required(login_url='login')
+@require_http_methods(['GET'])
+def api_indicadores_tendencia(request):
+    """
+    Actividad diaria: cuántos requerimientos ENTRARON y cuántos se CERRARON
+    cada día del rango. También calcula el % de cumplimiento del período.
+
+    Solo cuenta requerimientos de TIC — ver _requerimientos_tic().
+
+      ?dias=            30 | 15 | 60 | 90   (default 30)
+      ?categoria_id=    id de mm_Categoria (opcional)
+      ?subcategoria_id= id de mm_SubCategoria (opcional)
+
+    Antes esta función hacía otra cosa: agrupaba por fecha de CREACIÓN y
+    coloreaba por el estado ACTUAL. Con eso, la barra de un día no decía qué
+    pasó ese día, sino "de los que nacieron ese día, cuántos están hoy en cada
+    estado". Además se dejaban fuera los estados 7, 8 y 9, así que el gráfico
+    dibujaba menos requerimientos de los que había.
+
+    Ahora cada barra cruza dos hechos del mismo día: los que entraron (por
+    Fecha) y los que se cerraron (por FechaRealSolucion). Un requerimiento
+    aparece dos veces en el gráfico, en su día de entrada y en el de cierre,
+    que es justamente lo que permite ver si se cierra más de lo que entra.
+
+    El conteo ya no trae las filas completas a memoria: pide solo la columna de
+    fecha que necesita cada serie.
+    """
+    from datetime import timedelta
+    from django.db.models.functions import TruncDate
+
+    try:
+        dias = int(request.GET.get('dias', 30))
+    except (TypeError, ValueError):
+        dias = 30
+    dias = max(1, min(dias, 365))
+
+    categoria_id    = request.GET.get('categoria_id') or None
+    subcategoria_id = request.GET.get('subcategoria_id') or None
+
+    # dias - 1: los dos extremos se incluyen, así que "30 días" son de hoy-29
+    # a hoy. Antes se restaban 30 y el rango traía 31 días.
+    fecha_fin    = date.today()
+    fecha_inicio = fecha_fin - timedelta(days=dias - 1)
+
+    base = _requerimientos_tic()
+    if categoria_id:
+        base = base.filter(IdCategoria=categoria_id)
+    if subcategoria_id:
+        base = base.filter(IdSubCategoria=subcategoria_id)
+
     dias_map = {}
     d = fecha_inicio
     while d <= fecha_fin:
-        dias_map[d] = {'abiertos': 0, 'asignado': 0, 'en_proceso': 0, 'cerrados': 0}
+        dias_map[d] = {'entraron': 0, 'cerraron': 0}
         d += timedelta(days=1)
 
-    for r in qs:
-        if not r.Fecha or r.Fecha not in dias_map:
-            continue
-        if r.IdEstado == 1:
-            dias_map[r.Fecha]['abiertos'] += 1
-        elif r.IdEstado == 2:
-            dias_map[r.Fecha]['asignado'] += 1
-        elif r.IdEstado == 3:
-            dias_map[r.Fecha]['en_proceso'] += 1
-        elif r.IdEstado in (4, 6):
-            dias_map[r.Fecha]['cerrados'] += 1
+    fin_excl = _fin_exclusivo(fecha_fin)
+
+    # Se agrupa en Python sobre los valores ya recortados por el filtro (dos
+    # columnas, no las filas completas). No se usa values('Fecha').annotate()
+    # porque la columna es 'datetime' en SQL Server: agruparía por fecha+hora y
+    # partiría un mismo día en varios grupos. Ver _solo_fecha().
+    entradas = (base
+                .filter(Fecha__gte=fecha_inicio, Fecha__lt=fin_excl)
+                .values_list('Fecha', flat=True))
+    for valor in entradas:
+        dia = _solo_fecha(valor)
+        if dia in dias_map:
+            dias_map[dia]['entraron'] += 1
+
+    cerrados_qs = base.filter(
+        IdEstado__in=[4, 6],
+        FechaRealSoluci__gte=fecha_inicio,
+        FechaRealSoluci__lt=fin_excl,
+    )
+    for valor in cerrados_qs.values_list('FechaRealSoluci', flat=True):
+        dia = _solo_fecha(valor)
+        if dia in dias_map:
+            dias_map[dia]['cerraron'] += 1
 
     serie = [
         {
-            'fecha':      f.strftime('%Y-%m-%d'),
-            'abiertos':   v['abiertos'],
-            'asignado':   v['asignado'],
-            'en_proceso': v['en_proceso'],
-            'cerrados':   v['cerrados'],
+            'fecha':    f.strftime('%Y-%m-%d'),
+            'entraron': v['entraron'],
+            'cerraron': v['cerraron'],
         }
         for f, v in sorted(dias_map.items())
     ]
 
-    # % de cumplimiento: solucionados dentro del rango, a tiempo vs. total solucionados
-    cerrados_qs = qs.filter(IdEstado__in=[4, 6])
+    # % de cumplimiento sobre lo que se cerró DENTRO del rango. Antes la base
+    # eran los creados en el rango que además estaban cerrados, con lo que se
+    # ignoraba todo lo que tardó más que la ventana — justo lo que peor
+    # cumplió — y el porcentaje salía mejor de lo que era.
     total_cerrados = cerrados_qs.count()
-    a_tiempo = cerrados_qs.filter(
-        FechaRealSoluci__isnull=False,
-        FechaEstiSoluci__isnull=False,
-        FechaRealSoluci__lte=F('FechaEstiSoluci'),
-    ).count()
-    pct_cumplimiento = round((a_tiempo / total_cerrados) * 100, 1) if total_cerrados else 0
+
+    # Sin fecha estimada no hay contra qué comparar. Antes esos entraban al
+    # denominador pero nunca podían entrar al numerador, así que bajaban el
+    # porcentaje sin que nadie supiera por qué. Ahora se sacan del cálculo y se
+    # informan aparte.
+    sin_estimada = cerrados_qs.filter(FechaEstiSoluci__isnull=True).count()
+    medibles     = total_cerrados - sin_estimada
+
+    # Se comparan solo los días, no fecha+hora. Las dos columnas son 'datetime'
+    # en SQL Server: comparándolas en crudo, algo resuelto el mismo día de la
+    # fecha estimada a las 15:00 quedaba por encima de esa fecha a medianoche y
+    # se contaba como fuera de plazo.
+    a_tiempo = (cerrados_qs
+                .filter(FechaEstiSoluci__isnull=False)
+                .annotate(_dia_real=TruncDate('FechaRealSoluci'),
+                          _dia_esti=TruncDate('FechaEstiSoluci'))
+                .filter(_dia_real__lte=F('_dia_esti'))
+                .count())
+    pct_cumplimiento = round((a_tiempo / medibles) * 100, 1) if medibles else 0
 
     return _json_ok({
         'serie':            serie,
         'pct_cumplimiento': pct_cumplimiento,
         'total_cerrados':   total_cerrados,
+        'medibles':         medibles,
+        'sin_estimada':     sin_estimada,
         'a_tiempo':         a_tiempo,
+        'total_entraron':   sum(v['entraron'] for v in dias_map.values()),
+        'rango': {
+            'dias':  dias,
+            'desde': fecha_inicio.strftime('%d/%m/%Y'),
+            'hasta': fecha_fin.strftime('%d/%m/%Y'),
+        },
     })
     
 
@@ -5785,6 +6006,8 @@ def api_indicadores_calificacion(request):
     Calificación de calidad (mv_EvaluacionReq): satisfacción real del usuario
     que reportó el requerimiento, NO la puntualidad del técnico.
 
+    Solo cuenta requerimientos de TIC — ver _requerimientos_tic().
+
       ?dias=            30 | 15 | 60 | 90   (default 30)
       ?categoria_id=    id de mm_Categoria (opcional)
       ?subcategoria_id= id de mm_SubCategoria (opcional)
@@ -5792,10 +6015,19 @@ def api_indicadores_calificacion(request):
     Responde:
       promedio             — promedio general (1 a 5) en el rango/filtro
       total_evaluaciones   — cuántas evaluaciones entran en el filtro
+      cerrados_en_rango    — cuántos requerimientos cerrados hay en el filtro
       distribucion         — {'1': n, '2': n, '3': n, '4': n, '5': n}
       tendencia            — [{semana, promedio, cantidad}, ...] por semana
+
+    OJO con la tendencia semanal: agrupa por la semana en que se CREÓ el
+    requerimiento, no por cuándo se evaluó. No es un descuido — la tabla
+    mv_EvaluacionReq no guarda ninguna fecha (solo IdEvaluacion, IdReq,
+    Evaluacion y Comentario), así que la única fecha disponible es la del
+    requerimiento asociado. Para que la curva midiera de verdad la evolución
+    de la satisfacción haría falta agregar una columna de fecha a esa tabla,
+    que vive en la base de requerimientos y Django no administra.
     """
-    from datetime import date, timedelta
+    from datetime import timedelta
     from collections import defaultdict
     from requerimientos.models import EvaluacionReq
 
@@ -5808,27 +6040,29 @@ def api_indicadores_calificacion(request):
     categoria_id    = request.GET.get('categoria_id') or None
     subcategoria_id = request.GET.get('subcategoria_id') or None
 
+    # dias - 1 por la misma razón que en las otras dos funciones: los extremos
+    # se incluyen, así que "30 días" son de hoy-29 a hoy.
     fecha_fin    = date.today()
-    fecha_inicio = fecha_fin - timedelta(days=dias)
+    fecha_inicio = fecha_fin - timedelta(days=dias - 1)
 
     # 1. Requerimientos que caen en el filtro (fecha + categoría/subcategoría)
-    req_qs = (Requerimiento.objects
-              .using('requerimientos')
-              .exclude(IdEstado=5)
-              .filter(Fecha__gte=fecha_inicio, Fecha__lte=fecha_fin))
+    req_qs = _requerimientos_tic().filter(
+        Fecha__gte=fecha_inicio, Fecha__lt=_fin_exclusivo(fecha_fin))
     if categoria_id:
         req_qs = req_qs.filter(IdCategoria=categoria_id)
     if subcategoria_id:
         req_qs = req_qs.filter(IdSubCategoria=subcategoria_id)
 
-    codigos_fecha = {r.Codigo: r.Fecha for r in req_qs.only('Codigo', 'Fecha')}
-    codigos = list(codigos_fecha.keys())
-
-    # 2. Evaluaciones de esos requerimientos
+    # 2. Evaluaciones de esos requerimientos.
+    #    Se pasa una SUBCONSULTA (values('Codigo')) en vez de una lista de
+    #    códigos traída a Python. Antes cada código viajaba como un parámetro
+    #    suelto dentro del IN: con 30 días son ~100, pero con un rango de un
+    #    año pasan de 1 200 y SQL Server corta alrededor de 2 100 — la
+    #    consulta habría fallado en seco al crecer el histórico.
     evals = list(
         EvaluacionReq.objects
         .using('requerimientos')
-        .filter(IdReq__in=codigos, Evaluacion__isnull=False)
+        .filter(IdReq__in=req_qs.values('Codigo'), Evaluacion__isnull=False)
         .values('IdReq', 'Evaluacion')
     )
 
@@ -5840,7 +6074,16 @@ def api_indicadores_calificacion(request):
     for v in valores:
         distribucion[str(v)] += 1
 
-    # 3. Tendencia semanal del promedio (agrupado por semana de la fecha del requerimiento)
+    # Cuántos cerrados hay en el mismo filtro. Sirve para mostrar la cobertura
+    # del promedio: un 4,8 sacado de 5 respuestas sobre 200 cerrados no vale lo
+    # mismo que un 4,8 sacado de 180, y hasta ahora los dos se veían igual.
+    cerrados_en_rango = req_qs.filter(IdEstado__in=[4, 6]).count()
+
+    # 3. Tendencia semanal (ver la advertencia del docstring)
+    # _solo_fecha() porque values_list devuelve la columna cruda (datetime con
+    # hora): sin normalizar, dos evaluaciones de la misma semana pero a horas
+    # distintas caerían en claves de semana diferentes.
+    codigos_fecha = {c: _solo_fecha(f) for c, f in req_qs.values_list('Codigo', 'Fecha')}
     semana_map = defaultdict(list)
     for e in evals:
         val = e['Evaluacion']
@@ -5852,18 +6095,31 @@ def api_indicadores_calificacion(request):
         inicio_semana = fecha_req - timedelta(days=fecha_req.weekday())
         semana_map[inicio_semana].append(val)
 
-    tendencia = [
-        {
-            'semana':   f.strftime('%d/%m'),
-            'promedio': round(sum(vs) / len(vs), 2),
-            'cantidad': len(vs),
-        }
-        for f, vs in sorted(semana_map.items())
-    ]
+    # Se rellenan las semanas sin evaluaciones con promedio nulo. Antes solo se
+    # devolvían las semanas con datos, así que el gráfico unía dos puntos
+    # separados por meses como si fueran consecutivos.
+    tendencia = []
+    if semana_map:
+        semana = min(semana_map)
+        ultima = max(semana_map)
+        while semana <= ultima:
+            vs = semana_map.get(semana)
+            tendencia.append({
+                'semana':   semana.strftime('%d/%m'),
+                'promedio': round(sum(vs) / len(vs), 2) if vs else None,
+                'cantidad': len(vs) if vs else 0,
+            })
+            semana += timedelta(days=7)
 
     return _json_ok({
         'promedio':           promedio,
         'total_evaluaciones': total,
+        'cerrados_en_rango':  cerrados_en_rango,
         'distribucion':       distribucion,
         'tendencia':          tendencia,
+        'rango': {
+            'dias':  dias,
+            'desde': fecha_inicio.strftime('%d/%m/%Y'),
+            'hasta': fecha_fin.strftime('%d/%m/%Y'),
+        },
     })

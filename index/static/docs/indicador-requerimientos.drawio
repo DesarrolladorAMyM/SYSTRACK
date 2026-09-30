@@ -1,0 +1,384 @@
+<mxfile host="65bd71144e">
+    <diagram id="pg1" name="1. Flujo de datos">
+        <mxGraphModel dx="96600" dy="64400" grid="1" gridSize="10" guides="1" tooltips="1" connect="1" arrows="1" fold="1" page="1" pageScale="1" pageWidth="1169" pageHeight="826" math="0" shadow="0">
+            <root>
+                <mxCell id="0"/>
+                <mxCell id="1" parent="0"/>
+                <mxCell id="t1" parent="1" style="text;html=1;fontSize=20;fontStyle=1;fontColor=#1B4698;verticalAlign=middle;" value="INDICADOR DE REQUERIMIENTOS — Cómo funciona" vertex="1">
+                    <mxGeometry height="30" width="700" x="40" y="30" as="geometry"/>
+                </mxCell>
+                <mxCell id="t1b" parent="1" style="text;html=1;fontSize=12;fontColor=#55607A;" value="Estado tras la corrección del 28/09/2026. Pantalla: Indicadores. Solo cuenta requerimientos del área de TIC (Sistemas)." vertex="1">
+                    <mxGeometry height="20" width="700" x="40" y="58" as="geometry"/>
+                </mxCell>
+                <mxCell id="h1" parent="1" style="text;html=1;fontSize=11;fontStyle=1;fontColor=#8590A8;" value="BASE DE DATOS &quot;requerimientos&quot;" vertex="1">
+                    <mxGeometry height="20" width="240" x="40" y="150" as="geometry"/>
+                </mxCell>
+                <mxCell id="h2" parent="1" style="text;html=1;fontSize=11;fontStyle=1;fontColor=#8590A8;" value="DJANGO — dashboard/views.py" vertex="1">
+                    <mxGeometry height="20" width="280" x="400" y="150" as="geometry"/>
+                </mxCell>
+                <mxCell id="h3" parent="1" style="text;html=1;fontSize=11;fontStyle=1;fontColor=#8590A8;" value="NAVEGADOR — dashboard.js" vertex="1">
+                    <mxGeometry height="20" width="260" x="800" y="150" as="geometry"/>
+                </mxCell>
+                <mxCell id="filtro" parent="1" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#E2F2E8;strokeColor=#15653A;strokeWidth=2;fontSize=12;" value="&lt;b&gt;FILTROS&lt;/b&gt;  (encabezado de la pantalla)&lt;br&gt;categoría · subcategoría · rango de días" vertex="1">
+                    <mxGeometry height="44" width="660" x="400" y="90" as="geometry"/>
+                </mxCell>
+                <mxCell id="filnota" parent="1" style="text;html=1;fontSize=11;fontColor=#15653A;" value="Antes vivían dentro de la tarjeta del gráfico y el resumen ni los recibía: al cambiar un filtro las tarjetas se quedaban con los números viejos." vertex="1">
+                    <mxGeometry height="16" width="660" x="400" y="134" as="geometry"/>
+                </mxCell>
+                <mxCell id="db1" parent="1" style="shape=cylinder3;boundedLbl=1;backgroundOutline=1;size=12;whiteSpace=wrap;html=1;fillColor=#E8EEF9;strokeColor=#1B4698;fontSize=12;" value="&lt;b&gt;mv_Requerimientos&lt;/b&gt;&lt;br&gt;2 663 vigentes&lt;br&gt;&lt;font color=&quot;#15653A&quot;&gt;&lt;b&gt;2 389 son de TIC&lt;/b&gt;&lt;/font&gt;" vertex="1">
+                    <mxGeometry height="90" width="220" x="40" y="180" as="geometry"/>
+                </mxCell>
+                <mxCell id="tic" parent="1" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#E2F2E8;strokeColor=#15653A;strokeWidth=2;align=left;verticalAlign=top;spacing=10;fontSize=11;" value="&lt;b&gt;_requerimientos_tic()&lt;/b&gt;&lt;br&gt;el filtro que comparten las 3 APIs&lt;br&gt;&lt;br&gt;IdTipoReq = 4 (Sistemas)&lt;br&gt;IdEstado ≠ 5 (eliminados)&lt;br&gt;&lt;br&gt;&lt;b&gt;2 389&lt;/b&gt; de 2 663&lt;br&gt;&lt;font color=&quot;#55607A&quot; style=&quot;font-size:10px&quot;&gt;quedan fuera: SST 261 · Jurídico 13&lt;/font&gt;" vertex="1">
+                    <mxGeometry height="140" width="220" x="40" y="530" as="geometry"/>
+                </mxCell>
+                <mxCell id="db2" parent="1" style="shape=cylinder3;boundedLbl=1;backgroundOutline=1;size=12;whiteSpace=wrap;html=1;fillColor=#F0E9F8;strokeColor=#6B3FA0;fontSize=12;" value="&lt;b&gt;mv_EvaluacionReq&lt;/b&gt;&lt;br&gt;500 notas&lt;br&gt;&lt;font color=&quot;#15653A&quot;&gt;&lt;b&gt;487 son de TIC&lt;/b&gt;&lt;/font&gt;" vertex="1">
+                    <mxGeometry height="90" width="220" x="40" y="420" as="geometry"/>
+                </mxCell>
+                <mxCell id="api1" parent="1" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#FFFFFF;strokeColor=#1B4698;fontSize=12;" value="&lt;b&gt;api_indicadores_resumen&lt;/b&gt;&lt;br&gt;&lt;font color=&quot;#55607A&quot;&gt;7 tarjetas · 9 estados&lt;/font&gt;" vertex="1">
+                    <mxGeometry height="60" width="280" x="400" y="180" as="geometry"/>
+                </mxCell>
+                <mxCell id="api2" parent="1" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#FFFFFF;strokeColor=#1B4698;fontSize=12;" value="&lt;b&gt;api_indicadores_tendencia&lt;/b&gt;&lt;br&gt;&lt;font color=&quot;#55607A&quot;&gt;actividad diaria + medidor&lt;/font&gt;" vertex="1">
+                    <mxGeometry height="60" width="280" x="400" y="290" as="geometry"/>
+                </mxCell>
+                <mxCell id="api3" parent="1" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#FFFFFF;strokeColor=#6B3FA0;fontSize=12;" value="&lt;b&gt;api_indicadores_calificacion&lt;/b&gt;&lt;br&gt;&lt;font color=&quot;#55607A&quot;&gt;promedio + cobertura&lt;/font&gt;" vertex="1">
+                    <mxGeometry height="60" width="280" x="400" y="420" as="geometry"/>
+                </mxCell>
+                <mxCell id="ui1" parent="1" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#E8EEF9;strokeColor=#1B4698;fontSize=12;" value="&lt;b&gt;Resumen&lt;/b&gt;&lt;br&gt;Pendientes 37 · Cerrados 101" vertex="1">
+                    <mxGeometry height="60" width="260" x="800" y="180" as="geometry"/>
+                </mxCell>
+                <mxCell id="ui2" parent="1" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#E8EEF9;strokeColor=#1B4698;fontSize=12;" value="&lt;b&gt;Actividad diaria + medidor&lt;/b&gt;&lt;br&gt;103 entraron · 101 cerrados · 85,1 %" vertex="1">
+                    <mxGeometry height="60" width="260" x="800" y="290" as="geometry"/>
+                </mxCell>
+                <mxCell id="ui3" parent="1" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#F0E9F8;strokeColor=#6B3FA0;fontSize=12;" value="&lt;b&gt;Calificación de calidad&lt;/b&gt;&lt;br&gt;4,89 · 56 de 74 (76 %)" vertex="1">
+                    <mxGeometry height="60" width="260" x="800" y="420" as="geometry"/>
+                </mxCell>
+                <mxCell id="e1" edge="1" parent="1" source="db1" style="edgeStyle=orthogonalEdgeStyle;rounded=1;html=1;fontSize=10;strokeColor=#1B4698;" target="api1" value="SELECT + COUNT">
+                    <mxGeometry relative="1" as="geometry"/>
+                </mxCell>
+                <mxCell id="e2" edge="1" parent="1" source="db1" style="edgeStyle=orthogonalEdgeStyle;rounded=1;html=1;fontSize=10;strokeColor=#1B4698;" target="api2">
+                    <mxGeometry relative="1" as="geometry"/>
+                </mxCell>
+                <mxCell id="e3" edge="1" parent="1" source="db1" style="edgeStyle=orthogonalEdgeStyle;rounded=1;html=1;fontSize=10;strokeColor=#6B3FA0;" target="api3" value="paso 1: subconsulta">
+                    <mxGeometry relative="1" as="geometry"/>
+                </mxCell>
+                <mxCell id="e4" edge="1" parent="1" source="db2" style="edgeStyle=orthogonalEdgeStyle;rounded=1;html=1;fontSize=10;strokeColor=#6B3FA0;" target="api3" value="paso 2: notas">
+                    <mxGeometry relative="1" as="geometry"/>
+                </mxCell>
+                <mxCell id="e5" edge="1" parent="1" source="api1" style="edgeStyle=orthogonalEdgeStyle;rounded=1;html=1;fontSize=10;strokeColor=#1B4698;" target="ui1" value="JSON">
+                    <mxGeometry relative="1" as="geometry"/>
+                </mxCell>
+                <mxCell id="e6" edge="1" parent="1" source="api2" style="edgeStyle=orthogonalEdgeStyle;rounded=1;html=1;fontSize=10;strokeColor=#1B4698;" target="ui2" value="JSON">
+                    <mxGeometry relative="1" as="geometry">
+                        <Array as="points">
+                            <mxPoint x="740" y="320"/>
+                            <mxPoint x="740" y="430"/>
+                            <mxPoint x="930" y="430"/>
+                        </Array>
+                    </mxGeometry>
+                </mxCell>
+                <mxCell id="e7" edge="1" parent="1" source="api3" style="edgeStyle=orthogonalEdgeStyle;rounded=1;html=1;fontSize=10;strokeColor=#6B3FA0;" target="ui3" value="JSON">
+                    <mxGeometry relative="1" as="geometry"/>
+                </mxCell>
+                <mxCell id="ef1" edge="1" parent="1" source="filtro" style="edgeStyle=orthogonalEdgeStyle;rounded=1;html=1;strokeColor=#15653A;strokeWidth=2;dashed=1;" target="api1">
+                    <mxGeometry relative="1" as="geometry"/>
+                </mxCell>
+                <mxCell id="ef2" edge="1" parent="1" source="filtro" style="edgeStyle=orthogonalEdgeStyle;rounded=1;html=1;strokeColor=#15653A;strokeWidth=2;dashed=1;" target="api2">
+                    <mxGeometry relative="1" as="geometry"/>
+                </mxCell>
+                <mxCell id="ef3" edge="1" parent="1" source="filtro" style="edgeStyle=orthogonalEdgeStyle;rounded=1;html=1;strokeColor=#15653A;strokeWidth=2;dashed=1;" target="api3">
+                    <mxGeometry relative="1" as="geometry"/>
+                </mxCell>
+                <mxCell id="nota1" parent="1" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#FBF0DC;strokeColor=#8F5407;align=left;verticalAlign=top;spacing=10;fontSize=12;" value="&lt;b&gt;SIGUE SIN SER EN TIEMPO REAL&lt;/b&gt;&lt;br&gt;&lt;br&gt;Los datos se piden al ENTRAR a la pantalla y al CAMBIAR UN FILTRO (indAplicarFiltros).&lt;br&gt;&lt;br&gt;No hay temporizador ni recarga automática: si dejas el panel abierto, los números no se mueven aunque entren requerimientos nuevos. Para ver lo último, F5." vertex="1">
+                    <mxGeometry height="120" width="660" x="400" y="540" as="geometry"/>
+                </mxCell>
+            </root>
+        </mxGraphModel>
+    </diagram>
+    <diagram id="pg2" name="2. ANTES (ya corregido)">
+        <mxGraphModel dx="1017" dy="678" grid="1" gridSize="10" guides="1" tooltips="1" connect="1" arrows="1" fold="1" page="1" pageScale="1" pageWidth="1169" pageHeight="826" math="0" shadow="0">
+            <root>
+                <mxCell id="0"/>
+                <mxCell id="1" parent="0"/>
+                <mxCell id="t2" parent="1" style="text;html=1;fontSize=20;fontStyle=1;fontColor=#8590A8;" value="ANTES — 3 estados no llegaban a ninguna tarjeta" vertex="1">
+                    <mxGeometry height="30" width="800" x="40" y="30" as="geometry"/>
+                </mxCell>
+                <mxCell id="t2b" parent="1" style="text;html=1;fontSize=12;fontColor=#55607A;" value="Se conserva como referencia de qué se corrigió: el panel mostraba 2 654 de los 2 660 que había entonces.&lt;br&gt;&lt;b&gt;Son cifras de TODA la tabla&lt;/b&gt; — en ese momento el indicador aún no filtraba por área, así que no deben cuadrar con la página 3." vertex="1">
+                    <mxGeometry height="40" width="1000" x="40" y="58" as="geometry"/>
+                </mxCell>
+                <mxCell id="sello" parent="1" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#E2F2E8;strokeColor=#15653A;strokeWidth=2;fontSize=12;fontStyle=1;fontColor=#15653A;" value="CORREGIDO EL 28/09/2026" vertex="1">
+                    <mxGeometry height="34" width="240" x="620" y="28" as="geometry"/>
+                </mxCell>
+                <mxCell id="hA" parent="1" style="text;html=1;fontSize=11;fontStyle=1;fontColor=#8590A8;" value="ESTADO EN LA BASE (IdEstado)" vertex="1">
+                    <mxGeometry height="20" width="280" x="40" y="100" as="geometry"/>
+                </mxCell>
+                <mxCell id="hB" parent="1" style="text;html=1;fontSize=11;fontStyle=1;fontColor=#8590A8;" value="TARJETA DEL RESUMEN (solo 4)" vertex="1">
+                    <mxGeometry height="20" width="280" x="620" y="100" as="geometry"/>
+                </mxCell>
+                <mxCell id="s1" parent="1" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#F2F4F8;strokeColor=#8590A8;fontSize=12;" value="1 · Abierto  &lt;b&gt;16&lt;/b&gt;" vertex="1">
+                    <mxGeometry height="40" width="240" x="40" y="130" as="geometry"/>
+                </mxCell>
+                <mxCell id="s2" parent="1" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#F2F4F8;strokeColor=#8590A8;fontSize=12;" value="2 · Asignado  &lt;b&gt;29&lt;/b&gt;" vertex="1">
+                    <mxGeometry height="40" width="240" x="40" y="182" as="geometry"/>
+                </mxCell>
+                <mxCell id="s3" parent="1" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#F2F4F8;strokeColor=#8590A8;fontSize=12;" value="3 · En Proceso  &lt;b&gt;0&lt;/b&gt;" vertex="1">
+                    <mxGeometry height="40" width="240" x="40" y="234" as="geometry"/>
+                </mxCell>
+                <mxCell id="s4" parent="1" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#F2F4F8;strokeColor=#8590A8;fontSize=12;" value="4 · Cerrado  &lt;b&gt;145&lt;/b&gt;" vertex="1">
+                    <mxGeometry height="40" width="240" x="40" y="286" as="geometry"/>
+                </mxCell>
+                <mxCell id="s6" parent="1" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#F2F4F8;strokeColor=#8590A8;fontSize=12;" value="6 · Calificado  &lt;b&gt;2 464&lt;/b&gt;" vertex="1">
+                    <mxGeometry height="40" width="240" x="40" y="338" as="geometry"/>
+                </mxCell>
+                <mxCell id="s5" parent="1" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#F2F4F8;strokeColor=#8590A8;fontSize=12;dashed=1;" value="5 · Eliminado  &lt;b&gt;0&lt;/b&gt;" vertex="1">
+                    <mxGeometry height="40" width="240" x="40" y="390" as="geometry"/>
+                </mxCell>
+                <mxCell id="s7" parent="1" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#FBE9E6;strokeColor=#A8261C;strokeWidth=2;fontSize=12;" value="7 · Pendiente Aprobación  &lt;b&gt;6&lt;/b&gt;" vertex="1">
+                    <mxGeometry height="40" width="240" x="40" y="460" as="geometry"/>
+                </mxCell>
+                <mxCell id="s8" parent="1" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#FBE9E6;strokeColor=#A8261C;strokeWidth=2;fontSize=12;" value="8 · Rechazado  &lt;b&gt;0&lt;/b&gt;" vertex="1">
+                    <mxGeometry height="40" width="240" x="40" y="512" as="geometry"/>
+                </mxCell>
+                <mxCell id="s9" parent="1" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#FBE9E6;strokeColor=#A8261C;strokeWidth=2;fontSize=12;" value="9 · Requiere corrección  &lt;b&gt;0&lt;/b&gt;" vertex="1">
+                    <mxGeometry height="40" width="240" x="40" y="564" as="geometry"/>
+                </mxCell>
+                <mxCell id="c1" parent="1" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#FFFFFF;strokeColor=#8590A8;fontSize=12;" value="Sin asignar  &lt;b&gt;16&lt;/b&gt;" vertex="1">
+                    <mxGeometry height="40" width="240" x="620" y="130" as="geometry"/>
+                </mxCell>
+                <mxCell id="c2" parent="1" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#FFFFFF;strokeColor=#8590A8;fontSize=12;" value="Asignados  &lt;b&gt;29&lt;/b&gt;" vertex="1">
+                    <mxGeometry height="40" width="240" x="620" y="182" as="geometry"/>
+                </mxCell>
+                <mxCell id="c3" parent="1" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#FFFFFF;strokeColor=#8590A8;fontSize=12;" value="En proceso  &lt;b&gt;0&lt;/b&gt;" vertex="1">
+                    <mxGeometry height="40" width="240" x="620" y="234" as="geometry"/>
+                </mxCell>
+                <mxCell id="c4" parent="1" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#FFFFFF;strokeColor=#8590A8;fontSize=12;" value="Finalizados  &lt;b&gt;2 609&lt;/b&gt;" vertex="1">
+                    <mxGeometry height="40" width="240" x="620" y="312" as="geometry"/>
+                </mxCell>
+                <mxCell id="nada" parent="1" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#FBE9E6;strokeColor=#A8261C;strokeWidth=2;fontSize=12;dashed=1;" value="&lt;b&gt;NINGUNA TARJETA&lt;/b&gt;&lt;br&gt;6 requerimientos invisibles" vertex="1">
+                    <mxGeometry height="80" width="240" x="620" y="492" as="geometry"/>
+                </mxCell>
+                <mxCell id="exc" parent="1" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#F2F4F8;strokeColor=#8590A8;fontSize=11;dashed=1;" value="Excluido a propósito (correcto)" vertex="1">
+                    <mxGeometry height="40" width="240" x="620" y="390" as="geometry"/>
+                </mxCell>
+                <mxCell id="a1" edge="1" parent="1" source="s1" style="edgeStyle=orthogonalEdgeStyle;rounded=1;html=1;strokeColor=#8590A8;" target="c1">
+                    <mxGeometry relative="1" as="geometry"/>
+                </mxCell>
+                <mxCell id="a2" edge="1" parent="1" source="s2" style="edgeStyle=orthogonalEdgeStyle;rounded=1;html=1;strokeColor=#8590A8;" target="c2">
+                    <mxGeometry relative="1" as="geometry"/>
+                </mxCell>
+                <mxCell id="a3" edge="1" parent="1" source="s3" style="edgeStyle=orthogonalEdgeStyle;rounded=1;html=1;strokeColor=#8590A8;" target="c3">
+                    <mxGeometry relative="1" as="geometry"/>
+                </mxCell>
+                <mxCell id="a4" edge="1" parent="1" source="s4" style="edgeStyle=orthogonalEdgeStyle;rounded=1;html=1;strokeColor=#8590A8;" target="c4">
+                    <mxGeometry relative="1" as="geometry"/>
+                </mxCell>
+                <mxCell id="a6" edge="1" parent="1" source="s6" style="edgeStyle=orthogonalEdgeStyle;rounded=1;html=1;strokeColor=#8590A8;" target="c4">
+                    <mxGeometry relative="1" as="geometry"/>
+                </mxCell>
+                <mxCell id="a5" edge="1" parent="1" source="s5" style="edgeStyle=orthogonalEdgeStyle;rounded=1;html=1;strokeColor=#8590A8;dashed=1;endArrow=none;" target="exc">
+                    <mxGeometry relative="1" as="geometry"/>
+                </mxCell>
+                <mxCell id="a7" edge="1" parent="1" source="s7" style="edgeStyle=orthogonalEdgeStyle;rounded=1;html=1;strokeColor=#A8261C;strokeWidth=2;" target="nada">
+                    <mxGeometry relative="1" as="geometry"/>
+                </mxCell>
+                <mxCell id="a8" edge="1" parent="1" source="s8" style="edgeStyle=orthogonalEdgeStyle;rounded=1;html=1;strokeColor=#A8261C;strokeWidth=2;" target="nada">
+                    <mxGeometry relative="1" as="geometry"/>
+                </mxCell>
+                <mxCell id="a9" edge="1" parent="1" source="s9" style="edgeStyle=orthogonalEdgeStyle;rounded=1;html=1;strokeColor=#A8261C;strokeWidth=2;" target="nada">
+                    <mxGeometry relative="1" as="geometry"/>
+                </mxCell>
+                <mxCell id="n2" parent="1" style="text;html=1;fontSize=12;fontColor=#A8261C;fontStyle=1" value="El gráfico tenía el mismo agujero: de 100 requerimientos creados en 30 días, solo dibujaba 94." vertex="1">
+                    <mxGeometry height="20" width="820" x="40" y="630" as="geometry"/>
+                </mxCell>
+            </root>
+        </mxGraphModel>
+    </diagram>
+    <diagram id="pg3" name="3. AHORA — los 9 estados">
+        <mxGraphModel dx="1136" dy="758" grid="1" gridSize="10" guides="1" tooltips="1" connect="1" arrows="1" fold="1" page="1" pageScale="1" pageWidth="1169" pageHeight="826" math="0" shadow="0">
+            <root>
+                <mxCell id="0"/>
+                <mxCell id="1" parent="0"/>
+                <mxCell id="t3" parent="1" style="text;html=1;fontSize=20;fontStyle=1;fontColor=#15653A;" value="AHORA — los 9 estados representados" vertex="1">
+                    <mxGeometry height="30" width="800" x="40" y="30" as="geometry"/>
+                </mxCell>
+                <mxCell id="t3b" parent="1" style="text;html=1;fontSize=12;fontColor=#55607A;" value="Implementado y verificado contra la base: 37 pendientes + 2 352 histórico = 2 389, el total exacto de los requerimientos vigentes de TIC." vertex="1">
+                    <mxGeometry height="20" width="900" x="40" y="58" as="geometry"/>
+                </mxCell>
+                <mxCell id="gA" parent="1" style="rounded=1;whiteSpace=wrap;html=1;fillColor=none;strokeColor=#1B4698;dashed=1;verticalAlign=top;align=left;spacing=8;fontSize=11;fontStyle=1;fontColor=#1B4698;" value="GRUPO 1 — PENDIENTES · foto de HOY (el rango de días NO aplica)" vertex="1">
+                    <mxGeometry height="320" width="300" x="600" y="110" as="geometry"/>
+                </mxCell>
+                <mxCell id="gB" parent="1" style="rounded=1;whiteSpace=wrap;html=1;fillColor=none;strokeColor=#15653A;dashed=1;verticalAlign=top;align=left;spacing=8;fontSize=11;fontStyle=1;fontColor=#15653A;" value="GRUPO 2 — CERRADOS · 30/08/2026 – 28/09/2026" vertex="1">
+                    <mxGeometry height="220" width="300" x="600" y="450" as="geometry"/>
+                </mxCell>
+                <mxCell id="p1" parent="1" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#E8EEF9;strokeColor=#1B4698;fontSize=12;" value="1 · Abierto &lt;b&gt;0&lt;/b&gt;" vertex="1">
+                    <mxGeometry height="40" width="230" x="40" y="140" as="geometry"/>
+                </mxCell>
+                <mxCell id="p2" parent="1" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#E8EEF9;strokeColor=#1B4698;fontSize=12;" value="2 · Asignado &lt;b&gt;31&lt;/b&gt;" vertex="1">
+                    <mxGeometry height="40" width="230" x="40" y="192" as="geometry"/>
+                </mxCell>
+                <mxCell id="p3" parent="1" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#E8EEF9;strokeColor=#1B4698;fontSize=12;" value="3 · En Proceso &lt;b&gt;0&lt;/b&gt;" vertex="1">
+                    <mxGeometry height="40" width="230" x="40" y="244" as="geometry"/>
+                </mxCell>
+                <mxCell id="p7" parent="1" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#E2F2E8;strokeColor=#15653A;strokeWidth=2;fontSize=12;" value="7 · Pendiente Aprobación &lt;b&gt;6&lt;/b&gt;" vertex="1">
+                    <mxGeometry height="40" width="230" x="40" y="296" as="geometry"/>
+                </mxCell>
+                <mxCell id="p9" parent="1" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#E2F2E8;strokeColor=#15653A;strokeWidth=2;fontSize=12;" value="9 · Requiere corrección &lt;b&gt;0&lt;/b&gt;" vertex="1">
+                    <mxGeometry height="40" width="230" x="40" y="348" as="geometry"/>
+                </mxCell>
+                <mxCell id="p4" parent="1" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#E2F2E8;strokeColor=#15653A;fontSize=12;" value="4 · Cerrado" vertex="1">
+                    <mxGeometry height="40" width="230" x="40" y="450" as="geometry"/>
+                </mxCell>
+                <mxCell id="p6" parent="1" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#E2F2E8;strokeColor=#15653A;fontSize=12;" value="6 · Calificado" vertex="1">
+                    <mxGeometry height="40" width="230" x="40" y="502" as="geometry"/>
+                </mxCell>
+                <mxCell id="p8" parent="1" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#E2F2E8;strokeColor=#15653A;strokeWidth=2;fontSize=12;" value="8 · Rechazado &lt;b&gt;0&lt;/b&gt;" vertex="1">
+                    <mxGeometry height="40" width="230" x="40" y="554" as="geometry"/>
+                </mxCell>
+                <mxCell id="p5" parent="1" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#F2F4F8;strokeColor=#8590A8;dashed=1;fontSize=12;" value="5 · Eliminado &lt;b&gt;0&lt;/b&gt;" vertex="1">
+                    <mxGeometry height="40" width="230" x="40" y="640" as="geometry"/>
+                </mxCell>
+                <mxCell id="k1" parent="1" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#FFFFFF;strokeColor=#1B4698;fontSize=12;" value="Sin asignar &lt;b&gt;0&lt;/b&gt;&lt;br&gt;&lt;font color=&quot;#8590A8&quot; style=&quot;font-size:10px&quot;&gt;los 16 de antes eran de SST y Jurídica&lt;/font&gt;" vertex="1">
+                    <mxGeometry height="40" width="250" x="625" y="145" as="geometry"/>
+                </mxCell>
+                <mxCell id="k2" parent="1" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#FFFFFF;strokeColor=#1B4698;fontSize=12;" value="Asignados &lt;b&gt;31&lt;/b&gt;" vertex="1">
+                    <mxGeometry height="40" width="250" x="625" y="197" as="geometry"/>
+                </mxCell>
+                <mxCell id="k3" parent="1" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#FFFFFF;strokeColor=#1B4698;fontSize=12;" value="En proceso &lt;b&gt;0&lt;/b&gt;" vertex="1">
+                    <mxGeometry height="40" width="250" x="625" y="249" as="geometry"/>
+                </mxCell>
+                <mxCell id="k7" parent="1" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#E2F2E8;strokeColor=#15653A;strokeWidth=2;fontSize=12;" value="Pendiente aprobación &lt;b&gt;6&lt;/b&gt;&lt;br&gt;&lt;font color=&quot;#15653A&quot; style=&quot;font-size:10px&quot;&gt;NUEVA — antes invisible&lt;/font&gt;" vertex="1">
+                    <mxGeometry height="40" width="250" x="625" y="301" as="geometry"/>
+                </mxCell>
+                <mxCell id="k9" parent="1" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#E2F2E8;strokeColor=#15653A;strokeWidth=2;fontSize=12;" value="Requiere corrección &lt;b&gt;0&lt;/b&gt;&lt;br&gt;&lt;font color=&quot;#15653A&quot; style=&quot;font-size:10px&quot;&gt;NUEVA&lt;/font&gt;" vertex="1">
+                    <mxGeometry height="40" width="250" x="625" y="353" as="geometry"/>
+                </mxCell>
+                <mxCell id="ktot" parent="1" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#E8EEF9;strokeColor=#1B4698;strokeWidth=2;fontSize=12;fontStyle=1" value="TOTAL PENDIENTES &lt;b&gt;37&lt;/b&gt;" vertex="1">
+                    <mxGeometry height="30" width="250" x="625" y="393" as="geometry"/>
+                </mxCell>
+                <mxCell id="k4" parent="1" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#FFFFFF;strokeColor=#15653A;fontSize=12;" value="Finalizados &lt;b&gt;101&lt;/b&gt;" vertex="1">
+                    <mxGeometry height="40" width="250" x="625" y="485" as="geometry"/>
+                </mxCell>
+                <mxCell id="k8" parent="1" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#E2F2E8;strokeColor=#15653A;strokeWidth=2;fontSize=12;" value="Rechazados &lt;b&gt;0&lt;/b&gt;&lt;br&gt;&lt;font color=&quot;#15653A&quot; style=&quot;font-size:10px&quot;&gt;NUEVA&lt;/font&gt;" vertex="1">
+                    <mxGeometry height="40" width="250" x="625" y="537" as="geometry"/>
+                </mxCell>
+                <mxCell id="khist" parent="1" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#F2F4F8;strokeColor=#8590A8;fontSize=12;" value="Finalizados histórico &lt;b&gt;2 352&lt;/b&gt;&lt;br&gt;&lt;font color=&quot;#8590A8&quot; style=&quot;font-size:10px&quot;&gt;referencia, sin recorte de fecha&lt;/font&gt;" vertex="1">
+                    <mxGeometry height="40" width="250" x="625" y="589" as="geometry"/>
+                </mxCell>
+                <mxCell id="k5" parent="1" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#F2F4F8;strokeColor=#8590A8;dashed=1;fontSize=11;" value="No se cuenta (correcto)" vertex="1">
+                    <mxGeometry height="40" width="250" x="625" y="640" as="geometry"/>
+                </mxCell>
+                <mxCell id="b1" edge="1" parent="1" source="p1" style="edgeStyle=orthogonalEdgeStyle;rounded=1;html=1;strokeColor=#1B4698;" target="k1">
+                    <mxGeometry relative="1" as="geometry"/>
+                </mxCell>
+                <mxCell id="b2" edge="1" parent="1" source="p2" style="edgeStyle=orthogonalEdgeStyle;rounded=1;html=1;strokeColor=#1B4698;" target="k2">
+                    <mxGeometry relative="1" as="geometry"/>
+                </mxCell>
+                <mxCell id="b3" edge="1" parent="1" source="p3" style="edgeStyle=orthogonalEdgeStyle;rounded=1;html=1;strokeColor=#1B4698;" target="k3">
+                    <mxGeometry relative="1" as="geometry"/>
+                </mxCell>
+                <mxCell id="b7" edge="1" parent="1" source="p7" style="edgeStyle=orthogonalEdgeStyle;rounded=1;html=1;strokeColor=#15653A;strokeWidth=2;" target="k7">
+                    <mxGeometry relative="1" as="geometry"/>
+                </mxCell>
+                <mxCell id="b9" edge="1" parent="1" source="p9" style="edgeStyle=orthogonalEdgeStyle;rounded=1;html=1;strokeColor=#15653A;strokeWidth=2;" target="k9">
+                    <mxGeometry relative="1" as="geometry"/>
+                </mxCell>
+                <mxCell id="b4" edge="1" parent="1" source="p4" style="edgeStyle=orthogonalEdgeStyle;rounded=1;html=1;strokeColor=#15653A;" target="k4">
+                    <mxGeometry relative="1" as="geometry"/>
+                </mxCell>
+                <mxCell id="b6" edge="1" parent="1" source="p6" style="edgeStyle=orthogonalEdgeStyle;rounded=1;html=1;strokeColor=#15653A;" target="k4">
+                    <mxGeometry relative="1" as="geometry"/>
+                </mxCell>
+                <mxCell id="b8" edge="1" parent="1" source="p8" style="edgeStyle=orthogonalEdgeStyle;rounded=1;html=1;strokeColor=#15653A;strokeWidth=2;" target="k8">
+                    <mxGeometry relative="1" as="geometry"/>
+                </mxCell>
+                <mxCell id="b5" edge="1" parent="1" source="p5" style="edgeStyle=orthogonalEdgeStyle;rounded=1;html=1;strokeColor=#8590A8;dashed=1;endArrow=none;" target="k5">
+                    <mxGeometry relative="1" as="geometry"/>
+                </mxCell>
+                <mxCell id="reg" parent="1" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#E8EEF9;strokeColor=#1B4698;align=left;verticalAlign=top;spacing=10;fontSize=12;" value="&lt;b&gt;REGLAS&lt;/b&gt;&lt;br&gt;&lt;br&gt;Categoría y subcategoría filtran TODAS las tarjetas.&lt;br&gt;&lt;br&gt;El rango de días solo afecta al Grupo 2, para que un requerimiento viejo sin asignar nunca desaparezca del panel.&lt;br&gt;&lt;br&gt;Los cerrados se ubican por FechaRealSolucion, no por la de creación.&lt;br&gt;&lt;br&gt;&lt;b&gt;Todas las tarjetas cuentan solo el área de TIC&lt;/b&gt; (IdTipoReq = 4). SST y Jurídica comparten la misma tabla y quedan fuera." vertex="1">
+                    <mxGeometry height="290" width="240" x="320" y="140" as="geometry"/>
+                </mxCell>
+                <mxCell id="sum" parent="1" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#E2F2E8;strokeColor=#15653A;strokeWidth=2;fontSize=14;" value="&lt;b&gt;9 estados&lt;br&gt;7 tarjetas&lt;br&gt;0 ocultos&lt;/b&gt;&lt;br&gt;&lt;br&gt;&lt;font style=&quot;font-size:11px&quot;&gt;37 + 2 352 = 2 389&lt;br&gt;coincide con la base&lt;/font&gt;" vertex="1">
+                    <mxGeometry height="130" width="240" x="320" y="450" as="geometry"/>
+                </mxCell>
+            </root>
+        </mxGraphModel>
+    </diagram>
+    <diagram id="pg4" name="4. Gráfico y medidor AHORA">
+        <mxGraphModel dx="1017" dy="678" grid="1" gridSize="10" guides="1" tooltips="1" connect="1" arrows="1" fold="1" page="1" pageScale="1" pageWidth="1169" pageHeight="826" math="0" shadow="0">
+            <root>
+                <mxCell id="0"/>
+                <mxCell id="1" parent="0"/>
+                <mxCell id="t4" parent="1" style="text;html=1;fontSize=20;fontStyle=1;fontColor=#1B4698;" value="EL GRÁFICO Y EL MEDIDOR — antes y después" vertex="1">
+                    <mxGeometry height="30" width="800" x="40" y="30" as="geometry"/>
+                </mxCell>
+                <mxCell id="g1" parent="1" style="text;html=1;fontSize=13;fontStyle=1;fontColor=#55607A;" value="EL GRÁFICO" vertex="1">
+                    <mxGeometry height="20" width="900" x="40" y="90" as="geometry"/>
+                </mxCell>
+                <mxCell id="ga" parent="1" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#F2F4F8;strokeColor=#8590A8;align=left;verticalAlign=top;spacing=10;fontSize=12;" value="&lt;b&gt;ANTES — &quot;Tendencia de cumplimiento&quot;&lt;/b&gt;&lt;br&gt;&lt;br&gt;Agrupaba por fecha de CREACIÓN y coloreaba por el estado de HOY.&lt;br&gt;&lt;br&gt;La barra del 5/09 significaba &quot;de los creados ese día, cuántos están hoy cerrados&quot;. No decía qué pasó ese día.&lt;br&gt;&lt;br&gt;Además ignoraba los estados 7, 8 y 9: dibujaba 94 de los 100 de entonces." vertex="1">
+                    <mxGeometry height="180" width="440" x="40" y="115" as="geometry"/>
+                </mxCell>
+                <mxCell id="gb" parent="1" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#E2F2E8;strokeColor=#15653A;strokeWidth=2;align=left;verticalAlign=top;spacing=10;fontSize=12;" value="&lt;b&gt;AHORA — &quot;Actividad diaria&quot;&lt;/b&gt;&lt;br&gt;&lt;br&gt;Cada barra cruza dos hechos del mismo día:&lt;br&gt;■ cuántos ENTRARON (por Fecha)&lt;br&gt;■ cuántos se CERRARON (por FechaRealSolucion)&lt;br&gt;&lt;br&gt;Un requerimiento aparece dos veces: el día que entró y el día que se cerró.&lt;br&gt;&lt;br&gt;Responde: ¿cerramos más de lo que entra?" vertex="1">
+                    <mxGeometry height="180" width="440" x="540" y="115" as="geometry"/>
+                </mxCell>
+                <mxCell id="bal" parent="1" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#FFFFFF;strokeColor=#15653A;fontSize=13;" value="Balance que muestra la pantalla:  Entraron &lt;b&gt;103&lt;/b&gt;  ·  Cerrados &lt;b&gt;101&lt;/b&gt;  ·  &lt;font color=&quot;#A8261C&quot;&gt;&lt;b&gt;(−2)&lt;/b&gt;&lt;/font&gt;&lt;br&gt;&lt;font color=&quot;#55607A&quot; style=&quot;font-size:10px&quot;&gt;en el mes entraron 2 más de los que se alcanzaron a cerrar: la cola de pendientes creció en 2&lt;/font&gt;" vertex="1">
+                    <mxGeometry height="50" width="440" x="540" y="305" as="geometry"/>
+                </mxCell>
+                <mxCell id="g2" parent="1" style="text;html=1;fontSize=13;fontStyle=1;fontColor=#55607A;" value="EL MEDIDOR DE CUMPLIMIENTO" vertex="1">
+                    <mxGeometry height="20" width="900" x="40" y="370" as="geometry"/>
+                </mxCell>
+                <mxCell id="v1" parent="1" style="ellipse;whiteSpace=wrap;html=1;fillColor=#F2F4F8;strokeColor=#8590A8;opacity=70;fontSize=13;verticalAlign=middle;align=left;spacingLeft=20;" value="Creados en el rango&lt;br&gt;&lt;b&gt;103&lt;/b&gt;" vertex="1">
+                    <mxGeometry height="200" width="260" x="80" y="400" as="geometry"/>
+                </mxCell>
+                <mxCell id="v2" parent="1" style="ellipse;whiteSpace=wrap;html=1;fillColor=#E2F2E8;strokeColor=#15653A;strokeWidth=2;opacity=70;fontSize=13;verticalAlign=middle;align=right;spacingRight=20;" value="Cerrados en el rango&lt;br&gt;&lt;b&gt;101&lt;/b&gt;" vertex="1">
+                    <mxGeometry height="200" width="260" x="260" y="400" as="geometry"/>
+                </mxCell>
+                <mxCell id="v3" parent="1" style="text;html=1;fontSize=12;align=center;fontStyle=1;fontColor=#8590A8;" value="&lt;b&gt;74&lt;/b&gt;&lt;br&gt;medía antes" vertex="1">
+                    <mxGeometry height="40" width="80" x="270" y="485" as="geometry"/>
+                </mxCell>
+                <mxCell id="ma" parent="1" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#F2F4F8;strokeColor=#8590A8;align=left;verticalAlign=top;spacing=10;fontSize=12;" value="&lt;b&gt;ANTES&lt;/b&gt;&lt;br&gt;Base: creados en el rango que además estaban cerrados = &lt;b&gt;74&lt;/b&gt;.&lt;br&gt;Ignoraba 27 que se cerraron dentro del período pero entraron antes — los que MÁS tardaron. El porcentaje salía inflado." vertex="1">
+                    <mxGeometry height="95" width="420" x="560" y="400" as="geometry"/>
+                </mxCell>
+                <mxCell id="mb" parent="1" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#E2F2E8;strokeColor=#15653A;strokeWidth=2;align=left;verticalAlign=top;spacing=10;fontSize=12;" value="&lt;b&gt;AHORA&lt;/b&gt;&lt;br&gt;Base: lo cerrado dentro del rango por FechaRealSolucion = &lt;b&gt;101&lt;/b&gt;.&lt;br&gt;Resultado real: &lt;b&gt;85,1 %&lt;/b&gt;  (86 a tiempo de 101).&lt;br&gt;Los cerrados sin fecha estimada salen del cálculo y se avisan aparte, en vez de hundir el porcentaje en silencio." vertex="1">
+                    <mxGeometry height="115" width="420" x="560" y="505" as="geometry"/>
+                </mxCell>
+                <mxCell id="ot" parent="1" style="text;html=1;fontSize=11;fontColor=#55607A;" value="Otros arreglos:  &quot;Últimos 30 días&quot; ahora son 30 exactos (antes 31)  ·  el conteo ya no trae las filas completas a memoria" vertex="1">
+                    <mxGeometry height="20" width="1000" x="40" y="640" as="geometry"/>
+                </mxCell>
+            </root>
+        </mxGraphModel>
+    </diagram>
+    <diagram id="pg5" name="5. Trampas de la BD">
+        <mxGraphModel dx="1208" dy="805" grid="1" gridSize="10" guides="1" tooltips="1" connect="1" arrows="1" fold="1" page="1" pageScale="1" pageWidth="1169" pageHeight="826" math="0" shadow="0">
+            <root>
+                <mxCell id="0"/>
+                <mxCell id="1" parent="0"/>
+                <mxCell id="t5" parent="1" style="text;html=1;fontSize=20;fontStyle=1;fontColor=#8F5407;" value="TRAMPAS DE LA BASE DE DATOS — leer antes de tocar estas fechas" vertex="1">
+                    <mxGeometry height="30" width="900" x="40" y="30" as="geometry"/>
+                </mxCell>
+                <mxCell id="t5b" parent="1" style="text;html=1;fontSize=12;fontColor=#55607A;" value="Cuatro fallos que aparecieron al programar, no en la lectura del código. Quedan documentados para quien toque esto después." vertex="1">
+                    <mxGeometry height="20" width="900" x="40" y="58" as="geometry"/>
+                </mxCell>
+                <mxCell id="x1" parent="1" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#FBF0DC;strokeColor=#8F5407;align=left;verticalAlign=top;spacing=12;fontSize=12;" value="&lt;b&gt;1 · El modelo miente sobre el tipo&lt;/b&gt;&lt;br&gt;&lt;br&gt;Fecha y FechaRealSolucion están declaradas como DateField, pero las columnas en SQL Server son &lt;b&gt;datetime&lt;/b&gt; y muchas filas traen hora distinta de medianoche.&lt;br&gt;&lt;br&gt;Al leerlas con values() no se construye la instancia del modelo, así que llegan como datetime y NO coinciden con una clave de tipo date: la serie salía entera en ceros.&lt;br&gt;&lt;br&gt;&lt;i&gt;Solución: _solo_fecha()&lt;/i&gt;" vertex="1">
+                    <mxGeometry height="250" width="320" x="40" y="100" as="geometry"/>
+                </mxCell>
+                <mxCell id="x2" parent="1" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#FBF0DC;strokeColor=#8F5407;align=left;verticalAlign=top;spacing=12;fontSize=12;" value="&lt;b&gt;2 · El filtro cortaba a medianoche&lt;/b&gt;&lt;br&gt;&lt;br&gt;Comparar &quot;Fecha &amp;lt;= hoy&quot; contra una columna datetime deja el corte en las 00:00 de hoy.&lt;br&gt;&lt;br&gt;Todo lo registrado hoy después de medianoche se quedaba fuera del rango, sin ningún aviso.&lt;br&gt;&lt;br&gt;&lt;i&gt;Solución: _fin_exclusivo() — se compara contra el día siguiente con &amp;lt; en vez de &amp;lt;=&lt;/i&gt;" vertex="1">
+                    <mxGeometry height="250" width="320" x="400" y="100" as="geometry"/>
+                </mxCell>
+                <mxCell id="x3" parent="1" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#FBF0DC;strokeColor=#8F5407;align=left;verticalAlign=top;spacing=12;fontSize=12;" value="&lt;b&gt;3 · &quot;A tiempo&quot; comparaba la hora&lt;/b&gt;&lt;br&gt;&lt;br&gt;FechaRealSolucion &amp;lt;= FechaEstiSolucion sobre dos datetime: algo resuelto el MISMO día del plazo a las 15:00 quedaba por encima de ese día a medianoche y contaba como fuera de plazo.&lt;br&gt;&lt;br&gt;&lt;i&gt;Solución: TruncDate en ambas, para comparar solo días&lt;/i&gt;" vertex="1">
+                    <mxGeometry height="250" width="320" x="760" y="100" as="geometry"/>
+                </mxCell>
+                <mxCell id="pend" parent="1" style="text;html=1;fontSize=13;fontStyle=1;fontColor=#A8261C;" value="&lt;b&gt;LO QUE SIGUE PENDIENTE — no se arregla programando&lt;/b&gt;" vertex="1">
+                    <mxGeometry height="20" width="900" x="40" y="400" as="geometry"/>
+                </mxCell>
+                <mxCell id="y1" parent="1" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#FBE9E6;strokeColor=#A8261C;align=left;verticalAlign=top;spacing=12;fontSize=12;" value="&lt;b&gt;&quot;En proceso&quot; seguirá en 0&lt;/b&gt;&lt;br&gt;&lt;br&gt;El estado 3 solo se activa cuando un técnico guarda un Plan de acción, y nadie lo ha usado nunca: jamás ha habido un requerimiento en ese estado.&lt;br&gt;&lt;br&gt;El botón &quot;Solucionar&quot; lleva de Asignado (2) directo a Cerrado (4).&lt;br&gt;&lt;br&gt;&lt;b&gt;Es capacitación del equipo técnico, no programación.&lt;/b&gt;" vertex="1">
+                    <mxGeometry height="200" width="500" x="40" y="430" as="geometry"/>
+                </mxCell>
+                <mxCell id="x4" parent="1" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#FBF0DC;strokeColor=#8F5407;align=left;verticalAlign=top;spacing=12;fontSize=12;" value="&lt;b&gt;4 · Filtrar TIC por categoría esconde su propio histórico&lt;/b&gt;&lt;br&gt;&lt;br&gt;La constante &lt;b&gt;CATEGORIAS_TIC = [36, 37, 38]&lt;/b&gt; existe para que un requerimiento NUEVO no se clasifique mal. Sirve para eso, no para medir el pasado.&lt;br&gt;&lt;br&gt;Filtrar el panel con ella dejaba fuera &lt;b&gt;1 069 requerimientos que SÍ son de TIC&lt;/b&gt;, registrados bajo categorías ya retiradas: Soporte técnico 410 · Temas Varios 270 · Soporte VPN 140 · SIESA 72 · Análisis de Datos 62 · otras 115.&lt;br&gt;&lt;br&gt;&lt;i&gt;Solución: filtrar por IdTipoReq = 4, que es el ÁREA y no cambia cuando se reorganizan las categorías.&lt;/i&gt;" vertex="1">
+                    <mxGeometry height="170" width="1040" x="40" y="648" as="geometry"/>
+                </mxCell>
+                <mxCell id="y2" parent="1" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#FBE9E6;strokeColor=#A8261C;align=left;verticalAlign=top;spacing=12;fontSize=12;" value="&lt;b&gt;La curva semanal de calificación&lt;/b&gt;&lt;br&gt;&lt;br&gt;mv_EvaluacionReq no tiene columna de fecha, así que la semana se toma de la fecha del requerimiento.&lt;br&gt;&lt;br&gt;Ahora el título lo dice claro (&quot;Promedio por semana de ingreso&quot;) en vez de aparentar otra cosa, pero medir la evolución real de la satisfacción exigiría &lt;b&gt;agregar una columna a esa tabla&lt;/b&gt;.&lt;br&gt;&lt;br&gt;&lt;i&gt;Ver el archivo indicador-calificacion.drawio&lt;/i&gt;" vertex="1">
+                    <mxGeometry height="200" width="500" x="580" y="430" as="geometry"/>
+                </mxCell>
+            </root>
+        </mxGraphModel>
+    </diagram>
+</mxfile>

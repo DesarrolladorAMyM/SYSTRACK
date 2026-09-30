@@ -7304,26 +7304,56 @@ let indCalifDistChartInst      = null;
 let indCategoriasCache        = [];
 
 async function cargarIndicadores() {
-  // 1. Resumen (tarjetas)
-  indCargarResumen();
-
-  // 2. Poblar categorías (solo la primera vez)
+  // Poblar categorías primero (solo la primera vez), para que el primer
+  // indAplicarFiltros() ya lea un desplegable con valores.
   if (!indCategoriasCache.length) {
     await indCargarCategorias();
   }
-
-  // 3. Tendencia + gauge
-  indCargarTendencia();
+  indAplicarFiltros();
 }
 
-async function indCargarResumen() {
-  const res = await apiFetch(`${BASE}/inventario/api/indicadores/resumen/`);
+// Filtros vigentes de la pantalla. Los tres bloques (resumen, actividad y
+// calificación) leen de aquí, así que ninguno puede quedarse con un filtro
+// distinto del que muestra la pantalla.
+function indFiltrosActuales() {
+  const params = new URLSearchParams({
+    dias: document.getElementById('ind-f-dias').value || '30',
+  });
+  const cat = document.getElementById('ind-f-categoria').value;
+  const sub = document.getElementById('ind-f-subcategoria').value;
+  if (cat) params.set('categoria_id', cat);
+  if (sub) params.set('subcategoria_id', sub);
+  return params;
+}
+
+// Punto único de recarga. Antes el resumen se pedía una sola vez al entrar y
+// sin parámetros: al cambiar un filtro, el gráfico se actualizaba y las
+// tarjetas se quedaban con los números anteriores, como si estuvieran rotas.
+function indAplicarFiltros() {
+  const params = indFiltrosActuales();
+  indCargarResumen(params);
+  indCargarTendencia(params);
+  indCargarCalificacion(params);
+}
+
+async function indCargarResumen(params) {
+  params = params || indFiltrosActuales();
+  const res = await apiFetch(`${BASE}/inventario/api/indicadores/resumen/?${params}`);
   if (!res.ok) return;
   const d = res.data;
-  document.getElementById('ind-r-asignados').textContent   = d.asignados;
-  document.getElementById('ind-r-sinasignar').textContent  = d.sin_asignar;
-  document.getElementById('ind-r-enproceso').textContent   = d.en_proceso;
-  document.getElementById('ind-r-finalizados').textContent = d.finalizados;
+
+  document.getElementById('ind-r-sinasignar').textContent = d.pendientes.sin_asignar;
+  document.getElementById('ind-r-asignados').textContent  = d.pendientes.asignados;
+  document.getElementById('ind-r-enproceso').textContent  = d.pendientes.en_proceso;
+  document.getElementById('ind-r-aprobacion').textContent = d.pendientes.aprobacion;
+  document.getElementById('ind-r-correccion').textContent = d.pendientes.correccion;
+
+  document.getElementById('ind-r-finalizados').textContent = d.cerrados.finalizados;
+  document.getElementById('ind-r-rechazados').textContent  = d.cerrados.rechazados;
+  document.getElementById('ind-r-historico').textContent   = d.finalizados_historico;
+
+  document.getElementById('ind-r-alcance').textContent =
+    `${d.rango.desde} – ${d.rango.hasta}`;
 }
 
 async function indCargarCategorias() {
@@ -7341,7 +7371,7 @@ async function indOnCategoriaChange() {
 
   if (!catId) {
     selSub.innerHTML = '<option value="">Todas las subcategorías</option>';
-    indCargarTendencia();
+    indAplicarFiltros();
     return;
   }
 
@@ -7350,41 +7380,65 @@ async function indOnCategoriaChange() {
   selSub.innerHTML = '<option value="">Todas las subcategorías</option>' +
     (res.data || []).map(s => `<option value="${s.id}">${s.descripcion}</option>`).join('');
 
-  indCargarTendencia();
+  indAplicarFiltros();
 }
 
-async function indCargarTendencia() {
-  const categoriaId    = document.getElementById('ind-f-categoria').value;
-  const subcategoriaId = document.getElementById('ind-f-subcategoria').value;
-  const dias           = document.getElementById('ind-f-dias').value;
-
-  const params = new URLSearchParams({ dias });
-  if (categoriaId)    params.set('categoria_id', categoriaId);
-  if (subcategoriaId) params.set('subcategoria_id', subcategoriaId);
+async function indCargarTendencia(params) {
+  params = params || indFiltrosActuales();
 
   const res = await apiFetch(`${BASE}/inventario/api/indicadores/tendencia/?${params}`);
-  if (res.ok) {
-    const { serie, pct_cumplimiento, total_cerrados, a_tiempo } = res.data;
-    _indRenderTendenciaChart(serie);
-    _indRenderGauge(pct_cumplimiento, total_cerrados, a_tiempo);
-  }
+  if (!res.ok) return;
 
-  // Misma combinación de filtros para la calificación de calidad
-  indCargarCalificacion(categoriaId, subcategoriaId, dias);
+  const { serie, pct_cumplimiento, total_cerrados, medibles,
+          sin_estimada, a_tiempo, total_entraron } = res.data;
+
+  _indRenderTendenciaChart(serie);
+  _indRenderGauge(pct_cumplimiento, medibles, a_tiempo, sin_estimada);
+
+  // Balance del período: si entra más de lo que sale, la cola crece.
+  const saldo = total_cerrados - total_entraron;
+  const cls   = saldo >= 0 ? 'pos' : 'neg';
+  const signo = saldo > 0 ? '+' : '';
+  const bal   = document.getElementById('ind-balance');
+  if (bal) {
+    bal.innerHTML =
+      `Entraron <b>${total_entraron}</b> · Cerrados <b>${total_cerrados}</b> ` +
+      `<span class="${cls}">(${signo}${saldo})</span>`;
+  }
 }
 
-async function indCargarCalificacion(categoriaId, subcategoriaId, dias) {
-  const params = new URLSearchParams({ dias });
-  if (categoriaId)    params.set('categoria_id', categoriaId);
-  if (subcategoriaId) params.set('subcategoria_id', subcategoriaId);
+async function indCargarCalificacion(params) {
+  params = params || indFiltrosActuales();
 
   const res = await apiFetch(`${BASE}/inventario/api/indicadores/calificacion/?${params}`);
   if (!res.ok) return;
 
-  const { promedio, total_evaluaciones, distribucion, tendencia } = res.data;
+  const { promedio, total_evaluaciones, cerrados_en_rango,
+          distribucion, tendencia } = res.data;
 
   document.getElementById('ind-calif-promedio').textContent = promedio || '0';
-  document.getElementById('ind-calif-total').textContent    = total_evaluaciones;
+
+  // Cobertura en vez del conteo suelto: sin ella, un promedio alto sacado de
+  // cuatro respuestas parecía tan sólido como uno sacado de doscientas.
+  const pct = cerrados_en_rango
+    ? Math.round((total_evaluaciones / cerrados_en_rango) * 100)
+    : 0;
+  document.getElementById('ind-calif-cobertura').textContent =
+    cerrados_en_rango
+      ? `${total_evaluaciones} de ${cerrados_en_rango} cerrados calificaron (${pct}%)`
+      : 'Sin requerimientos cerrados en el período';
+
+  const aviso = document.getElementById('ind-calif-aviso');
+  if (aviso) {
+    if (cerrados_en_rango && pct < 50) {
+      aviso.innerHTML =
+        `Solo calificó el ${pct}% de los requerimientos cerrados en el período. ` +
+        `El promedio refleja a quienes respondieron, no a todos.`;
+      aviso.hidden = false;
+    } else {
+      aviso.hidden = true;
+    }
+  }
 
   _indRenderCalifTendencia(tendencia);
   _indRenderCalifDist(distribucion);
@@ -7439,6 +7493,10 @@ function _indRenderCalifTendencia(tendencia) {
         pointBackgroundColor: '#f59e0b',
         pointBorderColor: '#fff',
         pointBorderWidth: 1.5,
+        // Las semanas sin evaluaciones llegan con promedio null y deben verse
+        // como un corte. Antes solo venían las semanas con datos, así que la
+        // línea unía puntos separados por meses como si fueran seguidos.
+        spanGaps: false,
       }],
     },
     options: {
@@ -7449,7 +7507,12 @@ function _indRenderCalifTendencia(tendencia) {
         tooltip: {
           backgroundColor: '#0f172a', titleColor: '#f8fafc', bodyColor: '#e2e8f0',
           borderColor: 'rgba(255,255,255,0.08)', borderWidth: 1, padding: 10, cornerRadius: 8,
-          callbacks: { label: (c) => `Promedio: ${c.parsed.y} ★` },
+          callbacks: {
+            label: (c) => {
+              const n = (tendencia[c.dataIndex] || {}).cantidad || 0;
+              return `Promedio: ${c.parsed.y} ★  (${n} evaluacion${n === 1 ? '' : 'es'})`;
+            },
+          },
         },
       },
       scales: {
@@ -7501,11 +7564,12 @@ function _indRenderCalifDist(distribucion) {
   });
 }
 
+// Dos series de ACTIVIDAD, no de estado. Antes eran cuatro estados sobre la
+// fecha de creación, lo que hacía que una barra no dijera qué pasó ese día y
+// que los estados 7, 8 y 9 no se dibujaran en absoluto.
 const IND_SERIES_CONFIG = [
-  { key: 'abiertos',   label: 'Abiertos',   color: '#f43f5e' },
-  { key: 'asignado',   label: 'Asignado',   color: '#6366f1' },
-  { key: 'en_proceso', label: 'En Proceso', color: '#f59e0b' },
-  { key: 'cerrados',   label: 'Cerrados',   color: '#10b981' },
+  { key: 'entraron', label: 'Entraron', color: '#6366f1' },
+  { key: 'cerraron', label: 'Cerrados', color: '#10b981' },
 ];
 
 function _indRenderTendenciaChart(serie) {
@@ -7514,8 +7578,7 @@ function _indRenderTendenciaChart(serie) {
   const ctx = canvas.getContext('2d');
 
   // ── ¿Hay algún valor distinto de 0 en todo el rango? ──
-  const totalSuma = serie.reduce((acc, s) =>
-    acc + s.abiertos + s.asignado + s.en_proceso + s.cerrados, 0);
+  const totalSuma = serie.reduce((acc, s) => acc + s.entraron + s.cerraron, 0);
 
   const wrap = canvas.parentElement;
   let vacioEl = wrap.querySelector('.ind-chart-vacio');
@@ -7623,7 +7686,7 @@ function _indToggleSerie(idx) {
   if (pill) pill.classList.toggle('off', meta.hidden);
 }
 
-function _indRenderGauge(pct, totalCerrados, aTiempo) {
+function _indRenderGauge(pct, medibles, aTiempo, sinEstimada) {
   const ctx = document.getElementById('indGaugeChart');
   if (!ctx) return;
 
@@ -7653,9 +7716,24 @@ function _indRenderGauge(pct, totalCerrados, aTiempo) {
   document.getElementById('ind-gauge-pct').textContent   = pct + '%';
   document.getElementById('ind-gauge-pct').style.color   = color;
   document.getElementById('ind-gauge-detalle').textContent =
-    totalCerrados > 0
-      ? `${aTiempo} de ${totalCerrados} requerimientos cerrados a tiempo en el rango seleccionado`
-      : 'No hay requerimientos cerrados en el rango seleccionado';
+    medibles > 0
+      ? `${aTiempo} de ${medibles} requerimientos cerrados a tiempo en el período`
+      : 'No hay requerimientos cerrados en el período';
+
+  // Los cerrados sin fecha estimada no tienen contra qué compararse. Antes
+  // engrosaban el denominador sin poder entrar nunca en el numerador, así que
+  // hundían el porcentaje sin dejar rastro de por qué.
+  const aviso = document.getElementById('ind-gauge-aviso');
+  if (aviso) {
+    if (sinEstimada > 0) {
+      aviso.textContent =
+        `${sinEstimada} cerrado${sinEstimada === 1 ? '' : 's'} sin fecha estimada ` +
+        `queda${sinEstimada === 1 ? '' : 'n'} fuera del cálculo.`;
+      aviso.hidden = false;
+    } else {
+      aviso.hidden = true;
+    }
+  }
 }
 
 /* ── Paginación ── */
