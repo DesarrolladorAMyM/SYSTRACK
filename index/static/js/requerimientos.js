@@ -1544,6 +1544,43 @@ function showNotif(title, msg, type = 'success', duration = 3500) {
       detailIcon.innerHTML = `<i class="fa-solid ${s.icon}"></i>`;
       detailTitle.textContent = s.label;
       detailText.textContent = s.detalle(r);
+      pintarEvidencias(s);
+    }
+
+    // Evidencias que dejó el técnico: solo en la etapa "Cerrado", junto al
+    // texto de la solución, que es donde la persona las busca. Se arman con
+    // textContent (nunca innerHTML) porque el nombre del archivo lo escribe
+    // quien lo sube.
+    const detailEvid = document.getElementById('tripStepDetailEvid');
+    function pintarEvidencias(s){
+      if(!detailEvid) return;
+      detailEvid.textContent = '';
+      const lista = (s.estado === 'Cerrado' && Array.isArray(r.adjuntos_solucion)) ? r.adjuntos_solucion : [];
+      detailEvid.hidden = !lista.length;
+      if(!lista.length) return;
+
+      const titulo = document.createElement('div');
+      titulo.className = 'trip-evid-label';
+      const tituloIco = document.createElement('i');
+      tituloIco.className = 'fa-solid fa-paperclip';
+      titulo.append(tituloIco, ' Evidencias de la solución');
+      detailEvid.appendChild(titulo);
+
+      lista.forEach(a => {
+        const link = document.createElement('a');
+        link.className = 'trip-evid-chip';
+        link.href = a.url;
+        link.target = '_blank';
+        link.rel = 'noopener';
+        link.title = 'Descargar ' + a.nombre;
+        const ico = document.createElement('i');
+        ico.className = 'fa-solid fa-file-arrow-down';
+        const nombre = document.createElement('span');
+        nombre.className = 'trip-evid-nombre';
+        nombre.textContent = a.nombre;
+        link.append(ico, nombre);
+        detailEvid.appendChild(link);
+      });
     }
 
     function abrirDetalle(s){

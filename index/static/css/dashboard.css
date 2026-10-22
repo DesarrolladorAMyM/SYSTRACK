@@ -1804,6 +1804,19 @@ a.nav-btn.active {
   border-radius:10px;font-size:13px;color:var(--text-light);
 }
 
+/* Evidencias de la solucion (las sube el tecnico al cerrar). Mismo enlace que
+   el adjunto del solicitante, en lista, con la fecha en que se subio. */
+.hreq-evid-titulo{margin-top:16px;}
+.hreq-evid-cnt{
+  background:rgba(27,70,152,0.09);color:var(--primary);
+  border-radius:20px;padding:1px 8px;font-size:10.5px;letter-spacing:0;
+}
+.hreq-evid-lista{display:flex;flex-direction:column;gap:6px;}
+.hreq-evid-fecha{
+  margin-left:auto;padding-left:8px;flex-shrink:0;
+  font-size:11px;font-weight:500;color:var(--text-light);white-space:nowrap;
+}
+
 /* El modal necesita respirar abajo */
 .trip-modal-box > .hreq-adjunto:last-child,
 .trip-modal-box > .hreq-eval:last-child{margin-bottom:26px;}

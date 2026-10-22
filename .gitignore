@@ -11,3 +11,7 @@ __pycache__/
 
 
 systraker/settings.py
+
+# Archivos que suben los usuarios (adjuntos de requerimientos, evidencias de
+# solución, novedades). Son documentos internos: no van al repositorio.
+media/

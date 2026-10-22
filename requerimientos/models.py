@@ -1,4 +1,44 @@
+import datetime
+from zoneinfo import ZoneInfo
+
 from django.db import models
+from django.utils import timezone
+
+COLOMBIA_TZ = ZoneInfo('America/Bogota')
+
+
+class FechaConHoraField(models.DateField):
+    """DateField que, al GUARDAR, respeta la hora si el valor la trae.
+
+    Fecha y FechaRealSolucion son 'datetime' en SQL Server, pero el modelo las
+    declara como fecha. Con un DateField normal CADA save() les borraba la
+    hora y las dejaba en 00:00: lo creado o solucionado desde Systraker salía
+    "a las 12:00 AM", y lo del sistema anterior (que sí guarda la hora)
+    perdía su hora real cada vez que Systraker lo tocaba.
+
+    Solo cambia la escritura (get_db_prep_save). Filtros y consultas siguen
+    pasando por DateField sin cambios, así que los indicadores y cualquier
+    filtro por fecha se comportan exactamente igual que antes.
+
+    La hora se guarda en hora LOCAL de Colombia y sin zona horaria, que es
+    como la guardaba el sistema anterior. Por eso no se usa DateTimeField:
+    con USE_TZ, Django leería los datos existentes como UTC y los correría
+    5 horas.
+    """
+
+    def get_db_prep_save(self, value, connection):
+        if isinstance(value, datetime.datetime):
+            if timezone.is_aware(value):
+                value = timezone.localtime(value, COLOMBIA_TZ).replace(tzinfo=None)
+            return connection.ops.adapt_datetimefield_value(value)
+        return super().get_db_prep_save(value, connection)
+
+    def deconstruct(self):
+        # Para las migraciones sigue siendo un DateField: la columna no cambia
+        # y la tabla no la administra Django (managed=False), así que no hace
+        # falta ninguna migración.
+        name, path, args, kwargs = super().deconstruct()
+        return name, 'django.db.models.DateField', args, kwargs
 
 
 class Categoria(models.Model):
@@ -110,7 +150,7 @@ class Area(models.Model):
 class Requerimiento(models.Model):
     Codigo = models.AutoField(primary_key=True)
     IdJefeArea       = models.IntegerField(null=True, blank=True)
-    Fecha            = models.DateField(null=True, blank=True)
+    Fecha            = FechaConHoraField(null=True, blank=True)
     IdUsuario        = models.IntegerField(null=True, blank=True)
     CedulaUsuario    = models.IntegerField(null=True, blank=True)
     NombreUsuario    = models.CharField(max_length=150, null=True, blank=True)
@@ -130,7 +170,7 @@ class Requerimiento(models.Model):
     IdEstado         = models.IntegerField(null=True, blank=True)
     FechaEstiSoluci  = models.DateField(null=True, blank=True, db_column='FechaEstiSolucion')
     PlanAccion       = models.TextField(null=True, blank=True)
-    FechaRealSoluci  = models.DateField(null=True, blank=True, db_column='FechaRealSolucion')
+    FechaRealSoluci  = FechaConHoraField(null=True, blank=True, db_column='FechaRealSolucion')
     Solucion         = models.TextField(null=True, blank=True)
     Clasificacion    = models.IntegerField(null=True, blank=True)
     Costo            = models.DecimalField(max_digits=12, decimal_places=2, null=True, blank=True)

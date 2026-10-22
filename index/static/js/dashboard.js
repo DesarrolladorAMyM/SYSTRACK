@@ -6037,6 +6037,24 @@ async function guardarSolucionReq() {
   const plan  = document.getElementById('sol-f-plan')?.value.trim()  || '';
 
   await _conSpinner('btnGuardarSolucion', 'Solucionando...', async () => {
+    // Los archivos van en llamadas aparte porque 'solucionar' manda JSON y no
+    // puede llevar binarios (mismo esquema de dos pasos del portal), y van
+    // ANTES de solucionar: el correo al solicitante sale en el mismo instante
+    // en que el requerimiento pasa a Cerrado (señal post_save en
+    // requerimientos/Signals.py) y adjunta lo que haya en mm_AdjuntosSolucion
+    // en ese momento. Cuando se subían después, el correo salía sin ellos.
+    // Si algún archivo falla se soluciona igual: el requerimiento no debe
+    // quedarse abierto por una evidencia.
+    let avisoAdjunto = '';
+    let subidos = 0;
+    const totalArchivos = _solArchivos.length;
+    if (totalArchivos) {
+      subidos = await _subirAdjuntosSolucion(solReqId);
+      if (subidos < totalArchivos) {
+        avisoAdjunto = ` (${subidos} de ${totalArchivos} archivos se adjuntaron)`;
+      }
+    }
+
     const res = await apiFetch(API.reqTicAccion(solReqId), 'POST', {
       accion: 'solucionar',
       solucion,
@@ -6046,20 +6064,10 @@ async function guardarSolucionReq() {
     });
 
     if (!res.ok) {
-      showNotification('warning', 'Error', res.error || 'No se pudo guardar la solución');
+      showNotification('warning', 'Error',
+        (res.error || 'No se pudo guardar la solución') +
+        (subidos ? '. Los archivos ya quedaron guardados: no hace falta volver a elegirlos.' : ''));
       return;
-    }
-
-    // El archivo va en una segunda llamada porque la anterior manda JSON y no
-    // puede llevar binarios (mismo esquema de dos pasos del portal). Va DESPUÉS
-    // de que la solución quedó guardada: si el archivo falla, el requerimiento
-    // ya está solucionado y solo se pierde la evidencia, no el trabajo.
-    let avisoAdjunto = '';
-    if (_solArchivos.length) {
-      const subidos = await _subirAdjuntosSolucion(solReqId);
-      if (subidos < _solArchivos.length) {
-        avisoAdjunto = ` (${subidos} de ${_solArchivos.length} archivos se adjuntaron)`;
-      }
     }
 
     closeModal('modalSolucionarReq');
@@ -6075,7 +6083,10 @@ async function guardarSolucionReq() {
 let _solArchivos = [];
 
 async function _subirAdjuntosSolucion(reqId) {
+  // Los que suben bien salen de la lista: si después falla el guardado de la
+  // solución y el técnico vuelve a intentar, no se suben repetidos.
   let ok = 0;
+  const pendientes = [];
   for (const archivo of _solArchivos) {
     try {
       const fd = new FormData();
@@ -6087,11 +6098,17 @@ async function _subirAdjuntosSolucion(reqId) {
       });
       const data = await r.json();
       if (data.ok) ok++;
-      else console.error('Adjunto rechazado:', archivo.name, data.error);
+      else {
+        console.error('Adjunto rechazado:', archivo.name, data.error);
+        pendientes.push(archivo);
+      }
     } catch (e) {
       console.error('Falló el adjunto', archivo.name, e);
+      pendientes.push(archivo);
     }
   }
+  _solArchivos = pendientes;
+  _solRenderArchivos();
   return ok;
 }
 
@@ -7253,12 +7270,39 @@ function _hreqPintarEvaluacion(r) {
 
 function _hreqPintarAdjunto(r) {
   const cont = document.getElementById('hreqTripAdjunto');
+
+  // Evidencias del técnico (mm_AdjuntosSolucion), aparte del archivo del
+  // solicitante. El bloque sale si hay archivos o si el requerimiento ya se
+  // solucionó (para decir explícitamente que no se dejó evidencia); en uno
+  // abierto sin archivos no tiene nada que contar.
+  const evidencias = r.adjuntos_solucion || [];
+  const solucionado = ['Cerrado', 'Calificado'].includes(r.estado);
+  let bloqueEvidencias = '';
+  if (evidencias.length || solucionado) {
+    bloqueEvidencias = `
+      <div class="hreq-seccion-label hreq-evid-titulo">
+        <i class="fas fa-screwdriver-wrench"></i> Evidencias de la solución
+        ${evidencias.length ? `<span class="hreq-evid-cnt">${evidencias.length}</span>` : ''}
+      </div>
+      ${evidencias.length
+        ? `<div class="hreq-evid-lista">${evidencias.map(a => `
+             <a class="hreq-adjunto-link" href="${a.url}" target="_blank" rel="noopener"
+                title="Abrir ${_escHtml(a.nombre)}">
+               <i class="fas fa-file-arrow-down"></i>
+               <span class="hreq-adjunto-nombre">${_escHtml(a.nombre)}</span>
+               ${a.fecha ? `<span class="hreq-evid-fecha">${_escHtml(a.fecha)}</span>` : ''}
+             </a>`).join('')}
+           </div>`
+        : `<div class="hreq-adjunto-vacio">El técnico no adjuntó evidencias al solucionar.</div>`
+      }`;
+  }
+
   // Se pinta el bloque aunque no haya archivo: un vacio sin explicacion deja
   // dudando si el requerimiento no trae adjunto o si la pantalla fallo.
   cont.innerHTML = `
     <div class="hreq-adjunto">
       <div class="hreq-seccion-label">
-        <i class="fas fa-paperclip"></i> Archivo adjunto
+        <i class="fas fa-user"></i> Adjunto del solicitante
       </div>
       ${r.tiene_adjunto
         ? `<a class="hreq-adjunto-link" href="${r.url_adjunto}" target="_blank" rel="noopener"
@@ -7266,8 +7310,9 @@ function _hreqPintarAdjunto(r) {
              <i class="fas fa-file-arrow-down"></i>
              <span class="hreq-adjunto-nombre">${_escHtml(r.nombre_adjunto)}</span>
            </a>`
-        : `<div class="hreq-adjunto-vacio">Este requerimiento no tiene archivos adjuntos.</div>`
+        : `<div class="hreq-adjunto-vacio">El solicitante no adjuntó archivos.</div>`
       }
+      ${bloqueEvidencias}
     </div>`;
 }
 

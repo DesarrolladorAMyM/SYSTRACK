@@ -4832,15 +4832,19 @@ def api_req_tic_accion(request, req_id):
 
     elif accion == 'solucionar':
         solucion = body.get('solucion', '').strip()
-        fecha    = body.get('fecha_solucion')
         costo    = body.get('costo')
         plan     = body.get('plan_accion')
 
         if not solucion:
             return _json_err('La solución no puede estar vacía')
 
+        # Fecha y hora reales de Colombia, calculadas aquí. Ya no se usa
+        # 'fecha_solucion' del navegador: traía solo la fecha (se guardaba a
+        # las 00:00 y se veía "a las 12:00 AM") y en UTC, así que lo
+        # solucionado después de las 7:00 p. m. quedaba con el día siguiente.
+        from requerimientos.views import _ahora_colombia
         r.Solucion        = solucion
-        r.FechaRealSoluci = fecha or None
+        r.FechaRealSoluci = _ahora_colombia()
         r.IdEstado        = 4
 
         if plan is not None:
@@ -4989,6 +4993,7 @@ def _adjuntos_solucion_map(codigos):
         mapa.setdefault(a.CodReq, []).append({
             'nombre': a.NombreArchivo,
             'url': f'{settings.MEDIA_URL}{SOLUCION_CARPETA}/{a.IdAdjunto}_{a.NombreArchivo}',
+            'fecha': _fmt_fecha_hora(a.FechaSubida)['fecha'],
         })
     return mapa
 
@@ -5430,6 +5435,12 @@ def _fmt_fecha_hora(valor):
         return {'fecha': '', 'hora': ''}
     if hasattr(valor, 'hour'):  # es datetime, no solo date
         local = timezone.localtime(valor, COLOMBIA_TZ) if timezone.is_aware(valor) else valor
+        # Fecha y FechaRealSolucion quedaron en 00:00 exacto en todo lo que
+        # Systraker guardó antes de conservar la hora (ver FechaConHoraField):
+        # esa no es una hora real, y mostrar "12:00 AM" era inventarla. En
+        # esos casos se muestra solo la fecha.
+        if not timezone.is_aware(valor) and (valor.hour, valor.minute, valor.second, valor.microsecond) == (0, 0, 0, 0):
+            return {'fecha': local.strftime('%d/%m/%Y'), 'hora': ''}
         return {'fecha': local.strftime('%d/%m/%Y'), 'hora': local.strftime('%I:%M %p')}
     return {'fecha': valor.strftime('%d/%m/%Y'), 'hora': ''}
 
@@ -5494,6 +5505,11 @@ def api_historial_req_tic(request):
         for e in EvaluacionReq.objects.using('requerimientos').filter(IdReq__in=codigos)
     }
 
+    # Evidencias que dejó el técnico al solucionar (mm_AdjuntosSolucion). Van
+    # aparte del adjunto del solicitante: son dos archivos distintos y la
+    # pantalla los muestra por separado.
+    ADJ_SOLUCION = _adjuntos_solucion_map(codigos)
+
     data = []
     for r in qs:
         estado_id    = r.IdEstado or 0
@@ -5549,6 +5565,7 @@ def api_historial_req_tic(request):
             'tiene_adjunto':       bool(adjunto),
             'nombre_adjunto':      adjunto['nombre'] if adjunto else '',
             'url_adjunto':         adjunto['url']    if adjunto else '',
+            'adjuntos_solucion':   ADJ_SOLUCION.get(r.Codigo, []),
         })
 
     return _json_ok({'requerimientos': data, 'total': len(data)})

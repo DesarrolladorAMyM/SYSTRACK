@@ -7,6 +7,7 @@ from django.views.decorators.csrf import csrf_exempt
 from django.core.mail import send_mail
 from django.template.loader import render_to_string
 from django.conf import settings
+from django.utils import timezone
 from django.core.mail import EmailMultiAlternatives
 from django.contrib.auth.decorators import login_required
 from django.contrib.auth.hashers import make_password
@@ -16,11 +17,26 @@ from .models import (
     Cargo, TipoUsuario, Area, Prioridad, Clasificacion, EvaluacionReq, TipoRequerimiento,
     AdjuntoSolucion,
     Notificacion, ImagenAdjunta,
+    COLOMBIA_TZ,
 )
 
 DB = 'requerimientos'
 
 logger = logging.getLogger('requerimientos')
+
+
+def _ahora_colombia():
+    """Fecha y hora actuales de Colombia, sin zona horaria.
+
+    Es el valor que se guarda en Fecha y FechaRealSolucion: hora local, igual
+    que las guardaba el sistema anterior (ver FechaConHoraField en models.py).
+    Se calcula en el servidor y no con datetime.date.today() ni con la fecha
+    del navegador: date.today() depende de la zona del sistema operativo del
+    servidor, y el navegador mandaba la fecha en UTC (toISOString), así que
+    lo solucionado después de las 7:00 p. m. quedaba con fecha del día
+    siguiente.
+    """
+    return timezone.localtime(timezone.now(), COLOMBIA_TZ).replace(tzinfo=None, microsecond=0)
 
 
 PREFIJO_APP = '/SYSTRACK'
@@ -79,6 +95,12 @@ ADJUNTO_MAX_BYTES  = 5 * 1024 * 1024
 # Carpeta de las evidencias que sube el TECNICO al solucionar. Debe coincidir
 # con SOLUCION_CARPETA en dashboard/views.py, que es quien escribe los archivos.
 SOLUCION_CARPETA   = 'soluciones_adjuntos'
+# Tope de evidencias que viajan ADJUNTAS en el correo de solución, sumando
+# todos los archivos. Al codificarse para el correo (base64) crecen ~33 %, así
+# que 15 MB quedan en ~20 MB, por debajo del límite habitual de los servidores
+# de correo (20–25 MB). Las que no caben se nombran en el correo y se
+# descargan desde el portal.
+CORREO_SOLUCION_MAX_ADJUNTOS = 15 * 1024 * 1024
 
 
 def _token_seguimiento(req):
@@ -389,6 +411,17 @@ def mis_requerimientos(request):
         for e in EvaluacionReq.objects.using(DB).filter(IdReq__in=codigos)
     }
 
+    # Evidencias que dejó el técnico al solucionar (mm_AdjuntosSolucion). Van
+    # todas, no solo la última: cada una es parte de la prueba de lo que se
+    # hizo. El portal las muestra en la etapa "Cerrado" del seguimiento.
+    evidencias_map = {}
+    for a in (AdjuntoSolucion.objects.using(DB)
+              .filter(CodReq__in=codigos).order_by('IdAdjunto')):
+        evidencias_map.setdefault(a.CodReq, []).append({
+            'nombre': a.NombreArchivo,
+            'url':    f'{settings.MEDIA_URL}{SOLUCION_CARPETA}/{a.IdAdjunto}_{a.NombreArchivo}',
+        })
+
     data = []
     for r in reqs:
         # Recalculado a partir de categoría + subcategoría (mismo criterio que
@@ -420,6 +453,7 @@ def mis_requerimientos(request):
             'requiere_aprobacion': requiere_aprobacion_r,
             'fecha_aprobacion':    r.FechaAprobacion.strftime('%d/%m/%Y') if r.FechaAprobacion else '',
             'motivo_rechazo':      r.MotivoRechazo or '',
+            'adjuntos_solucion':   evidencias_map.get(r.Codigo, []),
         })
 
     return JsonResponse({'ok': True, 'data': data})
@@ -582,7 +616,10 @@ def crear_requerimiento(request):
 
         # ── Calcular FechaEstiSoluci: Fecha + TiempoDias (subcategoría, o categoría si no hay) ──
         tiempo_dias = tiempo_dias_sub if tiempo_dias_sub else tiempo_dias_cat
-        fecha_hoy = datetime.date.today()
+        # Fecha y hora reales de creación (hora de Colombia). La fecha estimada
+        # se sigue calculando sobre el día, igual que antes.
+        ahora_creacion = _ahora_colombia()
+        fecha_hoy = ahora_creacion.date()
         fecha_esti_solucion = (
             fecha_hoy + datetime.timedelta(days=tiempo_dias) if tiempo_dias else None
         )
@@ -599,7 +636,7 @@ def crear_requerimiento(request):
             Requerimiento    = data.get('descripcion', ''),
             Email            = data.get('correo_electronico', ''),
             CO               = id_co_dato,
-            Fecha            = fecha_hoy,
+            Fecha            = ahora_creacion,
             FechaEstiSoluci  = fecha_esti_solucion,
             IdEstado         = estado_inicial,
             IdJefeArea       = id_jefe_us,
@@ -1092,9 +1129,6 @@ def _enviar_correo_solucion(req):
     link_calificar   = f"{base_url}/CalificacionRequerimiento/calificar/{req.Codigo}/"
 
     asunto = f"Requerimiento solucionado — {req.codigo()}"
-    cuerpo_html = render_to_string('requerimientos/correo_solucion.html', {
-        'req': req, 'link_seguimiento': link_seguimiento, 'link_calificar': link_calificar,
-    })
 
     # Evidencias que adjunto el tecnico al solucionar. Se manda
     # EmailMultiAlternatives en vez de send_mail porque send_mail no permite
@@ -1103,42 +1137,68 @@ def _enviar_correo_solucion(req):
         AdjuntoSolucion.objects.using(DB).filter(CodReq=req.Codigo).order_by('IdAdjunto')
     )
 
+    # Los archivos se leen ANTES de armar el HTML: la plantilla necesita saber
+    # cuáles alcanzaron a ir adjuntos y cuáles no cupieron.
+    #
+    # Cada archivo se lee con su propio try: si uno se borro del disco o no se
+    # puede leer, el correo TIENE que salir igual. Avisar que el requerimiento
+    # fue solucionado es mas importante que la evidencia, y perder el correo
+    # por un archivo dejaria al solicitante sin enterarse de nada.
+    archivos      = []   # (nombre original, contenido) que van adjuntos
+    sin_adjuntar  = []   # nombres que no caben en el tope del correo
+    total_bytes   = 0
+    for a in adjuntos:
+        ruta = os.path.join(
+            settings.MEDIA_ROOT, SOLUCION_CARPETA, f'{a.IdAdjunto}_{a.NombreArchivo}'
+        )
+        try:
+            with open(ruta, 'rb') as f:
+                contenido = f.read()
+        except Exception:
+            logger.exception(
+                "No se pudo adjuntar %s al correo de solución del requerimiento %s",
+                ruta, req.codigo()
+            )
+            continue
+        if total_bytes + len(contenido) > CORREO_SOLUCION_MAX_ADJUNTOS:
+            sin_adjuntar.append(a.NombreArchivo)
+            continue
+        total_bytes += len(contenido)
+        archivos.append((a.NombreArchivo, contenido))
+
+    cuerpo_html = render_to_string('requerimientos/correo_solucion.html', {
+        'req': req, 'link_seguimiento': link_seguimiento, 'link_calificar': link_calificar,
+        'evidencias_adjuntas':    [nombre for nombre, _ in archivos],
+        'evidencias_sin_adjuntar': sin_adjuntar,
+    })
+
+    texto_evidencias = ''
+    if archivos:
+        texto_evidencias = f"Evidencias adjuntas: {', '.join(n for n, _ in archivos)}. "
+
     mensaje = EmailMultiAlternatives(
         subject=asunto,
         body=(f"Tu requerimiento {req.codigo()} fue solucionado. "
               f"Solución: {req.Solucion or '(sin detalle)'}. "
+              f"{texto_evidencias}"
               f"Califica la atención aquí: {link_calificar}"),
         from_email=settings.DEFAULT_FROM_EMAIL,
         to=[req.Email],
     )
     mensaje.attach_alternative(cuerpo_html, 'text/html')
 
-    # Cada adjunto se agrega por separado y con su propio try: si un archivo
-    # se borro del disco o no se puede leer, el correo TIENE que salir igual.
-    # Avisar que el requerimiento fue solucionado es mas importante que la
-    # evidencia, y perder el correo por un archivo dejaria al solicitante sin
-    # enterarse de nada.
-    for a in adjuntos:
-        ruta = os.path.join(
-            settings.MEDIA_ROOT, SOLUCION_CARPETA, f'{a.IdAdjunto}_{a.NombreArchivo}'
-        )
-        try:
-            # attach_file() usaria el nombre del disco, que lleva el IdAdjunto
-            # por delante ("12_acta.pdf"). Al solicitante hay que mandarle el
-            # nombre original, no el numero interno de la tabla.
-            with open(ruta, 'rb') as f:
-                mensaje.attach(a.NombreArchivo, f.read())
-        except Exception:
-            logger.exception(
-                "No se pudo adjuntar %s al correo de solución del requerimiento %s",
-                ruta, req.codigo()
-            )
+    # attach_file() usaria el nombre del disco, que lleva el IdAdjunto por
+    # delante ("12_acta.pdf"). Al solicitante hay que mandarle el nombre
+    # original, no el numero interno de la tabla.
+    for nombre, contenido in archivos:
+        mensaje.attach(nombre, contenido)
 
     try:
         enviados = mensaje.send(fail_silently=False)
         logger.info(
-            "Correo de solución -> %s (Requerimiento %s): send devolvió %s, %s adjunto(s)",
-            req.Email, req.codigo(), enviados, len(adjuntos)
+            "Correo de solución -> %s (Requerimiento %s): send devolvió %s, "
+            "%s adjunto(s), %s sin adjuntar por tamaño",
+            req.Email, req.codigo(), enviados, len(archivos), len(sin_adjuntar)
         )
     except Exception:
         logger.exception(
@@ -1655,13 +1715,14 @@ def api_seguimiento_publico(request):
 
     data = {
         'codigo':              req.codigo(),
-        'fecha_creacion':      str(req.Fecha) if req.Fecha else '',
+        # Como texto legible: str() de estas columnas daba "2026-10-22 00:00:00".
+        'fecha_creacion':      req.Fecha.strftime('%d/%m/%Y') if req.Fecha else '',
         'requerimiento':       req.Requerimiento or '',
         'area':                categoria_txt,
         'responsable':         req.NombreUsuariAsig or '',
         'plan_accion':         req.PlanAccion or '',
         'solucion':            req.Solucion or '',
-        'fecha_solucion':      str(req.FechaRealSoluci) if req.FechaRealSoluci else '',
+        'fecha_solucion':      req.FechaRealSoluci.strftime('%d/%m/%Y') if req.FechaRealSoluci else '',
         'estado':              ESTADOS_PUBLICO.get(req.IdEstado, str(req.IdEstado or '')),
         'requiere_aprobacion': requiere_aprobacion,
         'fecha_aprobacion':    str(req.FechaAprobacion) if req.FechaAprobacion else '',

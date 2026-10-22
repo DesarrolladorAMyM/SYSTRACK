@@ -41,6 +41,22 @@
                   <td style="padding:10px 14px; color:#6b7280;">Solución</td>
                   <td style="padding:10px 14px; color:#111827;">{{ req.Solucion }}</td>
                 </tr>
+                {% if evidencias_adjuntas or evidencias_sin_adjuntar %}
+                <tr>
+                  <td style="padding:10px 14px; color:#6b7280; vertical-align:top; border-top:1px solid #e5e7eb;">Evidencias</td>
+                  <td style="padding:10px 14px; color:#111827; border-top:1px solid #e5e7eb;">
+                    {% for nombre in evidencias_adjuntas %}
+                      <div style="padding:2px 0;">&#128206; {{ nombre }}</div>
+                    {% endfor %}
+                    {% for nombre in evidencias_sin_adjuntar %}
+                      <div style="padding:2px 0;">&#128206; {{ nombre }} <span style="color:#9ca3af;">(muy pesado para enviarlo por correo)</span></div>
+                    {% endfor %}
+                    <div style="font-size:12px; color:#6b7280; margin-top:6px; line-height:1.4;">
+                      {% if evidencias_adjuntas %}Van adjuntas a este correo. {% endif %}También puedes verlas y descargarlas en el portal de requerimientos.
+                    </div>
+                  </td>
+                </tr>
+                {% endif %}
               </table>
             </td>
           </tr>
