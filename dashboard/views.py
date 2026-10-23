@@ -382,11 +382,15 @@ def api_dispositivos(request):
             ya_asignados_qs = ya_asignados_qs.exclude(g216_colaborador_id=colaborador_id)
         qs = qs.exclude(g212_id__in=ya_asignados_qs)
 
+    # Persona asignada (j216), para el PDF del inventario.
+    asignados = _asignados_por_dispositivo()
+
     dispositivos = []
     for d in qs.order_by('g212_serial'):
         dispositivos.append({
             'id':          d.g212_id,
             'serial':      d.g212_serial,
+            'asignado_a':  asignados.get(d.g212_id, {}).get('nombre', ''),
             'tipo':        d.g212_tipo.g200_tipo_dispositivo if d.g212_tipo else '—',
             'tipo_id':     d.g212_tipo_id,
             'marca':       d.g212_marca.g202_marca if d.g212_marca else '—',
@@ -3694,15 +3698,36 @@ def api_acta_detalle(request, acta_id):
 @login_required(login_url='login')
 @require_http_methods(['GET'])
 def api_exportar_inventario(request):
+    """Inventario en .xlsx: una hoja "Todos" y una hoja por tipo de dispositivo.
+
+    - Trae a la persona asignada (j216): nombre, documento y cargo. Solo se
+      llena cuando el dispositivo tiene asignación (en la práctica, los de
+      estado ASIGNADO); en los demás queda vacío.
+    - Cada tipo va en su propia hoja con SUS características. Antes se elegía
+      un solo grupo de columnas para todo el archivo (el primero que salía),
+      así que al exportar todos los tipos los celulares, SIM, licencias, etc.
+      se quedaban sin sus datos. Con un solo tipo filtrado sale solo su hoja.
+    - No incluye la contraseña de Gmail: es una credencial (mismo criterio que
+      api_dispositivos, que tampoco la expone).
+    - Mismo universo y filtros que la pantalla de Inventario (api_dispositivos):
+      sin los inactivos, que tienen su propia exportación (api_exportar_inactivos).
+    """
+    import re
     import openpyxl
-    from openpyxl.styles import Font, PatternFill, Alignment
     from django.http import HttpResponse
 
-    #  Filtros desde la URL (los mismos que el inventario) 
     qs = Dispositivo.objects.select_related(
         'g212_tipo', 'g212_marca', 'g212_propietario',
-        'g212_estado', 'g212_co', 'g212_departamento', 'g212_municipio'
-    )
+        'g212_estado', 'g212_co', 'g212_departamento', 'g212_municipio',
+        # Características en la misma consulta: antes se hacía una consulta
+        # extra por cada campo de cada fila.
+        'caract_pc__g222_procesador', 'caract_pc__g222_so', 'caract_pc__g222_antivirus',
+        'caract_pc__g222_licencia', 'caract_pc__g222_tipo_disco', 'caract_pc__g222_almacenamiento',
+        'caract_movil__g223_operador', 'caract_movil__g223_almacenamiento',
+        'caract_pantalla', 'caract_impresora__g225_tipo_impresora',
+        'caract_periferico', 'caract_licencia__g227_almacenamiento', 'caract_videobeam',
+    ).exclude(g212_estado__g201_descripcion__in=ESTADOS_INACTIVOS)
+
     q       = request.GET.get('q', '').strip()
     tipo_id = request.GET.get('tipo', '').strip()
     estado  = request.GET.get('estado', '').strip()
@@ -3731,34 +3756,11 @@ def api_exportar_inventario(request):
         qs = qs.filter(g212_estado_id=estado)
 
     qs = qs.order_by('g212_tipo__g200_tipo_dispositivo', 'g212_serial')
+    asignados = _asignados_por_dispositivo()
 
-    #  Detectar grupo según tipos presentes 
-    tipos_presentes = set(
-        qs.values_list('g212_tipo__g200_tipo_dispositivo', flat=True).distinct()
-    )
-
-    GRUPO_PC        = {'TORRE DE ESCRITORIO', 'PORTATIL'}
-    GRUPO_MOVIL     = {'CELULAR', 'TABLET', 'MODEM WIFI', 'SIMCARD', 'TELEFONO FIJO'}
-    GRUPO_PANTALLA  = {'PANTALLA'}
-    GRUPO_IMPRESORA = {'IMPRESORA'}
-    GRUPO_PERIFERICO= {'PERIFERICO'}
-    GRUPO_LICENCIA  = {'LICENCIA OFFICE'}
-
-    def _detectar_grupo():
-        for t in tipos_presentes:
-            if t in GRUPO_PC:         return 'pc'
-            if t in GRUPO_MOVIL:      return 'movil'
-            if t in GRUPO_PANTALLA:   return 'pantalla'
-            if t in GRUPO_IMPRESORA:  return 'impresora'
-            if t in GRUPO_PERIFERICO: return 'periferico'
-            if t in GRUPO_LICENCIA:   return 'licencia'
-        return 'general'
-
-    grupo = _detectar_grupo()
-
-    #  Columnas base + columnas según grupo 
     BASE_HEADERS = [
         'Serial', 'Tipo', 'Marca', 'Propietario', 'Estado',
+        'Asignado a', 'Documento asignado', 'Cargo asignado',
         'Centro Operaciones', 'Nombre Equipo',
         'Valor Promedio', 'Valor Arrendamiento',
         'Departamento', 'Municipio', 'Observaciones', 'Fecha Registro',
@@ -3767,49 +3769,57 @@ def api_exportar_inventario(request):
         'pc':         ['Procesador', 'SO', 'RAM', 'Tipo Disco', 'Almacenamiento',
                        'Antivirus', 'Office', 'Correo Office', 'Activo'],
         'movil':      ['Número Línea', 'Operador', 'IMEI 1', 'IMEI 2',
-                       'Plan Datos', 'Cuenta Gmail', 'Contraseña'],
+                       'Plan Datos', 'Cuenta Gmail'],
         'pantalla':   ['Pulgadas', 'Resolución'],
         'impresora':  ['Tipo Impresora', 'Función'],
         'periferico': ['Base', 'Teclado', 'Mouse', 'Auriculares', 'Cargador'],
         'licencia':   ['Software', 'Versión', 'Key', 'Correo', 'Vencimiento'],
-        'general':    [],
+        'videobeam':  ['Lúmenes'],
     }
-    headers = BASE_HEADERS + EXTRA_HEADERS.get(grupo, [])
 
-    #  Workbook 
-    wb = openpyxl.Workbook()
-    ws = wb.active
-    ws.title = 'Inventario'
+    def _v(c, clave):
+        valor = c.get(clave)
+        return '' if valor is None else valor
 
-    header_fill = PatternFill('solid', fgColor='1B4698')
-    header_font = Font(color='FFFFFF', bold=True)
-    center      = Alignment(horizontal='center', vertical='center')
+    # Se usan los nombres que ya resuelve _get_caracteristicas. Antes se
+    # volvían a buscar por id y dos salían mal: la RAM siempre vacía (buscaba
+    # 'ram_id', que no existe) y el tipo de disco en una tabla que no era.
+    def _extra(grupo, c):
+        if grupo == 'pc':
+            return [_v(c, k) for k in ('procesador', 'so', 'ram', 'tipo_disco', 'almacenamiento',
+                                       'antivirus', 'licencia', 'correo_office', 'activo')]
+        if grupo == 'movil':
+            return [_v(c, k) for k in ('numero_linea', 'operador', 'imei1', 'imei2',
+                                       'plan_datos', 'cuenta_gmail')]
+        if grupo == 'pantalla':
+            return [_v(c, k) for k in ('pulgadas', 'resolucion')]
+        if grupo == 'impresora':
+            return [_v(c, k) for k in ('tipo_impresora', 'funcion')]
+        if grupo == 'periferico':
+            return ['SÍ' if c.get(k) else 'NO' for k in (
+                'incluye_base', 'incluye_teclado', 'incluye_mouse',
+                'incluye_auriculares', 'incluye_cargador')]
+        if grupo == 'licencia':
+            return [_v(c, k) for k in ('software', 'version', 'key', 'correo', 'fecha_vencimiento')]
+        if grupo == 'videobeam':
+            return [_v(c, 'lumenes')]
+        return []
 
-    for col, h in enumerate(headers, 1):
-        cell            = ws.cell(row=1, column=col, value=h)
-        cell.fill       = header_fill
-        cell.font       = header_font
-        cell.alignment  = center
-
-    #  Helpers 
-    def _res(Model, pk, attr):
-        try:
-            return getattr(Model.objects.get(pk=pk), attr) if pk else ''
-        except Exception:
-            return ''
-
-    #  Filas 
-    fill_alt = PatternFill('solid', fgColor='EEF2FF')
-
-    for row_num, d in enumerate(qs, 2):
+    todas    = []
+    por_tipo = {}   # tipo -> {'grupo': ..., 'filas': [...]}, en el orden del inventario
+    for d in qs:
+        tipo   = d.g212_tipo.g200_tipo_dispositivo if d.g212_tipo else ''
         caract = _get_caracteristicas(d)
-
+        asig   = asignados.get(d.g212_id, {})
         base = [
             d.g212_serial or '',
-            d.g212_tipo.g200_tipo_dispositivo if d.g212_tipo else '',
+            tipo,
             d.g212_marca.g202_marca if d.g212_marca else '',
             d.g212_propietario.g203_propietario if d.g212_propietario else '',
             d.g212_estado.g201_descripcion if d.g212_estado else '',
+            asig.get('nombre', ''),
+            asig.get('documento', ''),
+            asig.get('cargo', ''),
             f"{d.g212_co.g207_co} — {d.g212_co.g207_descripcion_co}" if d.g212_co else '',
             d.g212_nombre_equipo or '',
             float(d.g212_valor_promedio)      if d.g212_valor_promedio      else '',
@@ -3819,80 +3829,157 @@ def api_exportar_inventario(request):
             d.g212_observaciones or '',
             d.g212_fecha_registro.strftime('%d/%m/%Y %H:%M') if d.g212_fecha_registro else '',
         ]
+        todas.append(base)
+        grupo = caract.get('grupo', 'general')
+        hoja  = por_tipo.setdefault(tipo or 'SIN TIPO', {'grupo': grupo, 'filas': []})
+        hoja['filas'].append(base + _extra(hoja['grupo'], caract))
 
-        if grupo == 'pc':
-            from dashboard.models import (Procesador, SistemaOperativo,
-                                          Antivirus, LicenciaOffice,
-                                          Opciones, Almacenamiento)
-            extra = [
-                _res(Procesador,       caract.get('procesador_id'),    'g209_procesador'),
-                _res(SistemaOperativo, caract.get('so_id'),            'g210_so'),
-                _res(Opciones,         caract.get('ram_id'),           'g218_opciones'),
-                _res(Opciones,         caract.get('tipo_disco_id'),    'g218_opciones'),
-                _res(Almacenamiento,   caract.get('almacenamiento_id'),'g219_almacenamiento'),
-                _res(Antivirus,        caract.get('antivirus_id'),     'g208_antivirus'),
-                _res(LicenciaOffice,   caract.get('licencia_id'),      'g211_office'),
-                caract.get('correo_office', ''),
-                caract.get('activo', ''),
-            ]
-        elif grupo == 'movil':
-            from dashboard.models import Operador
-            extra = [
-                caract.get('numero_linea', ''),
-                _res(Operador, caract.get('operador_id'), 'g221_operador'),
-                caract.get('imei1', ''),
-                caract.get('imei2', ''),
-                caract.get('plan_datos', ''),
-                caract.get('cuenta_gmail', ''),
-                caract.get('contrasena_gmail', ''),
-            ]
-        elif grupo == 'pantalla':
-            extra = [caract.get('pulgadas', ''), caract.get('resolucion', '')]
-        elif grupo == 'impresora':
-            from dashboard.models import TipoImpresora
-            extra = [
-                _res(TipoImpresora, caract.get('tipo_impresora_id'), 'g229_tipo_impresora'),
-                caract.get('funcion', ''),
-            ]
-        elif grupo == 'periferico':
-            extra = [
-                'SÍ' if caract.get('incluye_base')        else 'NO',
-                'SÍ' if caract.get('incluye_teclado')     else 'NO',
-                'SÍ' if caract.get('incluye_mouse')       else 'NO',
-                'SÍ' if caract.get('incluye_auriculares') else 'NO',
-                'SÍ' if caract.get('incluye_cargador')    else 'NO',
-            ]
-        elif grupo == 'licencia':
-            extra = [
-                caract.get('software', ''),
-                caract.get('version', ''),
-                caract.get('key', ''),
-                caract.get('correo', ''),
-                caract.get('fecha_vencimiento', ''),
-            ]
-        else:
-            extra = []
+    def _nombre_hoja(nombre, usados):
+        # Excel: máximo 31 caracteres, sin \ / ? * [ ] : y sin repetir.
+        limpio = re.sub(r'[\\/?*\[\]:]', ' ', nombre).strip()[:31] or 'Hoja'
+        base, n = limpio, 2
+        while limpio.upper() in usados:
+            sufijo = f' ({n})'
+            limpio = base[:31 - len(sufijo)] + sufijo
+            n += 1
+        usados.add(limpio.upper())
+        return limpio
 
-        fila = base + extra
-        for col, val in enumerate(fila, 1):
-            cell = ws.cell(row=row_num, column=col, value=val)
-            if row_num % 2 == 0:
-                cell.fill = fill_alt
+    wb = openpyxl.Workbook()
+    wb.remove(wb.active)
+    usados = set()
+    if len(por_tipo) != 1:
+        # Con varios tipos (o ninguno) va primero la hoja general. Con un solo
+        # tipo sobraría: sería lo mismo que la hoja de ese tipo.
+        _xlsx_llenar_hoja(wb.create_sheet(_nombre_hoja('Todos', usados)), BASE_HEADERS, todas)
+    for tipo, hoja in por_tipo.items():
+        headers = BASE_HEADERS + EXTRA_HEADERS.get(hoja['grupo'], [])
+        _xlsx_llenar_hoja(wb.create_sheet(_nombre_hoja(tipo, usados)), headers, hoja['filas'])
 
-    #  Ajustar anchos + freeze header 
-    for col in ws.columns:
-        max_len = max((len(str(c.value)) if c.value else 0) for c in col)
-        ws.column_dimensions[col[0].column_letter].width = min(max_len + 4, 45)
-
-    ws.freeze_panes = 'A2'
-
-    #  Respuesta 
     response = HttpResponse(
         content_type='application/vnd.openxmlformats-officedocument.spreadsheetml.sheet'
     )
     response['Content-Disposition'] = 'attachment; filename="inventario_systraker.xlsx"'
     wb.save(response)
     return response
+
+
+def _asignados_por_dispositivo():
+    """{id de dispositivo: {nombre, documento, cargo}} de la tabla de
+    asignaciones (j216).
+
+    Se trae completa y se cruza en memoria: son pocas filas y así no se arma
+    un IN con cientos de ids. Si un dispositivo estuviera asignado a más de
+    una persona, se juntan con ' / '.
+    """
+    mapa = {}
+    for a in AsignacionColaborador.objects.select_related('g216_colaborador'):
+        c = a.g216_colaborador
+        item = mapa.setdefault(a.g216_dispositivo_id, {'nombre': [], 'documento': [], 'cargo': []})
+        item['nombre'].append(c.g215_nombre or '')
+        item['documento'].append(c.g215_documento or '')
+        item['cargo'].append(c.g215_cargo or '')
+    return {k: {campo: ' / '.join(v) for campo, v in item.items()} for k, item in mapa.items()}
+
+
+def _xlsx_llenar_hoja(ws, headers, filas):
+    """Encabezado azul, filas alternadas, anchos, encabezado fijo y filtros:
+    el mismo formato en todas las exportaciones a Excel del inventario."""
+    from openpyxl.styles import Font, PatternFill, Alignment
+    from openpyxl.utils import get_column_letter
+
+    header_fill = PatternFill('solid', fgColor='1B4698')
+    header_font = Font(color='FFFFFF', bold=True)
+    center      = Alignment(horizontal='center', vertical='center')
+    fill_alt    = PatternFill('solid', fgColor='EEF2FF')
+
+    for col, h in enumerate(headers, 1):
+        cell = ws.cell(row=1, column=col, value=h)
+        cell.fill, cell.font, cell.alignment = header_fill, header_font, center
+
+    for row_num, fila in enumerate(filas, 2):
+        for col, val in enumerate(fila, 1):
+            cell = ws.cell(row=row_num, column=col, value=val)
+            if row_num % 2 == 0:
+                cell.fill = fill_alt
+
+    for col in range(1, len(headers) + 1):
+        largo = max([len(str(headers[col - 1]))] +
+                    [len(str(f[col - 1])) for f in filas if col - 1 < len(f) and f[col - 1] not in (None, '')])
+        ws.column_dimensions[get_column_letter(col)].width = min(largo + 4, 45)
+
+    ws.freeze_panes = 'A2'
+    if filas:
+        ws.auto_filter.ref = f'A1:{get_column_letter(len(headers))}{len(filas) + 1}'
+
+
+def _fecha_archivo():
+    """Fecha de hoy en Colombia para el nombre del archivo descargado."""
+    return timezone.localtime(timezone.now(), COLOMBIA_TZ).strftime('%Y-%m-%d')
+
+
+def _respuesta_xlsx(wb, nombre):
+    from django.http import HttpResponse
+    response = HttpResponse(
+        content_type='application/vnd.openxmlformats-officedocument.spreadsheetml.sheet'
+    )
+    response['Content-Disposition'] = f'attachment; filename="{nombre}"'
+    wb.save(response)
+    return response
+
+
+@login_required(login_url='login')
+@require_http_methods(['GET'])
+def api_exportar_historial(request):
+    """Historial de Equipo en .xlsx, generado en el servidor.
+
+    Reutiliza api_historial con los mismos filtros (?tipo_id= y/o ?serial=)
+    para que el archivo traiga exactamente lo que se consultó en pantalla.
+    Antes el botón bajaba un CSV sin importar el formato elegido.
+    """
+    import json as _json
+    import openpyxl
+
+    if not (request.GET.get('tipo_id') or request.GET.get('serial', '').strip()):
+        return _json_err('Consulta un tipo de dispositivo o un serial antes de exportar.')
+
+    registros = _json.loads(api_historial(request).content.decode('utf-8'))['data']
+    filas = [[
+        h['serial'], h['tipo'], h['novedad'],
+        '/'.join(reversed(h['fecha'].split('-'))), h['hora'],
+        h['responsable'], h['co'], h['observaciones'],
+    ] for h in registros]
+
+    wb = openpyxl.Workbook()
+    wb.active.title = 'Historial'
+    _xlsx_llenar_hoja(wb.active, ['Serial', 'Tipo', 'Novedad', 'Fecha', 'Hora',
+                                  'Responsable', 'Centro de operación', 'Observaciones'], filas)
+    return _respuesta_xlsx(wb, f'historial_equipo_{_fecha_archivo()}.xlsx')
+
+
+@login_required(login_url='login')
+@require_http_methods(['GET'])
+def api_exportar_inactivos(request):
+    """Inactivos en .xlsx, generado en el servidor.
+
+    Reutiliza api_inactivos con los mismos filtros de la pantalla (?q=,
+    ?tipo_id=, ?estado_id=). Antes el botón bajaba un CSV sin importar el
+    formato elegido.
+    """
+    import json as _json
+    import openpyxl
+
+    datos = _json.loads(api_inactivos(request).content.decode('utf-8'))['data']['inactivos']
+    filas = [[
+        d['serial'], d['tipo'], d['marca'], d['propietario'], d['estado'],
+        d['co'], d['observaciones'], d['fecha_registro'],
+    ] for d in datos]
+
+    wb = openpyxl.Workbook()
+    wb.active.title = 'Inactivos'
+    _xlsx_llenar_hoja(wb.active, ['Serial', 'Tipo', 'Marca', 'Propietario', 'Estado',
+                                  'Centro de operación', 'Observaciones', 'Fecha registro'], filas)
+    return _respuesta_xlsx(wb, f'inactivos_{_fecha_archivo()}.xlsx')
 
 @login_required(login_url='login')
 @require_http_methods(['GET'])

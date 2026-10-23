@@ -28,6 +28,7 @@ urlpatterns = [
     #  Historial de equipos 
     path('api/historial/',                    views.api_historial,               name='api_historial'),
     path('api/historial/crear/',              views.api_historial_crear,         name='api_historial_crear'),
+    path('api/historial/exportar/',           views.api_exportar_historial,      name='api_exportar_historial'),
 
     #  Centro de operaciones 
     path('api/centro-operaciones/',                 views.api_centro_operaciones, name='api_centro_operaciones'),
@@ -35,6 +36,7 @@ urlpatterns = [
     #  Inactivos
     path('api/inactivos/',                    views.api_inactivos,               name='api_inactivos'),
     path('api/inactivos/<int:pk>/editar/',    views.api_inactivo_editar,         name='api_inactivo_editar'),
+    path('api/inactivos/exportar/',           views.api_exportar_inactivos,      name='api_exportar_inactivos'),
 
     #  Checklist de Inventario
     path('api/checklist/stats/',                    views.api_checklist_stats,         name='api_checklist_stats'),

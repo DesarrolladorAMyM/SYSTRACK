@@ -14,8 +14,10 @@ const API = {
   eliminarDev:       (pk) => `${BASE}/inventario/api/dispositivos/${pk}/eliminar/`,
   historial:         `${BASE}/inventario/api/historial/`,
   crearHist:         `${BASE}/inventario/api/historial/crear/`,
+  historialExportar: `${BASE}/inventario/api/historial/exportar/`,
   CentroOperaciones: `${BASE}/inventario/api/centro-operaciones/`,
   inactivos:         `${BASE}/inventario/api/inactivos/`,
+  inactivosExportar: `${BASE}/inventario/api/inactivos/exportar/`,
   editarInactivo:    (pk) => `${BASE}/inventario/api/inactivos/${pk}/editar/`,
   colaboradores:     `${BASE}/inventario/api/colaboradores/`,
   crearColab:        `${BASE}/inventario/api/colaboradores/crear/`,
@@ -1212,13 +1214,14 @@ function exportarInventario(tipo) {
 
     doc.autoTable({
       startY: 22,
-      head: [['Serial', 'Tipo', 'Marca', 'Propietario', 'Estado', 'CO', 'Departamento', 'Municipio']],
+      head: [['Serial', 'Tipo', 'Marca', 'Propietario', 'Estado', 'Asignado a', 'CO', 'Departamento', 'Municipio']],
       body: invData.map(d => [
         d.serial       || '—',
         d.tipo         || '—',
         d.marca        || '—',
         d.propietario  || '—',
         d.estado       || '—',
+        d.asignado_a   || '—',
         d.co           || '—',
         d.departamento || '—',
         d.municipio    || '—',
@@ -1632,6 +1635,14 @@ async function consultarHistorial() {
   const primer = registros[0];
   histData = registros;
   histPage = 1;
+  // Se guarda con qué se consultó: la exportación usa ESTO y no lo que haya
+  // en los filtros en ese momento, para bajar lo mismo que está en pantalla.
+  histUltimosParams = params.toString();
+  const tipoSel = document.getElementById('hist-tipo');
+  histUltimoFiltroTxt = [
+    tipoId ? `Tipo: ${tipoSel?.selectedOptions?.[0]?.text || tipoId}` : '',
+    serial ? `Serial: ${serial}` : '',
+  ].filter(Boolean).join(' — ');
   const card = document.createElement('div');
   card.className = 'hist-ficha-card';
 
@@ -1786,23 +1797,88 @@ async function saveHistorial() {
   }
 }
 
-function exportarHistorial() {
+/* Parámetros y texto de la última consulta del historial (ver consultarHistorial). */
+let histUltimosParams = '', histUltimoFiltroTxt = '';
+
+/* Fecha de hoy (hora local) para el nombre de los archivos descargados. */
+function _fechaArchivo() {
+  return new Date().toLocaleDateString('en-CA');   // AAAA-MM-DD
+}
+
+/* PDF horizontal con el mismo formato de los demás reportes del sistema:
+   franja azul con título y fecha, una línea con el total y los filtros,
+   la tabla y la numeración de páginas. */
+function _pdfTabla({ titulo, detalle, head, body, columnStyles, archivo }) {
+  const { jsPDF } = window.jspdf;
+  const doc = new jsPDF({ orientation: 'landscape', unit: 'mm', format: 'a4' });
+
+  doc.setFillColor(27, 70, 152);
+  doc.rect(0, 0, 297, 18, 'F');
+  doc.setTextColor(255, 255, 255);
+  doc.setFontSize(13);
+  doc.setFont('helvetica', 'bold');
+  doc.text(`SYSTRAKER — ${titulo}`, 14, 12);
+  doc.setFontSize(9);
+  doc.setFont('helvetica', 'normal');
+  const fechaTxt = new Date().toLocaleDateString('es-CO', { day: '2-digit', month: 'short', year: 'numeric' });
+  doc.text(`Generado: ${fechaTxt}`, 225, 12);
+
+  doc.setFontSize(8);
+  doc.setTextColor(90);
+  doc.text(detalle, 14, 24);
+
+  doc.autoTable({
+    startY: 28,
+    head: [head],
+    body,
+    styles:     { fontSize: 7.5, cellPadding: 2.5, overflow: 'linebreak' },
+    headStyles: { fillColor: [27, 70, 152], textColor: 255, fontStyle: 'bold' },
+    alternateRowStyles: { fillColor: [245, 247, 252] },
+    columnStyles,
+  });
+
+  const paginas = doc.internal.getNumberOfPages();
+  for (let i = 1; i <= paginas; i++) {
+    doc.setPage(i);
+    doc.setFontSize(8);
+    doc.setTextColor(150);
+    doc.text(`Página ${i} de ${paginas}`, 14, doc.internal.pageSize.height - 6);
+    doc.text('SYSTRAKER © ' + new Date().getFullYear(), 245, doc.internal.pageSize.height - 6);
+  }
+  doc.save(archivo);
+}
+
+function exportarHistorial(tipo) {
+  document.querySelectorAll('[id$="-export-menu"]').forEach(m => m.style.display = 'none');
   if (!histData.length) {
     showNotif('Sin datos', 'Consulta un historial antes de exportar', 'warning');
     return;
   }
-  // Se exporta desde histData (todos los registros de la consulta), no desde
-  // la tabla visible — la tabla ahora está paginada y solo muestra una página.
-  const rows = [['Serial', 'Tipo', 'Novedad', 'Fecha', 'Hora', 'Responsable', 'CO', 'Observaciones']];
-  histData.forEach(h => {
-    rows.push([
-      h.serial, h.tipo, h.novedad,
-      h.fecha.split('-').reverse().join('/'), h.hora,
-      h.responsable, h.co, h.observaciones || '',
-    ]);
-  });
-  downloadCSV(rows, 'historial_equipos.csv');
-  showNotif(' Exportado', 'El historial fue descargado en CSV', 'success');
+
+  if (tipo === 'pdf') {
+    if (!window.jspdf) { showNotif('Error', 'Librería PDF no cargada', 'warning'); return; }
+    // Se exporta desde histData (todos los registros de la consulta), no desde
+    // la tabla visible — la tabla está paginada y solo muestra una página.
+    _pdfTabla({
+      titulo:  'Historial de Equipo',
+      detalle: `${histData.length} registro(s)` + (histUltimoFiltroTxt ? ` — ${histUltimoFiltroTxt}` : ''),
+      head:    ['Serial', 'Tipo', 'Novedad', 'Fecha', 'Hora', 'Responsable', 'CO', 'Observaciones'],
+      body:    histData.map(h => [
+        h.serial || '—', h.tipo || '—', h.novedad || '—',
+        (h.fecha || '').split('-').reverse().join('/') || '—', h.hora || '—',
+        h.responsable || '—', h.co || '—', h.observaciones || '—',
+      ]),
+      columnStyles: { 0: { cellWidth: 28, font: 'courier' }, 7: { cellWidth: 70 } },
+      archivo: `historial_equipo_${_fechaArchivo()}.pdf`,
+    });
+    showNotif('PDF generado', `${histData.length} registro(s) exportados`, 'success');
+    return;
+  }
+
+  // Excel: lo genera el SERVIDOR con openpyxl (mismo criterio que el del
+  // inventario y el de requerimientos), con los filtros de la última consulta.
+  window.location.href = `${API.historialExportar}?${histUltimosParams}`;
+  showNotif('Exportando', 'El archivo Excel se está descargando...', 'success');
 }
 
 // ============================================================
@@ -2018,14 +2094,7 @@ async function loadInactivos() {
   if (inacLoading || _suppressChange) return;
   inacLoading = true;
   try {
-    const q      = (document.getElementById('inac-search')        || {}).value || '';
-    const tipo   = (document.getElementById('inac-filter-tipo')   || {}).value || '';
-    const estado = (document.getElementById('inac-filter-estado') || {}).value || '';
-    const params = new URLSearchParams();
-    if (q)      params.set('q', q);
-    if (tipo)   params.set('tipo_id', tipo);
-    if (estado) params.set('estado_id', estado);
-    const res = await apiFetch(`${API.inactivos}?${params}`);
+    const res = await apiFetch(`${API.inactivos}?${_inacParams()}`);
     if (!res.ok) return;
     inacData = res.data.inactivos;
     const stats = res.data.stats;
@@ -2130,13 +2199,52 @@ async function saveInactivo() {
   loadInactivos();
 }
 
-function exportarInactivos() {
-  const rows = [['Serial', 'Tipo', 'Marca', 'Propietario', 'Estado', 'CO', 'Obs']];
-  inacData.forEach(d => rows.push([
-    d.serial, d.tipo, d.marca, d.propietario, d.estado, d.co || '', d.observaciones || '',
-  ]));
-  downloadCSV(rows, 'inactivos.csv');
-  showNotif(' Exportado', 'Los inactivos fueron descargados en CSV', 'success');
+/* Filtros de la pantalla de Inactivos. Los usan la carga de la tabla y la
+   exportación a Excel, para que el archivo traiga lo mismo que se ve. */
+function _inacParams() {
+  const q      = (document.getElementById('inac-search')        || {}).value || '';
+  const tipo   = (document.getElementById('inac-filter-tipo')   || {}).value || '';
+  const estado = (document.getElementById('inac-filter-estado') || {}).value || '';
+  const params = new URLSearchParams();
+  if (q)      params.set('q', q);
+  if (tipo)   params.set('tipo_id', tipo);
+  if (estado) params.set('estado_id', estado);
+  return params;
+}
+
+function exportarInactivos(tipo) {
+  document.querySelectorAll('[id$="-export-menu"]').forEach(m => m.style.display = 'none');
+  if (!inacData.length) {
+    showNotif('Sin datos', 'No hay dispositivos inactivos para exportar', 'warning');
+    return;
+  }
+
+  if (tipo === 'pdf') {
+    if (!window.jspdf) { showNotif('Error', 'Librería PDF no cargada', 'warning'); return; }
+    const sel = id => document.getElementById(id);
+    const filtros = [
+      sel('inac-filter-estado')?.value ? `Estado: ${sel('inac-filter-estado').selectedOptions[0].text}` : '',
+      sel('inac-filter-tipo')?.value   ? `Tipo: ${sel('inac-filter-tipo').selectedOptions[0].text}`     : '',
+      sel('inac-search')?.value        ? `Búsqueda: ${sel('inac-search').value}`                       : '',
+    ].filter(Boolean).join(' — ');
+    _pdfTabla({
+      titulo:  'Dispositivos Inactivos',
+      detalle: `${inacData.length} registro(s)` + (filtros ? ` — ${filtros}` : ''),
+      head:    ['Serial', 'Tipo', 'Marca', 'Propietario', 'Estado', 'CO', 'Observaciones'],
+      body:    inacData.map(d => [
+        d.serial || '—', d.tipo || '—', d.marca || '—', d.propietario || '—',
+        d.estado || '—', d.co || '—', d.observaciones || '—',
+      ]),
+      columnStyles: { 0: { cellWidth: 28, font: 'courier' }, 6: { cellWidth: 70 } },
+      archivo: `inactivos_${_fechaArchivo()}.pdf`,
+    });
+    showNotif('PDF generado', `${inacData.length} registro(s) exportados`, 'success');
+    return;
+  }
+
+  // Excel: lo genera el servidor con los mismos filtros de la pantalla.
+  window.location.href = `${API.inactivosExportar}?${_inacParams()}`;
+  showNotif('Exportando', 'El archivo Excel se está descargando...', 'success');
 }
 
 // ============================================================
@@ -7020,7 +7128,7 @@ const HREQ_PASOS_BASE = [
   { estado: 'En Proceso', label: 'En proceso', icon: 'fa-screwdriver-wrench',
     detalle: r => r.plan_accion || 'Se está trabajando en la solución del requerimiento.' },
 
-  { estado: 'Cerrado', label: 'Cerrado', icon: 'fa-circle-check',
+  { estado: 'Cerrado', label: 'Solucionado', icon: 'fa-circle-check',
     detalle: r => r.solucion
       ? `${r.solucion}${r.fecha_solucion ? '\n\nSolucionado el ' + r.fecha_solucion + (r.hora_solucion ? ' a las ' + r.hora_solucion : '') + '.' : ''}`
       : 'El requerimiento fue cerrado.' },

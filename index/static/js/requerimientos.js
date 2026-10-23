@@ -1408,7 +1408,7 @@ function showNotif(title, msg, type = 'success', duration = 3500) {
       detalle:(r)=> r.responsable ? `Fue asignado a ${r.responsable}, quien revisará tu solicitud en breve.` : 'Está a la espera de que se le asigne un responsable.'},
     {estado:'En Proceso', label:'En proceso',  icon:'fa-screwdriver-wrench',
       detalle:(r)=> r.plan_accion || 'Se está trabajando en la solución de tu requerimiento.'},
-    {estado:'Cerrado',    label:'Cerrado',     icon:'fa-circle-check',
+    {estado:'Cerrado',    label:'Solucionado', icon:'fa-circle-check',
       detalle:(r)=> r.solucion ? `${r.solucion}${r.fecha_solucion ? ' (Solucionado el '+r.fecha_solucion+')' : ''}` : 'Tu requerimiento fue solucionado.'},
     // ===== [FIX 4] El paso "Calificado" ahora revisa el campo correcto
     // (r.calificacion, no r.evaluacion) y valida si el paso realmente ya

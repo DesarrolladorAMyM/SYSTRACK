@@ -1,0 +1,391 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+<meta charset="utf-8">
+<title>Guía del Portal de Requerimientos</title>
+<!--
+  FUENTE del manual del Portal de Requerimientos.
+  El PDF que abre el portal (index/static/docs/Manual_Portal_de_Requerimientos.pdf)
+  se genera desde este archivo con xhtml2pdf: ver generar_manual.py.
+  Para actualizar el manual: editar este HTML y volver a generar el PDF.
+-->
+<style>
+  /* "Simbolos" (estrellas, círculos, flechas) la registra generar_manual.py:
+     Helvetica no trae esos símbolos. */
+  @page {
+    size: letter portrait;
+    margin: 1.5cm 1.6cm 2.3cm 1.6cm;
+    @frame pie {
+      -pdf-frame-content: pie_pagina;
+      left: 1.6cm; width: 18.39cm; top: 26.45cm; height: 0.8cm;
+    }
+  }
+
+  body   { font-family: Helvetica; font-size: 10pt; color: #2B3550; line-height: 1.45; }
+  p      { margin: 0 0 7pt 0; }
+  b      { color: #1C2A4A; }
+  .sym   { font-family: Simbolos; }
+
+  /* Portada */
+  .portada-banda td { background-color: #1E4699; height: 112pt; vertical-align: bottom;
+                      text-align: center; color: #FFFFFF; font-size: 7.5pt; font-weight: bold;
+                      padding-bottom: 9pt; }
+  h1.portada { font-size: 29pt; color: #1C3570; text-align: center; margin: 120pt 0 0 0; }
+  .portada-sub { font-size: 12.5pt; color: #4E5D7E; margin-top: 95pt; line-height: 1.5; }
+  .portada-ver { font-size: 9pt; color: #8090AE; margin-top: 95pt; }
+
+  /* Contenido (índice) */
+  .indice-tit { font-size: 21pt; font-weight: bold; color: #1C3570; margin-bottom: 10pt; }
+  table.indice td     { font-size: 10pt; color: #2B3550; padding: 3pt 0; }
+  table.indice td.pag { text-align: right; width: 40pt; }
+
+  /* Secciones */
+  .kicker { font-size: 7.5pt; font-weight: bold; color: #2346A0; margin: 0; }
+  h1      { font-size: 21pt; color: #1C3570; margin: 1pt 0 8pt 0; }
+  h2      { font-size: 13pt; color: #2346A0; margin: 12pt 0 4pt 0; }
+  .intro  { font-size: 10.5pt; color: #56668A; margin-bottom: 11pt; }
+
+  .paso   { border-left: 2px solid #CBD5E8; padding: 2pt 0 2pt 9pt; margin: 0 0 8pt 2pt; }
+  .num    { color: #2346A0; font-weight: bold; }
+  .tag    { background-color: #EDE9FE; color: #6D28D9; font-size: 7pt; font-weight: bold; }
+
+  .nota        { background-color: #E8EEF8; border: 1px solid #C7D5EE; color: #1C3570;
+                 padding: 7pt 10pt; margin: 10pt 0; }
+  .nota-aviso  { background-color: #FDF3E1; border: 1px solid #F0D9A8; color: #7A4A08;
+                 padding: 7pt 10pt; margin: 10pt 0; }
+  .nota-tit    { font-weight: bold; margin-bottom: 3pt; }
+
+  /* Pantallas de ejemplo */
+  .barra   { background-color: #111A33; color: #AEB8D0; font-size: 7.5pt; padding: 4pt 8pt; margin-top: 10pt;
+             -pdf-keep-with-next: true; }
+  table.pantalla { width: 100%; border: 1px solid #D7DFEE; }
+  table.pantalla td { border: 1px solid #D7DFEE; padding: 6pt 8pt; vertical-align: top; }
+  .etq     { font-size: 7pt; font-weight: bold; color: #7C8AA5; }
+  .campo   { border: 1px solid #D7DFEE; padding: 4pt 6pt; margin-top: 4pt; font-size: 9pt; }
+  .vacio   { color: #9AA6BF; }
+  .boton   { background-color: #1E4699; color: #FFFFFF; font-size: 8pt; font-weight: bold; padding: 2pt 4pt; }
+  .boton-rojo { background-color: #C62828; color: #FFFFFF; font-size: 8pt; font-weight: bold; padding: 2pt 4pt; }
+  .leyenda { font-size: 7.5pt; color: #8090AE; margin: 2pt 0 10pt 0; }
+  .codigo  { font-family: Courier-Bold; color: #1E4699; font-size: 9pt; }
+
+  table.tabla { width: 100%; border: 1px solid #D7DFEE; }
+  table.tabla th { background-color: #F7F9FC; color: #7C8AA5; font-size: 7.5pt; text-align: left;
+                   padding: 6pt 8pt; border: 1px solid #D7DFEE; }
+  table.tabla td { padding: 6pt 8pt; border: 1px solid #D7DFEE; font-size: 9pt; vertical-align: middle; }
+
+  .paso-tl { text-align: center; font-size: 8.5pt; color: #2B3550; }
+  .preg    { font-weight: bold; color: #1C3570; margin: 10pt 0 2pt 0; }
+  .nueva   { background-color: #DCE9FF; color: #1E4699; font-size: 7pt; font-weight: bold; }
+</style>
+</head>
+<body>
+
+<div id="pie_pagina" style="text-align:center; font-size:7.5pt; color:#94A3B8;">
+  Guía del Portal de Requerimientos &nbsp;·&nbsp; Montacargas AM&amp;M S.A.S. &nbsp;·&nbsp;
+  Página <pdf:pagenumber /> de <pdf:pagecount />
+</div>
+
+<!-- ═════════════════════════ PORTADA ═════════════════════════ -->
+<table class="portada-banda" width="100%"><tr><td>MONTACARGAS AM&amp;M S.A.S. · TIC</td></tr></table>
+<h1 class="portada">Guía del Portal de Requerimientos</h1>
+<div class="portada-sub">Cómo radicar, seguir y corregir tus requerimientos,<br>pedir equipos prestados y hablar con soporte.</div>
+<div class="portada-ver">Manual del usuario · Versión 1.1 · Octubre 2026</div>
+
+<!-- ═════════════════════════ CONTENIDO ═════════════════════════ -->
+<pdf:nextpage />
+<div class="indice-tit">Contenido</div>
+<!--INDICE: generar_manual.py lo reemplaza por la tabla con los números de página reales-->
+<!--/INDICE-->
+
+<!-- ═════════════════════════ LO QUE NECESITAS ═════════════════════════ -->
+<pdf:nextpage />
+<p class="kicker">ANTES DE EMPEZAR</p>
+<h1>Lo que necesitas</h1>
+<p class="intro">El Portal de Requerimientos es donde radicas cualquier solicitud para el área de sistemas, le haces
+seguimiento y pides equipos prestados. Para usarlo solo necesitas:</p>
+<table class="pantalla"><tr>
+  <td width="33%"><b>Tu número de documento</b><br><span style="font-size:8.5pt; color:#7C8AA5;">Es tu usuario en el portal — no necesitas contraseña.</span></td>
+  <td width="33%"><b>Tu correo corporativo</b><br><span style="font-size:8.5pt; color:#7C8AA5;">Ahí llegan los avisos de cada requerimiento.</span></td>
+  <td width="34%"><b>Archivos de soporte</b><br><span style="font-size:8.5pt; color:#7C8AA5;">Opcional: fotos o documentos que expliquen el caso.</span></td>
+</tr></table>
+<div class="nota"><div class="nota-tit">Un manual, un vistazo</div>
+Cada sección de esta guía corresponde a una pantalla real del portal, en el mismo orden en que normalmente las usarías.</div>
+
+<!-- ═════════════════════════ 01 CÓMO INGRESAR ═════════════════════════ -->
+<pdf:nextpage />
+<p class="kicker">01 · PRIMEROS PASOS</p>
+<h1>Cómo ingresar</h1>
+<p class="intro">El ingreso al portal se hace únicamente con tu número de documento — no se pide contraseña. La
+primera vez, el sistema te guía para completar tu registro.</p>
+<div class="paso"><span class="num">1.</span> Abre el portal. Verás un cuadro pidiendo <b>“¿Cuál es tu documento?”</b>.</div>
+<div class="paso"><span class="num">2.</span> Escribe tu número de documento y pulsa <b>CONTINUAR</b>.</div>
+<div class="paso"><span class="num">3.</span> Si ya estás registrado, entras directo a la pantalla de inicio.<br>
+  <span class="tag">&nbsp;Si NO estás registrado&nbsp;</span><br>
+  Verás el enlace <b>“Regístrate aquí”</b>. Completa tu nombre completo, cargo, centro de operación, área y correo
+  corporativo, y pulsa <b>REGISTRARME</b>.</div>
+<div class="paso"><span class="num">4.</span> <span class="tag">&nbsp;Solo la primera vez&nbsp;</span><br>
+  Si tu perfil tiene datos incompletos, aparecerá <b>“Actualiza tus datos”</b>. Es obligatorio completarlo una única vez
+  antes de continuar.</div>
+<div class="barra">portal / identificación</div>
+<table class="pantalla"><tr><td style="text-align:center; padding:12pt;">
+  <span style="font-size:12pt; font-weight:bold; color:#1C3570;">¿Cuál es tu documento?</span><br>
+  <span style="font-size:8.5pt; color:#7C8AA5;">Digita tu número de documento para acceder a tus requerimientos.</span><br><br>
+  <span style="font-size:9pt;">Número de documento</span><br>
+  <span class="boton">&nbsp;CONTINUAR&nbsp;</span><br>
+  <span style="font-size:8pt; color:#7C8AA5;">¿No estás registrado? <b style="color:#1E4699;">Regístrate aquí</b></span>
+</td></tr></table>
+<p class="leyenda">Cuadro de ingreso: lo primero que ves al abrir el portal.</p>
+<div class="nota"><div class="nota-tit">No hay nada que recordar</div>
+Como el ingreso es por documento, no hay contraseñas que se te puedan olvidar. Guarda a mano tu número de documento y listo.</div>
+
+<!-- ═════════════════════════ 02 MENÚ PRINCIPAL ═════════════════════════ -->
+<pdf:nextpage />
+<p class="kicker">02 · PRIMEROS PASOS</p>
+<h1>El menú principal</h1>
+<p class="intro">Todo el portal se mueve desde el menú de la izquierda. Estas son sus cuatro secciones.</p>
+<table class="tabla">
+  <tr><th width="30%">SECCIÓN</th><th>QUÉ ENCUENTRAS AHÍ</th></tr>
+  <tr><td><b>Inicio</b></td><td>La bienvenida al portal, con el aviso de horarios y por qué importa registrar bien los requerimientos.</td></tr>
+  <tr><td><b>Mis Requerimientos</b></td><td>La lista de todo lo que has radicado, en tres pestañas (se explica en la sección 4).</td></tr>
+  <tr><td><b>Agregar Requerimiento TIC</b></td><td>El formulario para radicar un requerimiento nuevo.</td></tr>
+  <tr><td><b>Préstamo de Equipos</b></td><td>Ver qué equipos hay disponibles, pedir uno prestado o devolver el que tienes.</td></tr>
+</table>
+<p style="margin-top:9pt;">En la parte de abajo del menú siempre está el botón <b>Contáctanos</b> para escribir a soporte, y arriba a la
+derecha la <b>campana de notificaciones</b> y tu <b>foto de perfil</b>.</p>
+
+<!-- ═════════════════════════ 03 CREAR REQUERIMIENTO ═════════════════════════ -->
+<pdf:nextpage />
+<p class="kicker">03 · REQUERIMIENTOS</p>
+<h1>Crear un requerimiento</h1>
+<p class="intro">Desde <b>“Agregar Requerimiento TIC”</b> registras cualquier solicitud: una falla, un equipo, una compra o
+cualquier otra necesidad que atienda el área de sistemas.</p>
+<div class="nota-aviso"><div class="nota-tit">Ten en cuenta el horario</div>
+Los requerimientos deben enviarse hasta las <u>12:00 m.</u>, un día antes de la fecha límite en que necesitas la solución.</div>
+<div class="paso"><span class="num">1.</span> Ve a <b>“Agregar Requerimiento TIC”</b> en el menú.</div>
+<div class="paso"><span class="num">2.</span> Revisa tu <b>documento</b>, <b>nombre</b> y <b>cargo</b> — se completan solos desde tu perfil.</div>
+<div class="paso"><span class="num">3.</span> Elige tu <b>centro de operación</b>.</div>
+<div class="paso"><span class="num">4.</span> Elige la <b>categoría</b> y luego la <b>subcategoría</b> (se habilita después de escoger la categoría).</div>
+<div class="paso"><span class="num">5.</span> Escribe tu <b>correo electrónico</b> — ahí llegarán los avisos de este requerimiento.</div>
+<div class="paso"><span class="num">6.</span> <span class="tag">&nbsp;Opcional&nbsp;</span><br>
+  Pulsa <b>“Elegir archivos”</b> para adjuntar fotos o documentos. Puedes seleccionar varios a la vez; cada uno hasta 5 MB.</div>
+<div class="paso"><span class="num">7.</span> Escribe la <b>descripción</b> con el mayor detalle posible: entre más claro seas, más rápido se resuelve.</div>
+<div class="paso"><span class="num">8.</span> Pulsa <b>ENVIAR</b>.</div>
+<div class="barra">portal / agregar requerimiento</div>
+<table class="pantalla">
+  <tr>
+    <td width="36%"><span class="etq">DOCUMENTO</span><div class="campo">1 018 XXX XXX</div></td>
+    <td width="36%"><span class="etq">NOMBRE COMPLETO</span><div class="campo">María Gómez</div></td>
+    <td width="28%"><span class="etq">CARGO</span><div class="campo vacio">Auxiliar contable</div></td>
+  </tr>
+  <tr>
+    <td><span class="etq">CENTRO DE OPERACIÓN</span><div class="campo vacio">Buscar centro…</div></td>
+    <td><span class="etq">CATEGORÍA</span><div class="campo">Software</div></td>
+    <td><span class="etq">SUBCATEGORÍA</span><div class="campo">Instalación de programa</div></td>
+  </tr>
+  <tr>
+    <td><span class="etq">CORREO ELECTRÓNICO</span><div class="campo">maria.gomez@amym.com</div></td>
+    <td colspan="2"><span class="etq">ADJUNTAR ARCHIVOS</span><div class="campo">2 archivos seleccionados</div></td>
+  </tr>
+  <tr>
+    <td colspan="3"><span class="etq">DESCRIPCIÓN</span><div class="campo">El programa de facturación no abre desde esta mañana…</div></td>
+  </tr>
+  <tr><td colspan="3"><span class="boton">&nbsp;ENVIAR&nbsp;</span></td></tr>
+</table>
+<p class="leyenda">Formulario para radicar un requerimiento nuevo.</p>
+<div class="nota"><div class="nota-tit">Requerimientos de compra</div>
+Si tu solicitud requiere una compra, primero pasa por la aprobación de tu jefe de área — lo verás reflejado como un paso extra en el seguimiento.</div>
+
+<!-- ═════════════════════════ 04 MIS REQUERIMIENTOS ═════════════════════════ -->
+<pdf:nextpage />
+<p class="kicker">04 · REQUERIMIENTOS</p>
+<h1>Mis Requerimientos</h1>
+<p class="intro">Aquí ves todo lo que has radicado, repartido en tres pestañas para que nada se te pierda de vista.</p>
+<h2>Pendientes</h2>
+<p>Todo lo que está en curso: recién radicado, ya asignado a un técnico, en proceso, o esperando la aprobación de tu jefe de área.</p>
+<h2>Solucionados</h2>
+<p>Lo que ya fue solucionado — aquí ves la fecha de solución, los archivos de evidencia que haya dejado el técnico y,
+si aún no lo has hecho, puedes calificar cómo te fue.</p>
+<h2>Rechazados</h2>
+<p>Los que el técnico te devolvió porque necesita que corrijas o completes información. Esta pestaña existe justo para que
+estos casos no se mezclen con los que sí van avanzando con normalidad.</p>
+<div class="barra">portal / mis requerimientos · pestaña RECHAZADOS</div>
+<table class="tabla">
+  <tr><th>CÓDIGO</th><th>PRIORIDAD</th><th>ÁREA</th><th>FECHA</th><th>ACCIÓN</th></tr>
+  <tr><td><span class="codigo">REQ-0512</span></td><td><span style="background-color:#B45309; color:#FFFFFF; font-weight:bold;">&nbsp;Media&nbsp;</span></td><td>Contabilidad</td><td>18/08/2026</td><td>Ver · <b style="color:#C62828;">Corregir</b></td></tr>
+  <tr><td><span class="codigo">REQ-0498</span></td><td><span style="background-color:#C62828; color:#FFFFFF; font-weight:bold;">&nbsp;Alta&nbsp;</span></td><td>Bodega</td><td>15/08/2026</td><td>Ver · <b style="color:#C62828;">Corregir</b></td></tr>
+</table>
+<p class="leyenda">La pestaña “Rechazados” abierta — “Corregir” abre el formulario de corrección.</p>
+<p>En la parte de arriba de la tabla puedes <b>buscar</b> por código o descripción, y elegir cuántos registros ver por página
+(10, 25 o 50). En cada fila, el botón <b>Ver</b> abre el seguimiento del requerimiento.</p>
+
+<!-- ═════════════════════════ 05 SEGUIMIENTO ═════════════════════════ -->
+<pdf:nextpage />
+<p class="kicker">05 · REQUERIMIENTOS</p>
+<h1>Seguimiento paso a paso</h1>
+<p class="intro">Al pulsar “Ver” en cualquier requerimiento se abre una línea de tiempo que muestra exactamente en qué va, paso por paso.</p>
+<div class="barra">portal / seguimiento / REQ-0512</div>
+<table class="pantalla"><tr>
+  <td class="paso-tl" width="20%"><span class="sym" style="color:#16A34A; font-size:15pt;">●</span><br>Abierto</td>
+  <td class="paso-tl" width="20%"><span class="sym" style="color:#1E4699; font-size:15pt;">●</span><br><b>Asignado</b></td>
+  <td class="paso-tl" width="20%"><span class="sym" style="color:#B8C2D6; font-size:15pt;">○</span><br>En proceso</td>
+  <td class="paso-tl" width="20%"><span class="sym" style="color:#B8C2D6; font-size:15pt;">○</span><br>Solucionado</td>
+  <td class="paso-tl" width="20%"><span class="sym" style="color:#B8C2D6; font-size:15pt;">○</span><br>Calificado</td>
+</tr></table>
+<div class="nota"><div class="nota-tit">Asignado</div>
+Fue asignado a Carlos Ruiz, quien revisará tu solicitud en breve.</div>
+<p class="leyenda">Cada paso se marca a medida que avanza; el paso actual queda resaltado en azul.</p>
+<p>Estos son todos los pasos que puedes encontrar (no todos los requerimientos pasan por todos):</p>
+<div class="paso"><span class="num">1.</span> <b>Abierto</b> — quedó registrado y está a la espera de que se le asigne un responsable.</div>
+<div class="paso"><span class="num">2.</span> <b>Aprobación</b> <span class="tag">&nbsp;solo si es de compras&nbsp;</span><br>
+  Está a la espera de que tu jefe de área lo apruebe. Si lo rechaza, este paso cambia a “Rechazado” con la fecha, y el requerimiento no avanza más.</div>
+<div class="paso"><span class="num">3.</span> <b>Asignado</b> — ya tiene un técnico de sistemas trabajando en tu caso.</div>
+<div class="paso"><span class="num">4.</span> <b>Requiere corrección</b> <span class="tag">&nbsp;solo si aplica&nbsp;</span><br>
+  El técnico te devolvió el caso pidiendo que corrijas algo. Desaparece en cuanto lo corriges (ver la sección 6).</div>
+<div class="paso"><span class="num">5.</span> <b>En proceso</b> — se está trabajando en la solución; si hay un plan de acción definido, lo verás aquí.</div>
+<div class="paso"><span class="num">6.</span> <b>Solucionado</b> — tu requerimiento fue solucionado. Verás escrita la solución, la fecha en que se
+  solucionó y, si el técnico dejó archivos, las evidencias para abrirlas o descargarlas.</div>
+<div class="paso"><span class="num">7.</span> <b>Calificado</b> — puedes calificar la solución de 1 a 5 estrellas.</div>
+
+<h2>Evidencias de la solución</h2>
+<p>Cuando el técnico soluciona tu requerimiento puede dejar archivos que muestran lo que se hizo: fotos, actas, informes,
+etc. Los encuentras al tocar el paso <b>Solucionado</b> de la línea de tiempo, debajo del texto de la solución. Pulsa
+cualquiera para abrirlo o descargarlo.</p>
+<div class="barra">portal / seguimiento / REQ-0498 · paso Solucionado</div>
+<table class="pantalla"><tr><td>
+  <b>Solucionado</b><br>
+  <span style="font-size:9pt;">Se reemplazó el fusor de la impresora y se hizo una prueba de impresión. (Solucionado el 21/10/2026)</span><br><br>
+  <span class="etq">EVIDENCIAS DE LA SOLUCIÓN</span><br>
+  <span class="campo" style="color:#1E4699; font-weight:bold;"><span class="sym">↓</span> informe_diagnostico.pdf</span><br>
+  <span class="campo" style="color:#1E4699; font-weight:bold;"><span class="sym">↓</span> impresora_reparada.jpg</span>
+</td></tr></table>
+<p class="leyenda">Las evidencias aparecen solo si el técnico adjuntó archivos al solucionar.</p>
+<div class="nota"><div class="nota-tit">También te llegan por correo</div>
+Las evidencias van adjuntas en el correo de <b>“Requerimiento solucionado”</b>. Si entre todas pesan más de 15 MB,
+el correo te dice cuáles son y las descargas desde aquí.</div>
+<div class="nota"><div class="nota-tit">Seguimiento desde tu correo</div>
+Los correos de radicado y de aprobación de tu jefe traen un enlace a este mismo seguimiento, que se abre sin ingresar
+al portal. El correo de <b>“Requerimiento solucionado”</b> te lleva al portal: si todavía no has ingresado en ese
+navegador, primero te pide tu número de documento y luego abre el seguimiento, donde ves las evidencias y puedes calificar.</div>
+
+<!-- ═════════════════════════ 06 SI TE RECHAZAN ═════════════════════════ -->
+<pdf:nextpage />
+<p class="kicker">06 · REQUERIMIENTOS</p>
+<h1>Si te rechazan un requerimiento</h1>
+<p class="intro">Cuando un técnico necesita que corrijas o completes información antes de continuar, tu requerimiento pasa a
+“Requiere corrección” y aparece en la pestaña <b>Rechazados</b>.</p>
+<div class="paso"><span class="num">1.</span> Te llega un correo avisando que tu requerimiento necesita corrección, con un botón <b>“Corregir”</b> que te trae directo aquí.</div>
+<div class="paso"><span class="num">2.</span> En el portal, ve a <b>Mis Requerimientos</b> <span class="sym">→</span> <b>REQUERIMIENTOS RECHAZADOS</b>.</div>
+<div class="paso"><span class="num">3.</span> Verás el <b>motivo</b> que escribió el técnico. Pulsa <b style="color:#C62828;">“Corregir”</b>.</div>
+<div class="paso"><span class="num">4.</span> Revisa el motivo y corrige la <b>descripción</b> con la información que falta o el ajuste pedido.</div>
+<div class="paso"><span class="num">5.</span> Pulsa <b>GUARDAR CORRECCIÓN</b>.</div>
+<div class="barra">portal / corregir / REQ-0512</div>
+<table class="pantalla">
+  <tr><td style="background-color:#FDECEC; color:#991B1B;"><b style="color:#991B1B;">Motivo del rechazo (Carlos Ruiz)</b><br>
+    Falta indicar en qué equipo ocurre la falla, por favor especifica el serial.</td></tr>
+  <tr><td><span class="etq">DESCRIPCIÓN</span><div class="campo">El programa de facturación no abre en el equipo PC-BOD-04…</div></td></tr>
+  <tr><td><span class="boton-rojo">&nbsp;GUARDAR CORRECCIÓN&nbsp;</span></td></tr>
+</table>
+<p class="leyenda">La categoría y subcategoría no se pueden cambiar aquí, solo la descripción.</p>
+<div class="nota"><div class="nota-tit">Qué pasa después</div>
+En cuanto guardas la corrección, el requerimiento vuelve solo al estado “Asignado”, desaparece de Rechazados y sigue su
+curso con el mismo técnico — no tienes que volver a radicarlo.</div>
+
+<!-- ═════════════════════════ 07 CALIFICAR ═════════════════════════ -->
+<pdf:nextpage />
+<p class="kicker">07 · REQUERIMIENTOS</p>
+<h1>Calificar la solución</h1>
+<p class="intro">Cuando un requerimiento queda “Solucionado”, el seguimiento te deja calificar qué tan buena fue la solución.</p>
+<div class="barra">portal / seguimiento / REQ-0498</div>
+<table class="pantalla">
+  <tr><td><b>Solucionado</b><br>
+    <span style="font-size:9pt;">Se reinstaló el sistema operativo y se recuperó la información. (Solucionado el 20/08/2026)</span></td></tr>
+  <tr><td><span class="sym" style="color:#E3B341; font-size:17pt;">★★★★</span><span class="sym" style="color:#D6DCE8; font-size:17pt;">★</span><br>
+    <span style="font-size:8.5pt; color:#7C8AA5;">4 de 5 estrellas</span></td></tr>
+</table>
+<p class="leyenda">Escala de 1 a 5 estrellas: Malo o Insuficiente, Deficiente, Regular, Bueno, ¡Excelente!</p>
+<p>Elige de 1 a 5 estrellas, si quieres agrega un comentario y pulsa <b>ENVIAR</b>. Una vez calificado, el estado pasa a
+<b>“Calificado”</b> y tu calificación queda guardada — no se puede volver a calificar el mismo requerimiento.</p>
+
+<!-- ═════════════════════════ 08 NOTIFICACIONES ═════════════════════════ -->
+<pdf:nextpage />
+<p class="kicker">08 · REQUERIMIENTOS</p>
+<h1>Notificaciones</h1>
+<p class="intro">La campana en la esquina superior derecha te avisa de cualquier novedad sin que tengas que estar revisando la lista.</p>
+<p>Un punto rojo indica que tienes notificaciones sin leer — por ejemplo, cuando un técnico rechaza tu requerimiento y
+necesita que lo corrijas. Al hacer clic en una notificación, el portal te lleva directo al requerimiento correspondiente,
+ya en la pestaña que le corresponde.</p>
+<div class="nota"><div class="nota-tit">Se actualiza sola</div>
+No necesitas recargar la página — el portal revisa si hay novedades nuevas cada cierto tiempo automáticamente.</div>
+
+<!-- ═════════════════════════ 09 PRÉSTAMO ═════════════════════════ -->
+<pdf:nextpage />
+<p class="kicker">09 · OTROS SERVICIOS</p>
+<h1>Préstamo de equipos</h1>
+<p class="intro">Desde esta sección puedes ver qué equipos hay disponibles (portátiles, cámaras, etc.), pedir uno prestado o devolver el que ya tienes.</p>
+<div class="barra">portal / préstamo de equipos</div>
+<table class="tabla">
+  <tr><th>EQUIPO</th><th>RESPONSABLE</th><th>ESTADO</th><th>ACCIÓN</th></tr>
+  <tr><td>Portátil HP 03</td><td>—</td><td><span style="background-color:#15803D; color:#FFFFFF; font-weight:bold;">&nbsp;Disponible&nbsp;</span></td><td><span class="boton">&nbsp;Prestar&nbsp;</span></td></tr>
+  <tr><td>Videobeam Epson</td><td>Andrés Cortés</td><td><span style="background-color:#C62828; color:#FFFFFF; font-weight:bold;">&nbsp;No disponible&nbsp;</span></td><td><b style="color:#1E4699;">Devolver</b></td></tr>
+</table>
+<p class="leyenda">Verde = disponible para pedir; rojo = ya está prestado a alguien.</p>
+<h2>Pedir un equipo</h2>
+<div class="paso"><span class="num">1.</span> Busca el equipo que necesitas y confirma que está en <b>“Disponible”</b>.</div>
+<div class="paso"><span class="num">2.</span> Pulsa <b>Prestar</b>.</div>
+<div class="paso"><span class="num">3.</span> Completa documento, nombre, área y, si quieres, la fecha estimada de devolución y observaciones.</div>
+<div class="paso"><span class="num">4.</span> Pulsa <b>CONFIRMAR PRÉSTAMO</b> — el equipo queda a tu nombre de inmediato.</div>
+<h2>Devolver un equipo</h2>
+<div class="paso"><span class="num">1.</span> Busca el equipo (aparecerá como “No disponible”) y pulsa <b>Devolver</b>.</div>
+<div class="paso"><span class="num">2.</span> Escribe tu número de documento para confirmar que eres quien lo tiene.</div>
+<div class="paso"><span class="num">3.</span> Pulsa <b>CONFIRMAR</b> — el equipo vuelve a quedar disponible para el resto.</div>
+<div class="nota-aviso"><div class="nota-tit">Solo quien lo tiene puede devolverlo</div>
+El portal valida que el documento que escribes coincida con quien tiene el préstamo activo de ese equipo.</div>
+
+<!-- ═════════════════════════ 10 CHAT ═════════════════════════ -->
+<pdf:nextpage />
+<p class="kicker">10 · OTROS SERVICIOS</p>
+<h1>Chat de soporte y WhatsApp</h1>
+<p class="intro">Si necesitas ayuda directa, el botón “Contáctanos” al final del menú abre un chat conectado con Microsoft Teams.</p>
+<div class="barra">portal / soporte · <span style="color:#4ADE80;">en línea</span></div>
+<table class="pantalla">
+  <tr><td width="55%">&nbsp;</td><td width="45%" style="background-color:#E8EEF8; font-size:9pt;">¡Hola! ¿en qué te podemos ayudar?</td></tr>
+  <tr><td width="55%" style="background-color:#1E4699; color:#FFFFFF; font-size:9pt;">Necesito ayuda con la impresora de bodega</td><td width="45%">&nbsp;</td></tr>
+</table>
+<p class="leyenda">El punto verde indica si el agente de soporte está en línea en ese momento.</p>
+<div class="paso"><span class="num">1.</span> Pulsa <b>Contáctanos</b>. Si es la primera vez, pulsa <b>“Conectar con Microsoft Teams”</b> e inicia sesión con tu cuenta corporativa — es solo una vez.</div>
+<div class="paso"><span class="num">2.</span> Escribe tu mensaje en el cuadro de texto y pulsa el botón de enviar.</div>
+<div class="paso"><span class="num">3.</span> Las respuestas del equipo de soporte llegan a esta misma ventana, directo desde Teams.</div>
+<p>También tienes el botón flotante verde de <b>WhatsApp</b> en la esquina inferior derecha de cualquier pantalla, como vía directa y alterna de contacto.</p>
+
+<!-- ═════════════════════════ 11 PERFIL ═════════════════════════ -->
+<pdf:nextpage />
+<p class="kicker">11 · OTROS SERVICIOS</p>
+<h1>Tu perfil</h1>
+<p class="intro">Tu foto, en la esquina superior derecha, abre un menú con dos opciones: <b>Perfil</b> y <b>Cerrar sesión</b>.</p>
+<p>Dentro de <b>Perfil</b> puedes ver tu nombre, cargo y número de documento, y cambiar o quitar tu foto. El botón
+<b>Cerrar sesión</b> está disponible tanto ahí como en ese mismo menú desplegable.</p>
+
+<!-- ═════════════════════════ 12 PREGUNTAS FRECUENTES ═════════════════════════ -->
+<pdf:nextpage />
+<p class="kicker">12 · AYUDA</p>
+<h1>Preguntas frecuentes</h1>
+<p class="preg">¿Necesito una contraseña para entrar?</p>
+<p>No. El ingreso se hace únicamente con tu número de documento.</p>
+<p class="preg">¿Cuántos archivos puedo adjuntar a un requerimiento?</p>
+<p>Puedes seleccionar varios a la vez desde “Elegir archivos” — no hay un límite de cantidad, pero cada archivo debe pesar máximo 5 MB.</p>
+<p class="preg">¿Dónde encuentro los archivos que dejó el técnico al solucionar?</p>
+<p>En <b>Mis Requerimientos</b> <span class="sym">→</span> pestaña “Solucionados”, pulsa <b>Ver</b> y toca el paso <b>Solucionado</b> de la línea de tiempo:
+ahí están las evidencias para abrir o descargar. También te llegan adjuntas en el correo de “Requerimiento solucionado”.</p>
+<p class="preg">Mi requerimiento aparece como “Rechazado”, ¿qué hago?</p>
+<p>Ve a Mis Requerimientos <span class="sym">→</span> pestaña “Rechazados”, revisa el motivo que dejó el técnico y corrígelo con el botón “Corregir”. Al guardar, vuelve solo a su curso normal.</p>
+<p class="preg">No puedo elegir la subcategoría, ¿por qué?</p>
+<p>La lista de subcategorías depende de la categoría — elige primero una categoría y la subcategoría se habilita.</p>
+<p class="preg">Mi jefe de área no aprueba mi requerimiento de compra, ¿qué pasa?</p>
+<p>El requerimiento queda en “Rechazado” en el paso de Aprobación y no continúa. Debes hablar directamente con tu jefe de área — el portal no vuelve a enviarlo automáticamente.</p>
+<p class="preg">¿Cómo sé si ya me respondieron por el chat de soporte?</p>
+<p>La respuesta aparece directamente en la misma ventana de chat, y el punto de color junto al ícono de ayuda te muestra si el agente está en línea.</p>
+<p class="preg">¿Puedo pedir un equipo que ya está prestado a otra persona?</p>
+<p>No. Solo puedes solicitar equipos que figuren como “Disponible”. Cuando la persona que lo tiene lo devuelva, vuelve a quedar disponible para cualquiera.</p>
+
+</body>
+</html>
