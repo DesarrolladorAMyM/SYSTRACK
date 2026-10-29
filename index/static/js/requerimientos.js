@@ -58,6 +58,14 @@ function showNotif(title, msg, type = 'success', duration = 3500) {
   // guarda la estrella elegida antes de confirmar con el botón ENVIAR. =====
   let ratingLocked = false;
   let ratingSeleccionada = 0;
+  // Segunda calificación: la calidad de respuesta (se guarda en CalidadRequerimiento).
+  let calidadSeleccionada = 0;
+  // Regla del comentario. Es la misma que valida el servidor en
+  // calificar_requerimiento (CALIFICACION_UMBRAL_BAJA / COMENTARIO_CALIF_MIN):
+  // si alguna calificación es 3 o menos, el comentario es obligatorio y debe
+  // tener MÁS de 20 caracteres. Si cambia allá, cambiarla aquí también.
+  const CALIF_UMBRAL_BAJA = 3;
+  const COMENTARIO_CALIF_MIN = 20;
 
   function getPerfil(){ try{ return JSON.parse(sessionStorage.getItem('amm_perfil')||'{}'); }catch(e){ return {}; } }
   function setPerfil(obj){ sessionStorage.setItem('amm_perfil', JSON.stringify(obj)); }
@@ -1416,6 +1424,9 @@ function showNotif(title, msg, type = 'success', duration = 3500) {
     {estado:'Calificado', label:'Calificado', icon:'fa-star',
       detalle:(r)=> {
         if(r.estado !== 'Calificado') return 'Aún no has calificado este requerimiento.';
+        if(r.calificacion && r.calidad){
+          return `Calificaste la solución con ${r.calificacion} de 5 estrellas y la calidad de respuesta con ${r.calidad} de 5.`;
+        }
         return r.calificacion ? `Calificaste este requerimiento con ${r.calificacion} de 5 estrellas.` : 'Este requerimiento ya fue calificado.';
       }},
   ];
@@ -1636,6 +1647,11 @@ function showNotif(title, msg, type = 'success', duration = 3500) {
     const commentWrap     = document.getElementById('segRatingCommentWrap');
     const commentInput    = document.getElementById('segRatingComment');
     const commentReadonly = document.getElementById('segRatingReadonlyComment');
+    const ratingStarsCal  = document.getElementById('segRatingStarsCalidad');
+    const solSinDato      = document.getElementById('segRatingSolucionSinDato');
+    const calSinDato      = document.getElementById('segRatingCalidadSinDato');
+    const ratingAviso     = document.getElementById('segRatingAviso');
+    const ratingContador  = document.getElementById('segRatingContador');
 
     if(r.estado === 'Cerrado' || r.estado === 'Calificado'){
       ratingRow.style.display = 'flex';
@@ -1643,9 +1659,20 @@ function showNotif(title, msg, type = 'success', duration = 3500) {
       if(r.estado === 'Calificado' || r.calificacion){
         // Ya fue calificado: solo lectura, se muestra lo que ya se calificó
         ratingLocked = true;
-        ratingSeleccionada = r.calificacion || 0;
+        ratingSeleccionada  = r.calificacion || 0;
+        calidadSeleccionada = r.calidad || 0;
         pintarEstrellas(ratingSeleccionada);
+        pintarEstrellas(calidadSeleccionada, 'segRatingStarsCalidad');
         ratingStars.classList.add('readonly');
+        ratingStarsCal.classList.add('readonly');
+        // Sin dato: evaluaciones viejas sin nota guardada, o anteriores a la
+        // pregunta de calidad de respuesta (esa columna quedó en NULL).
+        ratingStars.style.display    = ratingSeleccionada  ? '' : 'none';
+        solSinDato.style.display     = ratingSeleccionada  ? 'none' : 'block';
+        ratingStarsCal.style.display = calidadSeleccionada ? '' : 'none';
+        calSinDato.style.display     = calidadSeleccionada ? 'none' : 'block';
+        ratingAviso.style.display = 'none';
+        ratingContador.style.display = 'none';
         ratingSubmit.style.display = 'none';
         ratingSub.textContent = 'Ya calificaste este requerimiento';
 
@@ -1659,17 +1686,26 @@ function showNotif(title, msg, type = 'success', duration = 3500) {
       } else {
         // Cerrado pero sin calificar: modo interactivo
         ratingLocked = false;
-        ratingSeleccionada = 0;
+        ratingSeleccionada  = 0;
+        calidadSeleccionada = 0;
         pintarEstrellas(0);
+        pintarEstrellas(0, 'segRatingStarsCalidad');
         ratingStars.classList.remove('readonly');
+        ratingStarsCal.classList.remove('readonly');
+        ratingStars.style.display    = '';
+        ratingStarsCal.style.display = '';
+        solSinDato.style.display     = 'none';
+        calSinDato.style.display     = 'none';
         ratingSubmit.style.display = 'inline-flex';
-        ratingSubmit.disabled = true;
         ratingSubmit.textContent = 'ENVIAR';
         ratingSub.textContent = 'Tu calificación nos ayuda a mejorar';
 
         commentReadonly.style.display = 'none';
         commentWrap.style.display = 'block';
         commentInput.value = '';
+        // Deja el botón deshabilitado y oculta aviso y contador hasta que se
+        // marque algo.
+        _calActualizarUI();
       }
     } else {
       ratingRow.style.display = 'none';
@@ -1684,42 +1720,110 @@ function showNotif(title, msg, type = 'success', duration = 3500) {
     setTimeout(() => { document.getElementById('tripLineFill').style.width = pct + '%'; }, 180 + idxActual*220 + 160);
   }
 
-  function pintarEstrellas(valor){
-    const stars = document.querySelectorAll('#segRatingStars i');
+  // Pinta las estrellas de un grupo: el de la solución ('segRatingStars') o
+  // el de la calidad de respuesta ('segRatingStarsCalidad').
+  function pintarEstrellas(valor, contenedor = 'segRatingStars'){
+    const stars = document.querySelectorAll(`#${contenedor} i`);
     stars.forEach(st=>{
       const v = +st.dataset.v;
       st.className = (v<=valor ? 'fa-solid' : 'fa-regular') + ' fa-star' + (v<=valor?' active':'');
     });
   }
 
+  // Estado de la calificación según lo marcado y escrito. Aplica la regla del
+  // comentario: si alguna calificación es CALIF_UMBRAL_BAJA o menos, el
+  // comentario es obligatorio y debe tener más de COMENTARIO_CALIF_MIN
+  // caracteres. Cuenta caracteres reales ([...texto], no .length) para contar
+  // igual que el servidor con tildes o emojis.
+  function _calEstado(){
+    const comentario = (document.getElementById('segRatingComment')?.value || '').trim();
+    const bajas = [];
+    if(ratingSeleccionada && ratingSeleccionada <= CALIF_UMBRAL_BAJA){
+      bajas.push({que: 'la solución del requerimiento', n: ratingSeleccionada});
+    }
+    if(calidadSeleccionada && calidadSeleccionada <= CALIF_UMBRAL_BAJA){
+      bajas.push({que: 'la calidad de respuesta', n: calidadSeleccionada});
+    }
+    const requiere = bajas.length > 0;
+    const faltan = requiere ? Math.max(0, COMENTARIO_CALIF_MIN + 1 - [...comentario].length) : 0;
+    const completo = !!ratingSeleccionada && !!calidadSeleccionada && faltan === 0;
+    return {comentario, bajas, requiere, faltan, completo};
+  }
+
+  // Actualiza el aviso, el contador, el texto guía del comentario y el botón.
+  // El botón solo se activa con las dos calificaciones marcadas y, si alguna
+  // quedó baja, con el comentario completo.
+  function _calActualizarUI(){
+    if(ratingLocked) return;
+    const st       = _calEstado();
+    const aviso    = document.getElementById('segRatingAviso');
+    const contador = document.getElementById('segRatingContador');
+    const input    = document.getElementById('segRatingComment');
+    const btn      = document.getElementById('segRatingSubmit');
+
+    if(st.requiere){
+      const partes = st.bajas.map(b => `${b.que} con ${b.n} estrella${b.n === 1 ? '' : 's'}`);
+      aviso.textContent = `Calificaste ${partes.join(' y ')}. Cuéntanos el motivo en el comentario `
+                        + `(obligatorio, más de ${COMENTARIO_CALIF_MIN} caracteres).`;
+      aviso.style.display = 'block';
+      input.placeholder = 'Cuéntanos qué pasó para poder mejorar (obligatorio)';
+      contador.style.display = 'block';
+      if(st.faltan > 0){
+        contador.textContent = `Falta${st.faltan === 1 ? '' : 'n'} ${st.faltan} carácter${st.faltan === 1 ? '' : 'es'}`;
+        contador.className = 'seg-rating-contador falta';
+        input.style.borderColor = '#F59E0B';
+      } else {
+        contador.textContent = 'Comentario completo ✓';
+        contador.className = 'seg-rating-contador ok';
+        input.style.borderColor = '';
+      }
+    } else {
+      aviso.style.display = 'none';
+      contador.style.display = 'none';
+      input.placeholder = '¿Quieres contarnos algo más? (opcional)';
+      input.style.borderColor = '';
+    }
+    btn.disabled = !st.completo;
+  }
+
   /* ===== [FIX 3] Listeners globales de calificación: ahora la selección
      solo se previsualiza al clic/hover, y el envío real (con comentario
      incluido) solo ocurre al presionar el botón ENVIAR. Una vez enviado,
-     queda bloqueado en modo solo lectura. ===== */
-  document.querySelectorAll('#segRatingStars i').forEach(st=>{
-    st.addEventListener('click', () => {
-      if(ratingLocked) return;
-      ratingSeleccionada = +st.dataset.v;
-      pintarEstrellas(ratingSeleccionada);
-      document.getElementById('segRatingSubmit').disabled = false;
+     queda bloqueado en modo solo lectura. Son dos grupos de estrellas: la
+     solución y la calidad de respuesta. ===== */
+  function _calConectarEstrellas(contenedor, alElegir, valorActual){
+    const cont = document.getElementById(contenedor);
+    if(!cont) return;
+    cont.querySelectorAll('i').forEach(st=>{
+      st.addEventListener('click', () => {
+        if(ratingLocked) return;
+        alElegir(+st.dataset.v);
+        pintarEstrellas(valorActual(), contenedor);
+        _calActualizarUI();
+      });
+      st.addEventListener('mouseenter', () => {
+        if(ratingLocked) return;
+        pintarEstrellas(+st.dataset.v, contenedor);
+      });
     });
-    st.addEventListener('mouseenter', () => {
+    cont.addEventListener('mouseleave', () => {
       if(ratingLocked) return;
-      pintarEstrellas(+st.dataset.v);
+      pintarEstrellas(valorActual(), contenedor);
     });
-  });
-  document.getElementById('segRatingStars').addEventListener('mouseleave', () => {
-    if(ratingLocked) return;
-    pintarEstrellas(ratingSeleccionada);
-  });
+  }
+  _calConectarEstrellas('segRatingStars',        v => { ratingSeleccionada  = v; }, () => ratingSeleccionada);
+  _calConectarEstrellas('segRatingStarsCalidad', v => { calidadSeleccionada = v; }, () => calidadSeleccionada);
+  document.getElementById('segRatingComment').addEventListener('input', _calActualizarUI);
 
   document.getElementById('segRatingSubmit').addEventListener('click', () => {
-    if(ratingLocked || !ratingSeleccionada) return;
+    if(ratingLocked) return;
+    const estado = _calEstado();
+    if(!estado.completo){ _calActualizarUI(); return; }
     const btn = document.getElementById('segRatingSubmit');
     btn.disabled = true;
     btn.textContent = 'Enviando...';
     const codigoActual = document.getElementById('tripCodigo').textContent;
-    const comentarioTexto = document.getElementById('segRatingComment').value.trim();
+    const comentarioTexto = estado.comentario;
 
     fetch('/SYSTRACK/requerimiento/api/calificar/', {
       method: 'POST',
@@ -1727,7 +1831,9 @@ function showNotif(title, msg, type = 'success', duration = 3500) {
       body: JSON.stringify({
         codigo: codigoActual,
         calificacion: ratingSeleccionada,
-        comentario: comentarioTexto || null
+        calidad: calidadSeleccionada,
+        // '' y no null: el servidor guardaba null como el texto "None".
+        comentario: comentarioTexto
       })
     })
     .then(r => r.json())
@@ -1736,7 +1842,12 @@ function showNotif(title, msg, type = 'success', duration = 3500) {
         // Actualiza en memoria para que el resto de la app (badges, filtros,
         // reapertura del modal, etc.) quede coherente con lo que ya se guardó.
         const reg = misRequerimientos().find(x => String(x.codigo) === String(codigoActual));
-        if(reg){ reg.estado = 'Calificado'; reg.calificacion = ratingSeleccionada; reg.comentario_evaluacion = comentarioTexto || ''; }
+        if(reg){
+          reg.estado = 'Calificado';
+          reg.calificacion = ratingSeleccionada;
+          reg.calidad = calidadSeleccionada;
+          reg.comentario_evaluacion = comentarioTexto || '';
+        }
         actualizarBell();
 
         showNotif('¡Gracias!', 'Tu calificación fue registrada.', 'success');
@@ -1752,14 +1863,14 @@ function showNotif(title, msg, type = 'success', duration = 3500) {
           renderMisReq();
         }
       } else {
-        btn.disabled = false;
         btn.textContent = 'ENVIAR';
+        _calActualizarUI();   // reactiva el botón solo si lo marcado sigue siendo válido
         showNotif('No se pudo calificar', resp.error || 'Intenta de nuevo.', 'error');
       }
     })
     .catch(() => {
-      btn.disabled = false;
       btn.textContent = 'ENVIAR';
+      _calActualizarUI();
       showNotif('Error de conexión', 'Intenta de nuevo.', 'error');
     });
   });

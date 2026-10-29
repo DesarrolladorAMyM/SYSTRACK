@@ -996,6 +996,24 @@
 .star-wrap:hover::after{opacity:1;}
 .seg-rating-stars.readonly .star-wrap::before,
 .seg-rating-stars.readonly .star-wrap::after{display:none;}
+.seg-rating-stars.readonly i{cursor:default;}
+.seg-rating-stars.readonly i:hover{transform:none;}
+
+  /* Calificación en dos partes: la solución y la calidad de respuesta */
+  .seg-rating-item{
+    display:flex;align-items:center;justify-content:space-between;gap:10px 14px;flex-wrap:wrap;
+    margin-top:12px;padding-top:12px;border-top:1px dashed var(--border);
+  }
+  .seg-rating-label{font-size:13px;font-weight:600;color:var(--text-primary);}
+  .seg-rating-sindato{font-size:12px;color:var(--text-light);font-style:italic;}
+  /* Aviso de calificación baja: dice cuál quedó en 3 o menos y pide el motivo */
+  .seg-rating-aviso{
+    margin-top:12px;padding:10px 12px;border-radius:var(--radius-md);
+    background:#FEF3C7;border:1px solid #FDE68A;color:#92400E;font-size:12.5px;line-height:1.45;
+  }
+  .seg-rating-contador{font-size:11.5px;font-weight:600;text-align:right;margin-top:4px;}
+  .seg-rating-contador.falta{color:#B45309;}
+  .seg-rating-contador.ok{color:#15803D;}
 
   
 

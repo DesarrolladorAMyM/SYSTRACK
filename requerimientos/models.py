@@ -226,7 +226,11 @@ class Clasificacion(models.Model):
 class EvaluacionReq(models.Model):
     IdEvaluacion = models.AutoField(primary_key=True)
     IdReq        = models.IntegerField()
-    Evaluacion   = models.IntegerField(null=True, blank=True)  # 1 a 5
+    Evaluacion   = models.IntegerField(null=True, blank=True)  # 1 a 5: la solución del requerimiento
+    # 1 a 5: la calidad de la respuesta. Columna agregada directo en la BD
+    # (oct-2026); las evaluaciones anteriores la tienen en NULL. La tabla no
+    # la administra Django (managed=False), así que no lleva migración.
+    CalidadRequerimiento = models.IntegerField(null=True, blank=True)
     Comentario   = models.TextField(null=True, blank=True)
 
     class Meta:

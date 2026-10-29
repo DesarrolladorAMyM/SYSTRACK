@@ -7,6 +7,7 @@ from django.views.decorators.csrf import csrf_exempt
 from django.core.mail import send_mail
 from django.template.loader import render_to_string
 from django.conf import settings
+from django.db import transaction
 from django.utils import timezone
 from django.core.mail import EmailMultiAlternatives
 from django.contrib.auth.decorators import login_required
@@ -101,6 +102,14 @@ SOLUCION_CARPETA   = 'soluciones_adjuntos'
 # de correo (20–25 MB). Las que no caben se nombran en el correo y se
 # descargan desde el portal.
 CORREO_SOLUCION_MAX_ADJUNTOS = 15 * 1024 * 1024
+
+# Calificación del solicitante: si la solución o la calidad de respuesta quedan
+# en CALIFICACION_UMBRAL_BAJA estrellas o menos, el comentario es obligatorio y
+# debe tener MÁS de COMENTARIO_CALIF_MIN caracteres. requerimientos.js aplica
+# la misma regla (CALIF_UMBRAL_BAJA / COMENTARIO_CALIF_MIN): si cambia aquí,
+# cambiarla allá también.
+CALIFICACION_UMBRAL_BAJA = 3
+COMENTARIO_CALIF_MIN     = 20
 
 
 def _token_seguimiento(req):
@@ -406,9 +415,11 @@ def mis_requerimientos(request):
     }
 
     codigos = [r.Codigo for r in reqs]
+    # Evaluación completa de cada requerimiento (las dos calificaciones y el
+    # comentario). Ordenada para que, si hubiera más de una, gane la última.
     evaluacion_map = {
-        e.IdReq: e.Evaluacion
-        for e in EvaluacionReq.objects.using(DB).filter(IdReq__in=codigos)
+        e.IdReq: e
+        for e in EvaluacionReq.objects.using(DB).filter(IdReq__in=codigos).order_by('IdEvaluacion')
     }
 
     # Evidencias que dejó el técnico al solucionar (mm_AdjuntosSolucion). Van
@@ -433,6 +444,7 @@ def mis_requerimientos(request):
             and any(_normaliza(subcategoria_map.get(r.IdSubCategoria, '')).startswith(s)
                     for s in SUBCATEGORIAS_REQUIEREN_APROBACION)
         )
+        ev = evaluacion_map.get(r.Codigo)
         data.append({
             'id':              r.Codigo,
             'codigo':          r.codigo(),
@@ -448,7 +460,9 @@ def mis_requerimientos(request):
             'solucion':        r.Solucion or '',
             'fecha_solucion':  r.FechaRealSoluci.strftime('%d/%m/%Y') if r.FechaRealSoluci else '',
             'clasificacion':   clasif_map.get(r.Clasificacion, ''),
-            'calificacion':    evaluacion_map.get(r.Codigo, None),
+            'calificacion':    ev.Evaluacion if ev else None,
+            'calidad':         ev.CalidadRequerimiento if ev else None,
+            'comentario_evaluacion': _comentario_evaluacion(ev),
             'estado':          ESTADOS.get(r.IdEstado, str(r.IdEstado or '')),
             'requiere_aprobacion': requiere_aprobacion_r,
             'fecha_aprobacion':    r.FechaAprobacion.strftime('%d/%m/%Y') if r.FechaAprobacion else '',
@@ -1429,41 +1443,88 @@ def rechazar_requerimiento(request, token):
     return render(request, 'requerimientos/aprobacion_resultado.html', {'accion': 'rechazado', 'req': req})
 
 
+def _comentario_evaluacion(ev):
+    """Comentario de una evaluación listo para mostrar ('' si no hay).
+
+    57 evaluaciones guardaron el TEXTO "None" (ver calificar_requerimiento);
+    no se muestran como si el usuario hubiera escrito eso.
+    """
+    texto = ((ev.Comentario if ev else '') or '').strip()
+    return '' if texto.lower() == 'none' else texto
+
+
 @csrf_exempt
 @require_POST
 def calificar_requerimiento(request):
+    """Guarda la calificación del solicitante.
+
+    Son dos calificaciones de 1 a 5:
+      - la solución del requerimiento -> columna Evaluacion (como siempre);
+      - la calidad de la respuesta    -> columna CalidadRequerimiento.
+    Si alguna es CALIFICACION_UMBRAL_BAJA o menos, el comentario es
+    obligatorio y debe tener más de COMENTARIO_CALIF_MIN caracteres. El
+    portal valida lo mismo, pero aquí se repite porque la petición puede
+    llegar sin pasar por la página.
+
+    Solo se califica un requerimiento en estado 4 (Solucionado): al guardar
+    pasa a 6 (Calificado), así que no se puede calificar dos veces.
+    """
     try:
-        data       = json.loads(request.body)
-        codigo     = str(data.get('codigo', '')).strip()
-        cal        = int(data.get('calificacion', 0))
-        comentario = str(data.get('comentario', '')).strip()
+        data    = json.loads(request.body)
+        cal     = int(data.get('calificacion') or 0)
+        calidad = int(data.get('calidad') or 0)
+        pk      = int(str(data.get('codigo') or '').strip().upper().replace('REQ-', ''))
+    except (ValueError, TypeError, AttributeError):
+        return JsonResponse({'ok': False, 'error': 'Solicitud inválida.'}, status=400)
 
-        if not (1 <= cal <= 5):
-            return JsonResponse({'ok': False, 'error': 'Calificación debe ser 1-5.'})
+    if not (1 <= cal <= 5):
+        return JsonResponse({'ok': False, 'error': 'Califica la solución del requerimiento (de 1 a 5 estrellas).'})
+    if not (1 <= calidad <= 5):
+        # Una versión vieja del portal guardada en el navegador no envía esta
+        # calificación: el mensaje le dice al usuario cómo salir de ahí.
+        return JsonResponse({'ok': False, 'error': (
+            'Califica la calidad de respuesta (de 1 a 5 estrellas). '
+            'Si no ves esa pregunta, recarga la página con Ctrl+F5.')})
 
-        pk  = int(codigo.replace('REQ-', ''))
+    # `or ''`: el portal mandaba null cuando no había comentario y str(None)
+    # guardaba el TEXTO "None" en la base (así quedaron 57 evaluaciones).
+    comentario = str(data.get('comentario') or '').strip()
+
+    try:
         req = Requerimiento.objects.using(DB).get(pk=pk)
-
-        if req.IdEstado != 4:
-            return JsonResponse({'ok': False, 'error': 'Solo puedes calificar requerimientos cerrados.'})
-
-        ev, created = EvaluacionReq.objects.using(DB).get_or_create(
-            IdReq=pk, defaults={'Evaluacion': cal, 'Comentario': comentario}
-        )
-        if not created:
-            ev.Evaluacion = cal
-            ev.Comentario = comentario
-            ev.save(using=DB)
-
-        req.IdEstado = 6  # Calificado
-        req.save(using=DB)
-
-        return JsonResponse({'ok': True})
-
     except Requerimiento.DoesNotExist:
         return JsonResponse({'ok': False, 'error': 'Requerimiento no encontrado.'}, status=404)
-    except Exception as e:
-        return JsonResponse({'ok': False, 'error': str(e)}, status=500)
+
+    # Solo uno solucionado y sin calificar. Al guardar pasa a 6, así que este
+    # mismo control impide calificarlo dos veces.
+    if req.IdEstado != 4:
+        return JsonResponse({'ok': False, 'error': 'Solo puedes calificar requerimientos cerrados.'})
+
+    # len() cuenta caracteres reales; la página cuenta igual ([...texto].length)
+    # para que las dos validaciones no discrepen con tildes o emojis.
+    if min(cal, calidad) <= CALIFICACION_UMBRAL_BAJA and len(comentario) <= COMENTARIO_CALIF_MIN:
+        return JsonResponse({'ok': False, 'error': (
+            f'Como calificaste con {CALIFICACION_UMBRAL_BAJA} estrellas o menos, el comentario es '
+            f'obligatorio y debe tener más de {COMENTARIO_CALIF_MIN} caracteres.')})
+
+    try:
+        # Evaluación y cambio de estado juntos: o quedan los dos o ninguno.
+        with transaction.atomic(using=DB):
+            ev = (EvaluacionReq.objects.using(DB)
+                  .filter(IdReq=pk).order_by('-IdEvaluacion').first()) or EvaluacionReq(IdReq=pk)
+            ev.Evaluacion           = cal
+            ev.CalidadRequerimiento = calidad
+            ev.Comentario           = comentario or None
+            ev.save(using=DB)
+
+            req.IdEstado = 6  # Calificado
+            req.save(using=DB)
+    except Exception:
+        logger.exception('No se pudo guardar la calificación de %s', req.codigo())
+        return JsonResponse({'ok': False, 'error': 'No se pudo guardar la calificación. Intenta de nuevo.'},
+                            status=500)
+
+    return JsonResponse({'ok': True})
 
 
 # ────────────────────────── ADJUNTOS ──────────────────────────
